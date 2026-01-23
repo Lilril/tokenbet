@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$TOKEN Prediction Market</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>$TOKEN PREDICTION MARKET</h1>
+            <p>Делай ставки на капитализацию токена</p>
+        </div>
+
+        <div class="wallet-section">
+            <div class="wallet-status">
+                <div>
+                    <span class="status-dot status-disconnected" id="statusDot"></span>
+                    <span id="walletStatus">НЕ ПОДКЛЮЧЕН</span>
+                </div>
+                <button id="connectBtn">ПОДКЛЮЧИТЬ</button>
+            </div>
+            <div>
+                <div style="opacity: 0.7; margin-bottom: 5px;">Баланс $TOKEN:</div>
+                <div class="balance" id="tokenBalance">---</div>
+            </div>
+        </div>
+
+        <div class="modal" id="walletModal">
+            <div class="modal-content">
+                <span class="close-modal" id="closeModal">×</span>
+                <div class="modal-header">ВЫБЕРИ КОШЕЛЕК</div>
+                <div id="walletsList"></div>
+            </div>
+        </div>
+
+        <div class="price-display">
+            <div style="color: #ffaa00; font-size: 0.9em; margin-bottom: 10px;">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
+            <div class="price-value" id="currentCap">Загрузка...</div>
+            <div class="target-cap">
+                Целевая капа этого раунда: <span id="targetCap">$---</span>
+            </div>
+        </div>
+
+        <div class="interval-selector">
+            <button class="interval-btn active" data-interval="15">15 МИН</button>
+            <button class="interval-btn" data-interval="60">1 ЧАС</button>
+            <button class="interval-btn" data-interval="240">4 ЧАСА</button>
+        </div>
+
+        <div class="countdown">
+            <div style="font-size: 0.5em; opacity: 0.7;">РАУНД ЗАКРЫВАЕТСЯ ЧЕРЕЗ</div>
+            <div id="countdown">--:--</div>
+        </div>
+
+        <div class="betting-section">
+            <button class="bet-button bet-higher" id="betHigher" disabled>
+                ⬆ ВЫШЕ
+            </button>
+            <button class="bet-button bet-lower" id="betLower" disabled>
+                ⬇ НИЖЕ
+            </button>
+        </div>
+
+        <div class="info-box">
+            <strong>Как работает:</strong><br>
+            1. Подключи Solana кошелек<br>
+            2. Делай ставку: будет ли капа ВЫШЕ или НИЖЕ целевой к концу раунда<br>
+            3. Целевая капа = капитализация монеты в момент окончания предыдущего раунда<br>
+            4. Профит или лось 📈📉
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
