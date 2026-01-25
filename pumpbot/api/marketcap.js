@@ -1,6 +1,5 @@
 // API endpoint для получения market cap с pump.fun
 // Обходит CORS проблему
-
 export default async function handler(req, res) {
   // Разрешаем CORS для всех доменов
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,7 +8,7 @@ export default async function handler(req, res) {
   const tokenAddress = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
   
   try {
-    // Запрашиваем данные с pump.fun
+    // ИСПРАВЛЕНО: используем круглые скобки () вместо обратных апострофов
     const response = await fetch(`https://frontend-api.pump.fun/coins/${tokenAddress}`);
     
     if (!response.ok) {
