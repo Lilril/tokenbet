@@ -127,7 +127,7 @@ function disconnect() {
 }
 
 // ============================================
-// БАЛАНС ТОКЕНОВ
+// БАЛАНС ТОКЕНОВ (PUMP.FUN + SPL FALLBACK)
 // ============================================
 async function fetchTokenBalance() {
     if (!wallet) {
@@ -138,7 +138,39 @@ async function fetchTokenBalance() {
     try {
         console.log('Получаю баланс для:', wallet);
         
-        // Используем RPC через публичный endpoint
+        // Сначала пробуем pump.fun API
+        try {
+            const pumpResponse = await fetch(`https://frontend-api.pump.fun/balances/${wallet}`);
+            
+            if (pumpResponse.ok) {
+                const pumpData = await pumpResponse.json();
+                console.log('Pump.fun API response:', pumpData);
+                
+                // Ищем наш токен в балансах
+                const tokenBalance = pumpData.balances?.find(
+                    b => b.mint === TOKEN_ADDRESS
+                );
+                
+                if (tokenBalance) {
+                    const balance = tokenBalance.amount / Math.pow(10, tokenBalance.decimals || 6);
+                    console.log('✅ Баланс токена (pump.fun):', balance);
+                    
+                    const formattedBalance = balance.toLocaleString('en-US', { 
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 2 
+                    });
+                    
+                    document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
+                    document.getElementById('betHigher').disabled = balance === 0;
+                    document.getElementById('betLower').disabled = balance === 0;
+                    return;
+                }
+            }
+        } catch (pumpError) {
+            console.log('⚠️ Pump.fun API недоступен, пробую SPL:', pumpError.message);
+        }
+        
+        // Fallback: стандартный SPL token (если токен мигрировал на Raydium)
         const response = await fetch('https://api.mainnet-beta.solana.com', {
             method: 'POST',
             headers: {
@@ -165,7 +197,7 @@ async function fetchTokenBalance() {
 
         if (data.result && data.result.value && data.result.value.length > 0) {
             const balance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount;
-            console.log('✅ Баланс токена:', balance);
+            console.log('✅ Баланс токена (SPL):', balance);
             
             const formattedBalance = balance ? balance.toLocaleString('en-US', { 
                 minimumFractionDigits: 0,
@@ -173,11 +205,10 @@ async function fetchTokenBalance() {
             }) : '0';
             
             document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
-            
             document.getElementById('betHigher').disabled = !balance || balance === 0;
             document.getElementById('betLower').disabled = !balance || balance === 0;
         } else {
-            console.log('⚠️ Токен аккаунт не найден - баланс 0');
+            console.log('⚠️ Токен не найден ни в pump.fun, ни в SPL');
             document.getElementById('tokenBalance').textContent = '0 $TOKEN';
             document.getElementById('betHigher').disabled = true;
             document.getElementById('betLower').disabled = true;
@@ -225,7 +256,7 @@ function closeModal() {
 }
 
 // ============================================
-// КАПИТАЛИЗАЦИЯ через Vercel API
+// КАПИТАЛИЗАЦИЯ через DexScreener
 // ============================================
 async function fetchMarketCap() {
     try {
@@ -334,10 +365,34 @@ document.querySelectorAll('.interval-btn').forEach(btn => {
 });
 
 // ============================================
-// ИНИЦИАЛИЗАЦИЯ
+// ИНИЦИАЛИЗАЦИЯ С ОЖИДАНИЕМ КОШЕЛЬКОВ
 // ============================================
-window.onload = async () => {
-    updateUI(false);
+async function waitForWallets(maxWait = 3000) {
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+        if (window.phantom || window.solflare || window.coinbaseSolana || window.solana) {
+            return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return false;
+}
+
+window.addEventListener('load', async () => {
+    console.log('🔄 Ждем инициализацию кошельков...');
+    await waitForWallets(3000);
+    console.log('✅ Кошельки готовы');
+    
+    // Проверяем автоподключение
+    const phantom = window.phantom?.solana || window.solana;
+    if (phantom?.isConnected && phantom?.publicKey) {
+        wallet = phantom.publicKey.toString();
+        updateUI(true);
+        await fetchTokenBalance();
+    } else {
+        updateUI(false);
+    }
+    
     await updateMarketCap();
     initializeRound();
     
@@ -346,4 +401,11 @@ window.onload = async () => {
         await updateMarketCap();
         initializeRound();
     }, 5000);
-};
+    
+    // Обновляем баланс каждые 10 секунд если подключен
+    setInterval(() => {
+        if (wallet) {
+            fetchTokenBalance();
+        }
+    }, 10000);
+});
