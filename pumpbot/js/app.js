@@ -248,38 +248,25 @@ function closeModal() {
 }
 
 // ============================================
-// КАПИТАЛИЗАЦИЯ напрямую с pump.fun (client-side)
+// КАПИТАЛИЗАЦИЯ через Vercel API (обходит CORS)
 // ============================================
 async function fetchMarketCap() {
     try {
-        // Пробуем pump.fun API напрямую
-        const pumpResponse = await fetch(`https://frontend-api.pump.fun/coins/${TOKEN_ADDRESS}`);
+        console.log('📡 Запрашиваю market cap через API...');
         
-        if (pumpResponse.ok) {
-            const data = await pumpResponse.json();
-            console.log('✅ Pump.fun data:', data);
-            
-            // Ищем market cap в разных полях
-            const marketCap = 
-                parseFloat(data.usd_market_cap) ||
-                parseFloat(data.market_cap) || 
-                parseFloat(data.marketCap) ||
-                0;
-            
-            if (marketCap > 0) {
-                console.log('✅ Market cap:', marketCap);
-                return marketCap;
-            }
-            
-            // Если market cap не найден, пробуем рассчитать через price
-            if (data.price && data.total_supply) {
-                const calculated = data.price * data.total_supply;
-                console.log('✅ Calculated market cap:', calculated);
-                return calculated;
-            }
+        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}`);
+        const data = await response.json();
+        
+        console.log('API response:', data);
+        
+        if (data.success && data.marketCap > 0) {
+            console.log('✅ Market cap:', data.marketCap, 'via', data.method);
+            return data.marketCap;
         }
         
-        // Fallback: DexScreener
+        // Если API вернул 0, пробуем DexScreener напрямую
+        console.log('⚠️ API вернул 0, пробую DexScreener...');
+        
         const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`);
         
         if (dexResponse.ok) {
@@ -296,7 +283,7 @@ async function fetchMarketCap() {
             }
         }
         
-        console.error('❌ No market cap found');
+        console.error('❌ No market cap found anywhere');
         return 0;
         
     } catch (error) {
