@@ -248,20 +248,57 @@ function closeModal() {
 }
 
 // ============================================
-// КАПИТАЛИЗАЦИЯ через DexScreener
+// КАПИТАЛИЗАЦИЯ напрямую с pump.fun (client-side)
 // ============================================
 async function fetchMarketCap() {
     try {
-        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}`);
-        const data = await response.json();
+        // Пробуем pump.fun API напрямую
+        const pumpResponse = await fetch(`https://frontend-api.pump.fun/coins/${TOKEN_ADDRESS}`);
         
-        if (data.success && data.marketCap) {
-            console.log('✅ Market cap:', data.marketCap, 'from', data.method);
-            return data.marketCap;
-        } else {
-            console.error('❌ No market cap data:', data);
-            return 0;
+        if (pumpResponse.ok) {
+            const data = await pumpResponse.json();
+            console.log('✅ Pump.fun data:', data);
+            
+            // Ищем market cap в разных полях
+            const marketCap = 
+                parseFloat(data.usd_market_cap) ||
+                parseFloat(data.market_cap) || 
+                parseFloat(data.marketCap) ||
+                0;
+            
+            if (marketCap > 0) {
+                console.log('✅ Market cap:', marketCap);
+                return marketCap;
+            }
+            
+            // Если market cap не найден, пробуем рассчитать через price
+            if (data.price && data.total_supply) {
+                const calculated = data.price * data.total_supply;
+                console.log('✅ Calculated market cap:', calculated);
+                return calculated;
+            }
         }
+        
+        // Fallback: DexScreener
+        const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`);
+        
+        if (dexResponse.ok) {
+            const dexData = await dexResponse.json();
+            
+            if (dexData.pairs && dexData.pairs.length > 0) {
+                const pair = dexData.pairs[0];
+                const marketCap = pair.marketCap || pair.fdv || 0;
+                
+                if (marketCap > 0) {
+                    console.log('✅ Market cap from DexScreener:', marketCap);
+                    return marketCap;
+                }
+            }
+        }
+        
+        console.error('❌ No market cap found');
+        return 0;
+        
     } catch (error) {
         console.error('❌ Fetch error:', error);
         return 0;
@@ -399,4 +436,3 @@ window.addEventListener('load', async () => {
         }
     }, 10000);
 });
-
