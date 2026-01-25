@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; connect-src 'self' https://*.solana.com https://api.dexscreener.com https://frontend-api.pump.fun; style-src 'self' 'unsafe-inline';"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; connect-src 'self' https://*.solana.com https://api.dexscreener.com https://frontend-api.pump.fun https://price.jup.ag https://rpc.ankr.com https://solana-api.projectserum.com https://api-v3.raydium.io; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
         }
       ]
     }
