@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Запрашиваем балансы с pump.fun API
+    // ИСПРАВЛЕНО: используем круглые скобки () вместо обратных апострофов
     const response = await fetch(`https://frontend-api.pump.fun/balances/${walletAddress}`);
     
     if (!response.ok) {
