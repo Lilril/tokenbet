@@ -248,129 +248,29 @@ function closeModal() {
 }
 
 // ============================================
-// КАПИТАЛИЗАЦИЯ с pump.fun (правильный метод)
+// КАПИТАЛИЗАЦИЯ через Vercel API
 // ============================================
 async function fetchMarketCap() {
     try {
-        console.log('📡 Запрашиваю market cap с pump.fun...');
+        console.log('📡 Запрашиваю market cap через API...');
         
-        // Метод 1: Используем публичный API через fetch с правильными заголовками
-        try {
-            const response = await fetch(`https://frontend-api.pump.fun/coins/${TOKEN_ADDRESS}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Origin': window.location.origin
-                },
-                mode: 'cors',
-                credentials: 'omit'
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                console.log('✅ Pump.fun raw data:', data);
-                
-                // Pump.fun возвращает market_cap в разных форматах
-                let marketCap = 0;
-                
-                // Проверяем все возможные поля
-                if (data.usd_market_cap) {
-                    marketCap = parseFloat(data.usd_market_cap);
-                } else if (data.market_cap) {
-                    marketCap = parseFloat(data.market_cap);
-                } else if (data.marketCap) {
-                    marketCap = parseFloat(data.marketCap);
-                }
-                
-                // Если market cap в данных не найден, считаем вручную
-                if (marketCap === 0) {
-                    // Для pump.fun bonding curve: market_cap = virtual_sol_reserves * SOL_price
-                    if (data.virtual_sol_reserves) {
-                        const solPrice = 150; // Примерная цена SOL в USD
-                        marketCap = data.virtual_sol_reserves * solPrice;
-                        console.log('📊 Calculated from bonding curve:', marketCap);
-                    }
-                    // Или через price * supply
-                    else if (data.price && data.total_supply) {
-                        marketCap = data.price * data.total_supply;
-                        console.log('📊 Calculated from price × supply:', marketCap);
-                    }
-                }
-                
-                if (marketCap > 0) {
-                    console.log('✅ Final market cap:', marketCap);
-                    return marketCap;
-                }
-                
-                console.log('⚠️ Market cap is 0, trying calculation methods...');
-                
-                // Последняя попытка: берем из любого числового поля что похоже на капу
-                const possibleCap = data.fdv || data.usd_fdv || data.value || 0;
-                if (possibleCap > 0) {
-                    console.log('✅ Using alternative cap field:', possibleCap);
-                    return possibleCap;
-                }
-            }
-        } catch (e) {
-            console.log('❌ Direct fetch failed:', e.message);
+        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}`);
+        const data = await response.json();
+        
+        console.log('API response:', data);
+        
+        if (data.success && data.marketCap > 0) {
+            console.log(`✅ Market cap: ${data.marketCap.toFixed(2)} (via ${data.method})`);
+            return data.marketCap;
+        } else {
+            console.warn('⚠️ API returned 0 or failed:', data.error);
+            // Возвращаем минимальную демо-капу
+            return 3600;
         }
-        
-        // Метод 2: Fallback через CORS anywhere proxy
-        try {
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://frontend-api.pump.fun/coins/${TOKEN_ADDRESS}`)}`;
-            const proxyResponse = await fetch(proxyUrl);
-            
-            if (proxyResponse.ok) {
-                const proxyData = await proxyResponse.json();
-                const data = JSON.parse(proxyData.contents);
-                console.log('✅ Pump.fun data via proxy:', data);
-                
-                let marketCap = 
-                    parseFloat(data.usd_market_cap) ||
-                    parseFloat(data.market_cap) || 
-                    parseFloat(data.marketCap) ||
-                    (data.virtual_sol_reserves ? data.virtual_sol_reserves * 150 : 0) ||
-                    0;
-                
-                if (marketCap > 0) {
-                    console.log('✅ Market cap via proxy:', marketCap);
-                    return marketCap;
-                }
-            }
-        } catch (e) {
-            console.log('❌ Proxy fetch failed:', e.message);
-        }
-        
-        // Метод 3: Пробуем DexScreener (если токен уже graduated)
-        try {
-            const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`);
-            
-            if (dexResponse.ok) {
-                const dexData = await dexResponse.json();
-                
-                if (dexData.pairs && dexData.pairs.length > 0) {
-                    const pair = dexData.pairs[0];
-                    const marketCap = pair.marketCap || pair.fdv || 0;
-                    
-                    if (marketCap > 0) {
-                        console.log('✅ Market cap from DexScreener:', marketCap);
-                        return marketCap;
-                    }
-                }
-            }
-        } catch (e) {
-            console.log('DexScreener not available:', e.message);
-        }
-        
-        console.error('❌ Could not fetch market cap from any source');
-        
-        // Для демо: возвращаем минимальную капу $3.6K если ничего не получилось
-        console.warn('⚠️ Returning demo market cap: $3600');
-        return 3600;
         
     } catch (error) {
-        console.error('❌ Fatal error:', error);
-        return 3600; // Минимальная капа для демо
+        console.error('❌ Fetch error:', error);
+        return 3600;
     }
 }
 
