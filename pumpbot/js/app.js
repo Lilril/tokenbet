@@ -1,25 +1,13 @@
-// ============================================// ============================================
+// ============================================
 // КОНФИГУРАЦИЯ
 // ============================================
 const TOKEN_ADDRESS = '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
-// Используем публичный RPC Solana (для тестов пойдет, но может быть медленным)
-// Если есть свой RPC от Helius/Quicknode, вставь его сюда
-const SOLANA_RPC = 'https://mainnet.helius-rpc.com/?api-key=fe6c7452-4dba-4f63-a89b-242b0d7dd886'; 
 
 let wallet = null;
-let connection = null; 
 let selectedInterval = 15;
 let currentMarketCap = 0;
 let targetMarketCap = 0;
 let roundStartTime = null;
-
-// Инициализируем соединение правильно, используя solanaWeb3
-try {
-    connection = new solanaWeb3.Connection(SOLANA_RPC, 'confirmed');
-    console.log('✅ Solana connection initialized');
-} catch (e) {
-    console.error('❌ Ошибка инициализации Solana:', e);
-}
 
 // ============================================
 // КОШЕЛЬКИ
@@ -30,8 +18,12 @@ const WALLETS = {
         icon: '👻',
         color: '#AB9FF2',
         get: () => {
-            if (window.phantom?.solana?.isPhantom) return window.phantom.solana;
-            if (window.solana?.isPhantom) return window.solana;
+            if (window.phantom?.solana?.isPhantom) {
+                return window.phantom.solana;
+            }
+            if (window.solana?.isPhantom) {
+                return window.solana;
+            }
             return null;
         }
     },
@@ -40,6 +32,12 @@ const WALLETS = {
         icon: '🔥',
         color: '#FC6C2C',
         get: () => window.solflare || (window.solana?.isSolflare ? window.solana : null)
+    },
+    coinbase: {
+        name: 'Coinbase',
+        icon: '💼',
+        color: '#0052FF',
+        get: () => window.coinbaseSolana
     }
 };
 
@@ -60,92 +58,136 @@ function renderWallets() {
     document.getElementById('walletsList').innerHTML = html;
 }
 
-// Делаем функцию доступной глобально для HTML onclick
-window.connect = async function(key) {
+async function connect(key) {
     const walletConfig = WALLETS[key];
     const provider = walletConfig.get();
 
     if (!provider) {
-        alert(`${walletConfig.name} не найден.`);
+        const urls = {
+            phantom: "https://phantom.app/",
+            solflare: "https://solflare.com/",
+            coinbase: "https://www.coinbase.com/wallet"
+        };
+        if(confirm(`${walletConfig.name} не найден. Перейти на сайт установки?`)) {
+            window.open(urls[key], '_blank');
+        }
         return;
     }
 
     try {
-        // Если уже подключен, не вызываем connect снова, чтобы избежать ошибок
-        if (!provider.isConnected) {
-             await provider.connect();
+        if (provider.isConnected && provider.publicKey) {
+            wallet = provider.publicKey.toString();
+            finishConnection();
+            return;
         }
-        
-        // Получаем публичный ключ по-разному для разных кошельков
-        const publicKey = provider.publicKey;
-        
-        if (publicKey) {
-            wallet = publicKey.toString();
+
+        try {
+           if (key === 'phantom') {
+               await provider.connect({ onlyIfTrusted: false });
+           } else {
+               await provider.connect();
+           }
+        } catch (err) {
+            throw new Error('User rejected');
+        }
+
+        if (provider.publicKey) {
+            wallet = provider.publicKey.toString();
             finishConnection();
         } else {
-            console.error('Публичный ключ не найден');
+            throw new Error('Public key not found after connect');
         }
+
     } catch (error) {
         console.error('Connection error:', error);
+        
+        if (error.message === 'User rejected' || error.message?.includes('rejected')) {
+            console.log('Пользователь отменил подключение');
+        } else {
+            alert(`Ошибка: ${error.message}`);
+        }
     }
-};
+}
 
 function finishConnection() {
     console.log('✅ Connected:', wallet);
     updateUI(true);
-    fetchTokenBalance(); 
+    fetchTokenBalance();
     closeModal();
 }
 
-window.disconnect = function() {
-    const provider = window.solana || window.phantom?.solana;
-    if (provider && provider.disconnect) {
-        provider.disconnect();
+function disconnect() {
+    const currentProvider = Object.values(WALLETS).find(w => w.get()?.publicKey?.toString() === wallet)?.get();
+    if (currentProvider && currentProvider.disconnect) {
+        currentProvider.disconnect().catch(console.error);
     }
+    
     wallet = null;
     updateUI(false);
-};
+}
 
 // ============================================
 // БАЛАНС ТОКЕНОВ
 // ============================================
 async function fetchTokenBalance() {
-    if (!wallet || !connection) return;
+    if (!wallet) {
+        document.getElementById('tokenBalance').textContent = '0 $TOKEN';
+        return;
+    }
 
     try {
-        console.log('⏳ Получаю баланс для:', wallet);
-        document.getElementById('tokenBalance').textContent = 'Загрузка...';
-
-        const walletPublicKey = new solanaWeb3.PublicKey(wallet);
-        const tokenMint = new solanaWeb3.PublicKey(TOKEN_ADDRESS);
-
-        const response = await connection.getParsedTokenAccountsByOwner(
-            walletPublicKey, 
-            { mint: tokenMint }
-        );
-
-        let uiAmount = 0;
+        console.log('Получаю баланс для:', wallet);
         
-        if (response.value.length > 0) {
-            uiAmount = response.value[0].account.data.parsed.info.tokenAmount.uiAmount;
-        }
-
-        console.log('✅ Баланс токена:', uiAmount);
-        
-        const formattedBalance = uiAmount.toLocaleString('en-US', { 
-            minimumFractionDigits: 0, 
-            maximumFractionDigits: 2 
+        // Используем RPC через публичный endpoint
+        const response = await fetch('https://api.mainnet-beta.solana.com', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'getTokenAccountsByOwner',
+                params: [
+                    wallet,
+                    {
+                        mint: TOKEN_ADDRESS
+                    },
+                    {
+                        encoding: 'jsonParsed'
+                    }
+                ]
+            })
         });
-        
-        document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
-        
-        const hasBalance = uiAmount > 0;
-        document.getElementById('betHigher').disabled = !hasBalance;
-        document.getElementById('betLower').disabled = !hasBalance;
+
+        const data = await response.json();
+        console.log('RPC Response:', data);
+
+        if (data.result && data.result.value && data.result.value.length > 0) {
+            const balance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+            console.log('✅ Баланс токена:', balance);
+            
+            const formattedBalance = balance ? balance.toLocaleString('en-US', { 
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2 
+            }) : '0';
+            
+            document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
+            
+            document.getElementById('betHigher').disabled = !balance || balance === 0;
+            document.getElementById('betLower').disabled = !balance || balance === 0;
+        } else {
+            console.log('⚠️ Токен аккаунт не найден - баланс 0');
+            document.getElementById('tokenBalance').textContent = '0 $TOKEN';
+            document.getElementById('betHigher').disabled = true;
+            document.getElementById('betLower').disabled = true;
+        }
 
     } catch (error) {
         console.error('❌ Ошибка получения баланса:', error);
-        document.getElementById('tokenBalance').textContent = 'Ошибка RPC';
+        document.getElementById('tokenBalance').textContent = 'Ошибка';
+        document.getElementById('betHigher').disabled = true;
+        document.getElementById('betLower').disabled = true;
     }
 }
 
@@ -161,7 +203,7 @@ function updateUI(connected) {
         dot.className = 'status-dot status-connected';
         status.textContent = wallet.slice(0, 4) + '...' + wallet.slice(-4);
         btn.textContent = 'ОТКЛЮЧИТЬ';
-        btn.onclick = window.disconnect;
+        btn.onclick = disconnect;
     } else {
         dot.className = 'status-dot status-disconnected';
         status.textContent = 'НЕ ПОДКЛЮЧЕН';
@@ -183,63 +225,34 @@ function closeModal() {
 }
 
 // ============================================
-// КАПИТАЛИЗАЦИЯ (ФИКС ДЛЯ LOCALHOST)
+// КАПИТАЛИЗАЦИЯ через Vercel API
 // ============================================
 async function fetchMarketCap() {
     try {
-        // Используем DexScreener API напрямую - он разрешает CORS и отлично работает на localhost
-        // Это надежнее, чем Pump.fun API для клиента
         const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`);
         const data = await response.json();
         
         if (data.pairs && data.pairs.length > 0) {
-            // Берем первую пару (обычно самая ликвидная)
             const pair = data.pairs[0];
             const marketCap = pair.marketCap || pair.fdv || 0;
             console.log('✅ Market cap from DexScreener:', marketCap);
             return marketCap;
-        } 
-        
-        // ЗАПАСНОЙ ВАРИАНТ: Если DexScreener еще не видит пару (токен только на pump.fun)
-        // Используем прокси allorigins, чтобы обойти CORS при запросе к pump.fun
-        console.log('⚠️ DexScreener пуст, пробую Pump.fun через прокси...');
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://frontend-api.pump.fun/coins/' + TOKEN_ADDRESS)}`;
-        
-        const pumpResponse = await fetch(proxyUrl);
-        const pumpData = await pumpResponse.json();
-        
-        if (pumpData.contents) {
-            const parsedData = JSON.parse(pumpData.contents);
-            const marketCap = parseFloat(parsedData.usd_market_cap) || 0;
-            console.log('✅ Market cap from Pump.fun (via proxy):', marketCap);
-            return marketCap;
+        } else {
+            console.error('❌ No pairs found');
+            return 0;
         }
-
-        return 0;
     } catch (error) {
-        console.error('❌ Ошибка получения цены:', error);
-        return 0; // Возвращаем 0, если все сломалось
+        console.error('❌ Fetch error:', error);
+        return 0;
     }
 }
 
 async function updateMarketCap() {
     currentMarketCap = await fetchMarketCap();
     
-    // Если капа все еще 0 (ошибка или новый токен), ставим заглушку для теста UI
-    // Убери эту строку, когда закончишь тесты!
-    if (currentMarketCap === 0) {
-        console.log('⚠️ Капа 0, ставлю тестовое значение 15000$');
-        currentMarketCap = 15000; 
-    }
-
-    let formatted = '$0';
-    if (currentMarketCap >= 1000000) {
-        formatted = `$${(currentMarketCap / 1000000).toFixed(2)}M`;
-    } else if (currentMarketCap >= 1000) {
-        formatted = `$${(currentMarketCap / 1000).toFixed(1)}K`;
-    } else {
-        formatted = `$${currentMarketCap.toFixed(2)}`;
-    }
+    const formatted = currentMarketCap >= 1000000 
+        ? `$${(currentMarketCap / 1000000).toFixed(2)}M`
+        : `$${(currentMarketCap / 1000).toFixed(1)}K`;
     
     document.getElementById('currentCap').textContent = formatted;
 }
@@ -258,18 +271,14 @@ function initializeRound() {
     
     const elapsed = now - roundStartTime;
     if (elapsed >= intervalMs) {
+        console.log('🎯 Раунд завершен! Новая целевая капа:', currentMarketCap);
         targetMarketCap = currentMarketCap;
         roundStartTime = now;
     }
     
-    let targetFormatted = '$---';
-    if (targetMarketCap >= 1000000) {
-        targetFormatted = `$${(targetMarketCap / 1000000).toFixed(2)}M`;
-    } else if (targetMarketCap >= 1000) {
-        targetFormatted = `$${(targetMarketCap / 1000).toFixed(1)}K`;
-    } else if (targetMarketCap > 0) {
-        targetFormatted = `$${targetMarketCap.toFixed(2)}`;
-    }
+    const targetFormatted = targetMarketCap >= 1000000 
+        ? `$${(targetMarketCap / 1000000).toFixed(2)}M`
+        : `$${(targetMarketCap / 1000).toFixed(1)}K`;
     
     document.getElementById('targetCap').textContent = targetFormatted;
 }
@@ -335,8 +344,6 @@ window.onload = async () => {
     setInterval(updateCountdown, 1000);
     setInterval(async () => {
         await updateMarketCap();
-        // В реальном проекте roundStartTime нужно не сбрасывать, а проверять
-        // Но для теста оставим так
+        initializeRound();
     }, 5000);
-};
 };
