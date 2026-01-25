@@ -15,43 +15,83 @@ export default async function handler(req, res) {
   }
   
   try {
-    // ИСПРАВЛЕНО: используем круглые скобки () вместо обратных апострофов
-    const response = await fetch(`https://frontend-api.pump.fun/balances/${walletAddress}`);
+    // Пробуем получить баланс через Solana RPC напрямую
+    const rpcResponse = await fetch('https://api.mainnet-beta.solana.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getTokenAccountsByOwner',
+        params: [
+          walletAddress,
+          {
+            mint: tokenMint
+          },
+          {
+            encoding: 'jsonParsed'
+          }
+        ]
+      })
+    });
+
+    const rpcData = await rpcResponse.json();
     
-    if (!response.ok) {
-      throw new Error(`Pump.fun API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    console.log('Pump.fun API response:', data);
-    
-    // Ищем нужный токен
-    const tokenBalance = data.balances?.find(b => b.mint === tokenMint);
-    
-    if (tokenBalance) {
-      const balance = tokenBalance.amount / Math.pow(10, tokenBalance.decimals || 6);
+    // Проверяем есть ли токен аккаунт
+    if (rpcData.result && rpcData.result.value && rpcData.result.value.length > 0) {
+      const tokenAccount = rpcData.result.value[0];
+      const balance = tokenAccount.account.data.parsed.info.tokenAmount.uiAmount;
       
       return res.status(200).json({
         success: true,
-        balance: balance,
+        balance: balance || 0,
         token: tokenMint,
         wallet: walletAddress,
+        method: 'solana-rpc',
         timestamp: new Date().toISOString()
-      });
-    } else {
-      // Токен не найден
-      return res.status(200).json({
-        success: true,
-        balance: 0,
-        token: tokenMint,
-        wallet: walletAddress,
-        message: 'Token not found in wallet'
       });
     }
     
+    // Если через RPC не нашли, пробуем pump.fun API
+    try {
+      const pumpResponse = await fetch(`https://frontend-api.pump.fun/balances/${walletAddress}`);
+      
+      if (pumpResponse.ok) {
+        const pumpData = await pumpResponse.json();
+        const tokenBalance = pumpData.balances?.find(b => b.mint === tokenMint);
+        
+        if (tokenBalance) {
+          const balance = tokenBalance.amount / Math.pow(10, tokenBalance.decimals || 6);
+          
+          return res.status(200).json({
+            success: true,
+            balance: balance,
+            token: tokenMint,
+            wallet: walletAddress,
+            method: 'pump-api',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    } catch (pumpError) {
+      console.log('Pump.fun API failed, using RPC result');
+    }
+    
+    // Токен не найден нигде
+    return res.status(200).json({
+      success: true,
+      balance: 0,
+      token: tokenMint,
+      wallet: walletAddress,
+      message: 'Token not found in wallet',
+      timestamp: new Date().toISOString()
+    });
+    
   } catch (error) {
     console.error('API Error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message,
       wallet: walletAddress
