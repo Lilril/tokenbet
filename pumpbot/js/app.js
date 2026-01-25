@@ -127,7 +127,7 @@ function disconnect() {
 }
 
 // ============================================
-// БАЛАНС ТОКЕНОВ (PUMP.FUN + SPL FALLBACK)
+// БАЛАНС ТОКЕНОВ (через Vercel API прокси)
 // ============================================
 async function fetchTokenBalance() {
     if (!wallet) {
@@ -138,39 +138,31 @@ async function fetchTokenBalance() {
     try {
         console.log('Получаю баланс для:', wallet);
         
-        // Сначала пробуем pump.fun API
-        try {
-            const pumpResponse = await fetch(`https://frontend-api.pump.fun/balances/${wallet}`);
+        // Используем свой Vercel API endpoint как прокси
+        const apiResponse = await fetch(`/api/balance?wallet=${wallet}&token=${TOKEN_ADDRESS}`);
+        
+        if (apiResponse.ok) {
+            const data = await apiResponse.json();
+            console.log('Balance API response:', data);
             
-            if (pumpResponse.ok) {
-                const pumpData = await pumpResponse.json();
-                console.log('Pump.fun API response:', pumpData);
+            if (data.success && data.balance !== undefined) {
+                const balance = data.balance;
+                console.log('✅ Баланс токена:', balance);
                 
-                // Ищем наш токен в балансах
-                const tokenBalance = pumpData.balances?.find(
-                    b => b.mint === TOKEN_ADDRESS
-                );
+                const formattedBalance = balance.toLocaleString('en-US', { 
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2 
+                });
                 
-                if (tokenBalance) {
-                    const balance = tokenBalance.amount / Math.pow(10, tokenBalance.decimals || 6);
-                    console.log('✅ Баланс токена (pump.fun):', balance);
-                    
-                    const formattedBalance = balance.toLocaleString('en-US', { 
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 2 
-                    });
-                    
-                    document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
-                    document.getElementById('betHigher').disabled = balance === 0;
-                    document.getElementById('betLower').disabled = balance === 0;
-                    return;
-                }
+                document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
+                document.getElementById('betHigher').disabled = balance === 0;
+                document.getElementById('betLower').disabled = balance === 0;
+                return;
             }
-        } catch (pumpError) {
-            console.log('⚠️ Pump.fun API недоступен, пробую SPL:', pumpError.message);
         }
         
-        // Fallback: стандартный SPL token (если токен мигрировал на Raydium)
+        // Fallback: стандартный SPL token
+        console.log('⚠️ Пробую SPL fallback...');
         const response = await fetch('https://api.mainnet-beta.solana.com', {
             method: 'POST',
             headers: {
@@ -208,7 +200,7 @@ async function fetchTokenBalance() {
             document.getElementById('betHigher').disabled = !balance || balance === 0;
             document.getElementById('betLower').disabled = !balance || balance === 0;
         } else {
-            console.log('⚠️ Токен не найден ни в pump.fun, ни в SPL');
+            console.log('⚠️ Токен не найден');
             document.getElementById('tokenBalance').textContent = '0 $TOKEN';
             document.getElementById('betHigher').disabled = true;
             document.getElementById('betLower').disabled = true;
