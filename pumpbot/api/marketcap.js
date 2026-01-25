@@ -1,42 +1,68 @@
-// API endpoint для получения market cap с pump.fun
-// Обходит CORS проблему
 export default async function handler(req, res) {
-  // Разрешаем CORS для всех доменов
+  // Разрешаем CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
   const tokenAddress = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
   
   try {
-    // ИСПРАВЛЕНО: используем круглые скобки () вместо обратных апострофов
-    const response = await fetch(`https://frontend-api.pump.fun/coins/${tokenAddress}`);
+    // Используем DexScreener API (более надежный)
+    const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
     
-    if (!response.ok) {
-      throw new Error(`Pump.fun API error: ${response.status}`);
+    if (dexResponse.ok) {
+      const dexData = await dexResponse.json();
+      
+      if (dexData.pairs && dexData.pairs.length > 0) {
+        const pair = dexData.pairs[0];
+        const marketCap = pair.marketCap || pair.fdv || 0;
+        
+        return res.status(200).json({
+          success: true,
+          marketCap: marketCap,
+          token: tokenAddress,
+          method: 'dexscreener',
+          timestamp: new Date().toISOString()
+        });
+      }
     }
     
-    const data = await response.json();
+    // Fallback: пробуем pump.fun API
+    try {
+      const pumpResponse = await fetch(`https://frontend-api.pump.fun/coins/${tokenAddress}`);
+      
+      if (pumpResponse.ok) {
+        const pumpData = await pumpResponse.json();
+        
+        const marketCap = 
+          parseFloat(pumpData.usd_market_cap) ||
+          parseFloat(pumpData.market_cap) ||
+          parseFloat(pumpData.marketCap) ||
+          0;
+        
+        return res.status(200).json({
+          success: true,
+          marketCap: marketCap,
+          token: tokenAddress,
+          method: 'pumpfun',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (pumpError) {
+      console.log('Pump.fun API failed:', pumpError.message);
+    }
     
-    // Извлекаем market cap из разных возможных полей
-    const marketCap = 
-      parseFloat(data.usd_market_cap) ||
-      parseFloat(data.market_cap) ||
-      parseFloat(data.marketCap) ||
-      (data.price && data.total_supply ? data.price * data.total_supply : 0) ||
-      0;
-    
-    // Возвращаем результат
-    res.status(200).json({
+    // Если оба не сработали, возвращаем 0
+    return res.status(200).json({
       success: true,
-      marketCap: marketCap,
+      marketCap: 0,
       token: tokenAddress,
-      timestamp: new Date().toISOString(),
-      rawData: data // На всякий случай все данные
+      message: 'No market data available',
+      timestamp: new Date().toISOString()
     });
     
   } catch (error) {
     console.error('API Error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message,
       token: tokenAddress
