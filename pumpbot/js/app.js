@@ -252,16 +252,14 @@ function closeModal() {
 // ============================================
 async function fetchMarketCap() {
     try {
-        const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`);
+        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}`);
         const data = await response.json();
         
-        if (data.pairs && data.pairs.length > 0) {
-            const pair = data.pairs[0];
-            const marketCap = pair.marketCap || pair.fdv || 0;
-            console.log('✅ Market cap from DexScreener:', marketCap);
-            return marketCap;
+        if (data.success && data.marketCap) {
+            console.log('✅ Market cap:', data.marketCap, 'from', data.method);
+            return data.marketCap;
         } else {
-            console.error('❌ No pairs found');
+            console.error('❌ No market cap data:', data);
             return 0;
         }
     } catch (error) {
@@ -401,3 +399,4 @@ window.addEventListener('load', async () => {
         }
     }, 10000);
 });
+
