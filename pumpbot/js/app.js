@@ -248,29 +248,60 @@ function closeModal() {
 }
 
 // ============================================
-// КАПИТАЛИЗАЦИЯ через Vercel API (обходит CORS)
+// КАПИТАЛИЗАЦИЯ через CORS-прокси
 // ============================================
 async function fetchMarketCap() {
     try {
-        console.log('📡 Запрашиваю market cap через API...');
+        console.log('📡 Запрашиваю market cap...');
         
-        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}`);
-        const data = await response.json();
+        // Пробуем через публичный CORS прокси
+        const corsProxies = [
+            'https://corsproxy.io/?',
+            'https://api.allorigins.win/raw?url=',
+        ];
         
-        console.log('API response:', data);
-        
-        if (data.success && data.marketCap > 0) {
-            console.log('✅ Market cap:', data.marketCap, 'via', data.method);
-            return data.marketCap;
+        for (const proxy of corsProxies) {
+            try {
+                const url = `${proxy}https://frontend-api.pump.fun/coins/${TOKEN_ADDRESS}`;
+                console.log('Trying proxy:', proxy);
+                
+                const response = await fetch(url);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Pump.fun data:', data);
+                    
+                    // Ищем market cap
+                    let marketCap = 
+                        parseFloat(data.usd_market_cap) ||
+                        parseFloat(data.market_cap) || 
+                        parseFloat(data.marketCap) ||
+                        0;
+                    
+                    // Если не найден, считаем через price × supply
+                    if (marketCap === 0 && data.price && data.total_supply) {
+                        marketCap = data.price * data.total_supply;
+                        console.log('Calculated from price × supply:', marketCap);
+                    }
+                    
+                    if (marketCap > 0) {
+                        console.log('✅ Market cap:', marketCap);
+                        return marketCap;
+                    }
+                }
+            } catch (e) {
+                console.log(`Proxy ${proxy} failed:`, e.message);
+                continue;
+            }
         }
         
-        // Если API вернул 0, пробуем DexScreener напрямую
-        console.log('⚠️ API вернул 0, пробую DexScreener...');
-        
+        // Fallback: DexScreener (без прокси, у них CORS открыт)
+        console.log('⚠️ Пробую DexScreener...');
         const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`);
         
         if (dexResponse.ok) {
             const dexData = await dexResponse.json();
+            console.log('DexScreener data:', dexData);
             
             if (dexData.pairs && dexData.pairs.length > 0) {
                 const pair = dexData.pairs[0];
