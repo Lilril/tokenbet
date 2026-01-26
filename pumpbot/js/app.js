@@ -2,15 +2,22 @@
 // КОНФИГУРАЦИЯ
 // ============================================
 const TOKEN_ADDRESS = '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
+const API_BASE = '';
 
+// State
 let wallet = null;
 let selectedInterval = 15;
 let currentMarketCap = 0;
 let targetMarketCap = 0;
 let roundStartTime = null;
-let lastSuccessfulFetch = null;
-let fetchRetries = 0;
-const MAX_RETRIES = 3;
+let tokenBalance = 0;
+
+// Trading state
+let orderBookData = { higher: [], lower: [] };
+let ammPrices = { higher: 0.5, lower: 0.5 };
+let recentTrades = [];
+let selectedSide = 'higher';
+let selectedOrderType = 'market';
 
 // ============================================
 // КОШЕЛЬКИ
@@ -126,6 +133,7 @@ function disconnect() {
     }
     
     wallet = null;
+    tokenBalance = 0;
     updateUI(false);
 }
 
@@ -134,50 +142,46 @@ function disconnect() {
 // ============================================
 async function fetchTokenBalance() {
     if (!wallet) {
-        document.getElementById('tokenBalance').textContent = '0 $TOKEN';
+        tokenBalance = 0;
+        updateBalanceDisplay();
         return;
     }
 
     try {
-        console.log('📊 Получаю баланс для:', wallet);
-        
-        const apiResponse = await fetch(`/api/balance?wallet=${wallet}&token=${TOKEN_ADDRESS}`);
+        const apiResponse = await fetch(`${API_BASE}/api/balance?wallet=${wallet}&token=${TOKEN_ADDRESS}`);
         
         if (apiResponse.ok) {
             const data = await apiResponse.json();
-            console.log('Balance API response:', data);
             
             if (data.success && data.balance !== undefined) {
-                const balance = data.balance;
-                console.log('✅ Баланс токена:', balance);
-                
-                const formattedBalance = balance.toLocaleString('en-US', { 
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 2 
-                });
-                
-                document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
-                document.getElementById('betHigher').disabled = balance === 0;
-                document.getElementById('betLower').disabled = balance === 0;
+                tokenBalance = data.balance;
+                console.log('✅ Баланс токена:', tokenBalance);
+                updateBalanceDisplay();
                 return;
             }
         }
         
-        console.log('⚠️ API не вернул данные');
-        document.getElementById('tokenBalance').textContent = '0 $TOKEN';
-        document.getElementById('betHigher').disabled = true;
-        document.getElementById('betLower').disabled = true;
+        tokenBalance = 0;
+        updateBalanceDisplay();
 
     } catch (error) {
         console.error('❌ Ошибка получения баланса:', error);
-        document.getElementById('tokenBalance').textContent = 'Ошибка';
-        document.getElementById('betHigher').disabled = true;
-        document.getElementById('betLower').disabled = true;
+        tokenBalance = 0;
+        updateBalanceDisplay();
     }
 }
 
+function updateBalanceDisplay() {
+    const formatted = tokenBalance.toLocaleString('en-US', { 
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2 
+    });
+    
+    document.getElementById('tokenBalance').textContent = formatted;
+}
+
 // ============================================
-// UI
+// UI UPDATES
 // ============================================
 function updateUI(connected) {
     const dot = document.getElementById('statusDot');
@@ -194,9 +198,8 @@ function updateUI(connected) {
         status.textContent = 'НЕ ПОДКЛЮЧЕН';
         btn.textContent = 'ПОДКЛЮЧИТЬ';
         btn.onclick = openModal;
-        document.getElementById('tokenBalance').textContent = '---';
-        document.getElementById('betHigher').disabled = true;
-        document.getElementById('betLower').disabled = true;
+        tokenBalance = 0;
+        updateBalanceDisplay();
     }
 }
 
@@ -210,85 +213,26 @@ function closeModal() {
 }
 
 // ============================================
-// КАПИТАЛИЗАЦИЯ С РЕТРАЯМИ
+// MARKET DATA
 // ============================================
-async function fetchMarketCap(retry = 0) {
-    const capElement = document.getElementById('currentCap');
-    
+async function fetchMarketCap() {
     try {
-        console.log(`📡 Запрос цены токена... (попытка ${retry + 1}/${MAX_RETRIES})`);
-        
-        // Показываем индикатор загрузки только при первой попытке
-        if (retry === 0 && !currentMarketCap) {
-            capElement.textContent = 'Загрузка...';
-            capElement.style.color = '#ffaa00';
-        }
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-        
-        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}&t=${Date.now()}`, {
-            method: 'GET',
-            signal: controller.signal,
-            headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-            }
-        });
-        
-        clearTimeout(timeoutId);
+        const response = await fetch(`${API_BASE}/api/marketcap?token=${TOKEN_ADDRESS}&t=${Date.now()}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
         
         const data = await response.json();
-        console.log('API response:', data);
         
         if (data.success && data.marketCap > 0) {
-            lastSuccessfulFetch = Date.now();
-            fetchRetries = 0;
-            
-            console.log(`✅ Price: ${data.price?.toFixed(8)} via ${data.method}`);
-            
-            if (data.warning) {
-                console.warn('⚠️', data.warning);
-            }
-            
-            capElement.style.color = '#ffaa00';
             return data.marketCap;
         } else {
             throw new Error(data.error || 'No data');
         }
         
     } catch (error) {
-        console.error(`❌ Attempt ${retry + 1}/${MAX_RETRIES}:`, error.message);
-        
-        // Retry with exponential backoff
-        if (retry < MAX_RETRIES - 1) {
-            const delay = Math.pow(2, retry) * 2000; // 2s, 4s, 8s
-            console.log(`⏳ Retry in ${delay}ms...`);
-            capElement.textContent = `Повтор через ${delay/1000}s...`;
-            capElement.style.color = '#ffaa00';
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return fetchMarketCap(retry + 1);
-        }
-        
-        // All retries failed
-        const timeSinceSuccess = lastSuccessfulFetch ? Date.now() - lastSuccessfulFetch : Infinity;
-        
-        if (currentMarketCap > 0) {
-            // Есть старые данные - продолжаем их показывать
-            console.log('⚠️ Using last known value:', currentMarketCap);
-            capElement.style.opacity = '0.7';
-        } else if (timeSinceSuccess > 60000) {
-            capElement.textContent = 'API недоступен';
-            capElement.style.color = '#ff6b6b';
-        } else {
-            capElement.textContent = 'Подключение...';
-            capElement.style.color = '#ffaa00';
-        }
-        
+        console.error('❌ Market cap fetch error:', error.message);
         return currentMarketCap || 0;
     }
 }
@@ -299,22 +243,296 @@ async function updateMarketCap() {
     if (newCap > 0) {
         currentMarketCap = newCap;
         
-        const capElement = document.getElementById('currentCap');
-        capElement.style.opacity = '1'; // Восстанавливаем прозрачность
-        
         const formatted = currentMarketCap >= 1000000 
-            ? `${(currentMarketCap / 1000000).toFixed(2)}M`
+            ? `$${(currentMarketCap / 1000000).toFixed(2)}M`
             : currentMarketCap >= 1000
-            ? `${(currentMarketCap / 1000).toFixed(1)}K`
-            : `${currentMarketCap.toFixed(2)}`;
+            ? `$${(currentMarketCap / 1000).toFixed(1)}K`
+            : `$${currentMarketCap.toFixed(2)}`;
         
-        capElement.textContent = formatted;
-        capElement.style.color = '#ffaa00';
+        document.getElementById('currentCap').textContent = formatted;
     }
 }
 
 // ============================================
-// ЛОГИКА РАУНДОВ
+// ORDER BOOK & TRADING
+// ============================================
+async function fetchOrderBook() {
+    try {
+        const response = await fetch(`${API_BASE}/api/orders?action=orderbook`);
+        const data = await response.json();
+        
+        if (data.success) {
+            orderBookData = data.orderBook;
+            ammPrices = data.ammPrice;
+            
+            renderOrderBook();
+            updatePriceStats();
+        }
+    } catch (error) {
+        console.error('❌ Order book fetch error:', error);
+    }
+}
+
+function renderOrderBook() {
+    const higherEl = document.getElementById('orderBookHigher');
+    const lowerEl = document.getElementById('orderBookLower');
+    
+    // Render HIGHER orders
+    if (orderBookData.higher.length === 0) {
+        higherEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>';
+    } else {
+        const maxAmount = Math.max(...orderBookData.higher.map(o => o.amount));
+        
+        higherEl.innerHTML = orderBookData.higher.map(order => {
+            const widthPercent = (order.amount / maxAmount) * 100;
+            
+            return `
+                <div class="orderbook-row buy" style="--width: ${widthPercent}%">
+                    <span>${order.price.toFixed(3)}</span>
+                    <span>${order.amount.toFixed(0)}</span>
+                    <span>${order.orders}</span>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    // Render LOWER orders
+    if (orderBookData.lower.length === 0) {
+        lowerEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>';
+    } else {
+        const maxAmount = Math.max(...orderBookData.lower.map(o => o.amount));
+        
+        lowerEl.innerHTML = orderBookData.lower.map(order => {
+            const widthPercent = (order.amount / maxAmount) * 100;
+            
+            return `
+                <div class="orderbook-row sell" style="--width: ${widthPercent}%">
+                    <span>${order.price.toFixed(3)}</span>
+                    <span>${order.amount.toFixed(0)}</span>
+                    <span>${order.orders}</span>
+                </div>
+            `;
+        }).join('');
+    }
+}
+
+function updatePriceStats() {
+    const higherPrice = ammPrices.higher || 0.5;
+    const lowerPrice = ammPrices.lower || 0.5;
+    
+    document.getElementById('statHigherPrice').textContent = higherPrice.toFixed(3);
+    document.getElementById('statLowerPrice').textContent = lowerPrice.toFixed(3);
+    document.getElementById('statSpread').textContent = 
+        ((Math.abs(higherPrice - lowerPrice) / higherPrice) * 100).toFixed(2) + '%';
+}
+
+async function fetchRecentTrades() {
+    try {
+        const response = await fetch(`${API_BASE}/api/orders?action=trades`);
+        const data = await response.json();
+        
+        if (data.success) {
+            recentTrades = data.trades;
+            renderTradeHistory();
+        }
+    } catch (error) {
+        console.error('❌ Trade history fetch error:', error);
+    }
+}
+
+function renderTradeHistory() {
+    const container = document.getElementById('tradeHistory');
+    
+    if (recentTrades.length === 0) {
+        container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет сделок</div>';
+        return;
+    }
+    
+    container.innerHTML = recentTrades.map(trade => {
+        const time = new Date(trade.timestamp).toLocaleTimeString('ru-RU');
+        const sideClass = trade.side === 'higher' ? 'buy' : 'sell';
+        const sideText = trade.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ';
+        
+        return `
+            <div class="trade-item ${sideClass}">
+                <div>
+                    <div style="font-weight: 600;">${sideText}</div>
+                    <div class="trade-time">${time}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div>${trade.amount.toFixed(0)} шт</div>
+                    <div class="trade-time">@ ${trade.price.toFixed(3)}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ============================================
+// TRADING INTERFACE
+// ============================================
+function switchOrderType(type) {
+    selectedOrderType = type;
+    
+    document.querySelectorAll('.order-type-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    document.querySelectorAll(`.order-type-btn[data-type="${type}"]`).forEach(btn => {
+        btn.classList.add('active');
+    });
+    
+    // Show/hide price input for limit orders
+    document.querySelectorAll('.limit-price-group').forEach(el => {
+        el.style.display = type === 'limit' ? 'block' : 'none';
+    });
+}
+
+async function calculateEstimate(side) {
+    const amountInput = document.getElementById(`amount${side === 'higher' ? 'Higher' : 'Lower'}`);
+    const amount = parseFloat(amountInput.value) || 0;
+    
+    if (amount <= 0) {
+        updateEstimateDisplay(side, null);
+        return;
+    }
+    
+    if (selectedOrderType === 'market') {
+        try {
+            const response = await fetch(
+                `${API_BASE}/api/orders?action=quote&side=${side}&amount=${amount}`
+            );
+            const data = await response.json();
+            
+            if (data.success) {
+                updateEstimateDisplay(side, data);
+            }
+        } catch (error) {
+            console.error('❌ Quote error:', error);
+        }
+    } else {
+        // For limit orders, just show the specified price
+        const priceInput = document.getElementById(`price${side === 'higher' ? 'Higher' : 'Lower'}`);
+        const price = parseFloat(priceInput.value) || ammPrices[side];
+        
+        updateEstimateDisplay(side, {
+            avgPrice: price,
+            priceImpact: 0,
+            [side === 'higher' ? 'lowerNeeded' : 'higherNeeded']: amount * price
+        });
+    }
+}
+
+function updateEstimateDisplay(side, data) {
+    const container = document.getElementById(`estimate${side === 'higher' ? 'Higher' : 'Lower'}`);
+    
+    if (!data) {
+        container.innerHTML = '<div style="color: var(--text-dim);">Введите сумму</div>';
+        return;
+    }
+    
+    const oppositeSide = side === 'higher' ? 'lower' : 'higher';
+    const cost = data[`${oppositeSide}Needed`] || (data.avgPrice * parseFloat(
+        document.getElementById(`amount${side === 'higher' ? 'Higher' : 'Lower'}`).value
+    ));
+    
+    container.innerHTML = `
+        <div class="estimate-row">
+            <span>Средняя цена:</span>
+            <span>${data.avgPrice.toFixed(4)}</span>
+        </div>
+        <div class="estimate-row">
+            <span>Price Impact:</span>
+            <span class="${data.priceImpact > 5 ? 'text-red' : 'text-green'}">
+                ${data.priceImpact?.toFixed(2) || '0.00'}%
+            </span>
+        </div>
+        <div class="estimate-row">
+            <span>Итого:</span>
+            <span class="text-yellow">${cost.toFixed(0)} токенов</span>
+        </div>
+    `;
+}
+
+async function executeTrade(side) {
+    if (!wallet) {
+        openModal();
+        return;
+    }
+    
+    const amountInput = document.getElementById(`amount${side === 'higher' ? 'Higher' : 'Lower'}`);
+    const amount = parseFloat(amountInput.value) || 0;
+    
+    if (amount <= 0) {
+        alert('Введите корректную сумму');
+        return;
+    }
+    
+    if (amount > tokenBalance) {
+        alert('Недостаточно токенов');
+        return;
+    }
+    
+    try {
+        const orderData = {
+            wallet,
+            side,
+            amount,
+            type: selectedOrderType
+        };
+        
+        if (selectedOrderType === 'limit') {
+            const priceInput = document.getElementById(`price${side === 'higher' ? 'Higher' : 'Lower'}`);
+            const price = parseFloat(priceInput.value);
+            
+            if (!price || price <= 0 || price >= 1) {
+                alert('Введите корректную цену (от 0 до 1)');
+                return;
+            }
+            
+            orderData.price = price;
+        }
+        
+        const response = await fetch(`${API_BASE}/api/orders`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(orderData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const sideText = side === 'higher' ? 'ВЫШЕ' : 'НИЖЕ';
+            const typeText = selectedOrderType === 'market' ? 'Маркет' : 'Лимит';
+            
+            alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`);
+            
+            // Reset form
+            amountInput.value = '';
+            if (selectedOrderType === 'limit') {
+                document.getElementById(`price${side === 'higher' ? 'Higher' : 'Lower'}`).value = '';
+            }
+            
+            // Refresh data
+            await Promise.all([
+                fetchOrderBook(),
+                fetchRecentTrades(),
+                fetchTokenBalance()
+            ]);
+        } else {
+            alert(`Ошибка: ${result.error}`);
+        }
+        
+    } catch (error) {
+        console.error('❌ Trade execution error:', error);
+        alert('Ошибка при размещении ордера');
+    }
+}
+
+// ============================================
+// РАУНДЫ
 // ============================================
 function initializeRound() {
     const now = Date.now();
@@ -328,9 +546,6 @@ function initializeRound() {
     const elapsed = now - roundStartTime;
     if (elapsed >= intervalMs) {
         console.log('🎯 Раунд завершен!');
-        console.log(`   Целевая капа была: $${targetMarketCap.toFixed(2)}`);
-        console.log(`   Финальная капа: $${currentMarketCap.toFixed(2)}`);
-        
         targetMarketCap = currentMarketCap;
         roundStartTime = now;
     }
@@ -366,49 +581,29 @@ function updateCountdown() {
 }
 
 // ============================================
-// СОБЫТИЯ
+// EVENT LISTENERS
 // ============================================
 document.getElementById('closeModal').onclick = closeModal;
 document.getElementById('walletModal').onclick = (e) => {
     if (e.target.id === 'walletModal') closeModal();
 };
 
-document.getElementById('betHigher').onclick = () => {
-    if (!wallet) return openModal();
+// Input listeners for real-time estimates
+['Higher', 'Lower'].forEach(side => {
+    const amountInput = document.getElementById(`amount${side}`);
+    const priceInput = document.getElementById(`price${side}`);
     
-    const difference = ((currentMarketCap - targetMarketCap) / targetMarketCap * 100).toFixed(2);
+    if (amountInput) {
+        amountInput.addEventListener('input', () => {
+            calculateEstimate(side.toLowerCase());
+        });
+    }
     
-    alert(
-        `✅ Ставка ВЫШЕ принята!\n\n` +
-        `Текущая капа: $${currentMarketCap.toFixed(2)}\n` +
-        `Целевая капа: $${targetMarketCap.toFixed(2)}\n` +
-        `Разница: ${difference}%`
-    );
-};
-
-document.getElementById('betLower').onclick = () => {
-    if (!wallet) return openModal();
-    
-    const difference = ((currentMarketCap - targetMarketCap) / targetMarketCap * 100).toFixed(2);
-    
-    alert(
-        `✅ Ставка НИЖЕ принята!\n\n` +
-        `Текущая капа: $${currentMarketCap.toFixed(2)}\n` +
-        `Целевая капа: $${targetMarketCap.toFixed(2)}\n` +
-        `Разница: ${difference}%`
-    );
-};
-
-document.querySelectorAll('.interval-btn').forEach(btn => {
-    btn.onclick = function() {
-        document.querySelectorAll('.interval-btn').forEach(b => 
-            b.classList.remove('active'));
-        this.classList.add('active');
-        selectedInterval = parseInt(this.dataset.interval);
-        roundStartTime = null;
-        initializeRound();
-        console.log(`⏱ Интервал изменен на ${selectedInterval} минут`);
-    };
+    if (priceInput) {
+        priceInput.addEventListener('input', () => {
+            calculateEstimate(side.toLowerCase());
+        });
+    }
 });
 
 // ============================================
@@ -427,7 +622,6 @@ async function waitForWallets(maxWait = 3000) {
 
 window.addEventListener('load', async () => {
     console.log('🚀 $TOKEN Prediction Market загружается...');
-    console.log('📍 Token:', TOKEN_ADDRESS);
     
     await waitForWallets(3000);
     
@@ -441,31 +635,27 @@ window.addEventListener('load', async () => {
         updateUI(false);
     }
     
-    console.log('📊 Получаю начальную капитализацию...');
-    await updateMarketCap();
+    console.log('📊 Загрузка данных рынка...');
+    
+    await Promise.all([
+        updateMarketCap(),
+        fetchOrderBook(),
+        fetchRecentTrades()
+    ]);
     
     if (currentMarketCap > 0) {
         initializeRound();
         console.log('✅ Раунд инициализирован');
-    } else {
-        console.warn('⚠️ Не удалось получить начальную капитализацию, повторная попытка...');
-        setTimeout(async () => {
-            await updateMarketCap();
-            if (currentMarketCap > 0) {
-                initializeRound();
-                console.log('✅ Раунд инициализирован (повторная попытка)');
-            }
-        }, 5000);
     }
     
-    // Обновления
+    // Intervals
     setInterval(updateCountdown, 1000);
-    setInterval(updateMarketCap, 15000); // Увеличили с 10 до 15 секунд
+    setInterval(updateMarketCap, 15000);
+    setInterval(fetchOrderBook, 5000);
+    setInterval(fetchRecentTrades, 10000);
     setInterval(() => {
         if (wallet) fetchTokenBalance();
-    }, 20000); // Увеличили с 15 до 20 секунд
+    }, 20000);
     
     console.log('✅ Приложение готово к работе');
 });
-
-
