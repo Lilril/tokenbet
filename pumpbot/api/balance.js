@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Разрешаем CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -14,14 +13,14 @@ export default async function handler(req, res) {
     });
   }
   
-  // Используем несколько RPC endpoints
+  console.log('Fetching balance for wallet:', walletAddress);
+  
   const RPC_ENDPOINTS = [
     'https://api.mainnet-beta.solana.com',
-    'https://solana-api.projectserum.com',
-    'https://rpc.ankr.com/solana'
+    'https://rpc.ankr.com/solana',
+    'https://solana-api.projectserum.com'
   ];
   
-  // Пробуем каждый RPC endpoint
   for (const rpcUrl of RPC_ENDPOINTS) {
     try {
       const rpcResponse = await fetch(rpcUrl, {
@@ -40,20 +39,19 @@ export default async function handler(req, res) {
           ]
         })
       });
-
+      
       const rpcData = await rpcResponse.json();
       
-      // Проверяем есть ли ошибка в ответе
       if (rpcData.error) {
-        console.log(`RPC error from ${rpcUrl}:`, rpcData.error);
-        continue; // Пробуем следующий endpoint
+        console.log('RPC error from', rpcUrl, ':', rpcData.error);
+        continue;
       }
       
-      // Проверяем есть ли токен аккаунт
       if (rpcData.result && rpcData.result.value && rpcData.result.value.length > 0) {
         const tokenAccount = rpcData.result.value[0];
         const balance = tokenAccount.account.data.parsed.info.tokenAmount.uiAmount || 0;
         
+        console.log('✅ Balance found:', balance);
         return res.status(200).json({
           success: true,
           balance: balance,
@@ -65,7 +63,7 @@ export default async function handler(req, res) {
         });
       }
       
-      // Токен не найден, но запрос успешен
+      console.log('Token account not found');
       return res.status(200).json({
         success: true,
         balance: 0,
@@ -78,13 +76,11 @@ export default async function handler(req, res) {
       });
       
     } catch (error) {
-      console.log(`Failed to fetch from ${rpcUrl}:`, error.message);
-      // Продолжаем к следующему endpoint
+      console.log('Failed to fetch from', rpcUrl, ':', error.message);
       continue;
     }
   }
   
-  // Если все RPC endpoints не сработали, возвращаем 0
   return res.status(200).json({
     success: true,
     balance: 0,
