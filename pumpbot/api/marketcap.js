@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   
-  const tokenAddress = req.query.token || '7chpRdN9x95obVpdVa2xziaEc7CmRtoEtfuvY7LzBAGS';
+  const tokenAddress = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
   const TOTAL_SUPPLY = 1000000000;
   
   console.log('🔍 Price request for:', tokenAddress);
@@ -264,4 +264,5 @@ export default async function handler(req, res) {
     timestamp: new Date().toISOString()
   });
 }
+
 
