@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>$TOKEN Prediction Market</title>
+    <title>$TOKEN Prediction Market - Advanced Trading</title>
     <link rel="stylesheet" href="assets/styles.css">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>$TOKEN PREDICTION MARKET</h1>
-            <p>Делай ставки на капитализацию токена</p>
+        <!-- HEADER -->
+        <div class="header slide-in">
+            <h1>⚡ TOKEN PREDICTION MARKET</h1>
+            <p>Advanced Trading Terminal • Order Book • AMM</p>
         </div>
 
-        <div class="wallet-section">
+        <!-- WALLET SECTION -->
+        <div class="wallet-section slide-in">
             <div class="wallet-status">
                 <div>
                     <span class="status-dot status-disconnected" id="statusDot"></span>
@@ -22,12 +24,23 @@
                 </div>
                 <button id="connectBtn">ПОДКЛЮЧИТЬ</button>
             </div>
-            <div>
-                <div style="opacity: 0.7; margin-bottom: 5px;">Баланс $TOKEN:</div>
-                <div class="balance" id="tokenBalance">---</div>
+            <div class="balance-display">
+                <div class="balance-item">
+                    <div class="balance-label">Баланс $TOKEN</div>
+                    <div class="balance-value" id="tokenBalance">0</div>
+                </div>
+                <div class="balance-item">
+                    <div class="balance-label">Активных ордеров</div>
+                    <div class="balance-value text-yellow">0</div>
+                </div>
+                <div class="balance-item">
+                    <div class="balance-label">Открытых позиций</div>
+                    <div class="balance-value text-green">0</div>
+                </div>
             </div>
         </div>
 
+        <!-- WALLET MODAL -->
         <div class="modal" id="walletModal">
             <div class="modal-content">
                 <span class="close-modal" id="closeModal">×</span>
@@ -36,40 +49,184 @@
             </div>
         </div>
 
-        <div class="price-display">
-            <div style="color: #ffaa00; font-size: 0.9em; margin-bottom: 10px;">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
-            <div class="price-value" id="currentCap">Загрузка...</div>
-            <div class="target-cap">
-                Целевая капа этого раунда: <span id="targetCap">$---</span>
+        <!-- MAIN TRADING GRID -->
+        <div class="trading-grid">
+            <div class="main-panel">
+                <!-- PRICE DISPLAY -->
+                <div class="price-display slide-in">
+                    <div class="price-label">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
+                    <div class="price-value" id="currentCap">Загрузка...</div>
+                    
+                    <div class="price-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">⬆ Выше</div>
+                            <div class="stat-value text-green" id="statHigherPrice">0.500</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Целевая капа</div>
+                            <div class="stat-value text-yellow" id="targetCap">$---</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">⬇ Ниже</div>
+                            <div class="stat-value text-red" id="statLowerPrice">0.500</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COUNTDOWN -->
+                <div class="countdown-section slide-in">
+                    <div class="countdown-label">РАУНД ЗАКРЫВАЕТСЯ ЧЕРЕЗ</div>
+                    <div class="countdown-value" id="countdown">--:--</div>
+                </div>
+
+                <!-- TRADING INTERFACE -->
+                <div class="trading-interface slide-in">
+                    <!-- BUY HIGHER PANEL -->
+                    <div class="trade-panel buy">
+                        <div class="trade-panel-header">⬆ КУПИТЬ ВЫШЕ</div>
+                        
+                        <div class="order-type-selector">
+                            <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
+                                Маркет
+                            </button>
+                            <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
+                                Лимит
+                            </button>
+                        </div>
+
+                        <div class="input-group">
+                            <label class="input-label">Количество (токенов)</label>
+                            <input type="number" id="amountHigher" placeholder="0" min="0" step="1">
+                        </div>
+
+                        <div class="input-group limit-price-group" style="display: none;">
+                            <label class="input-label">Цена (0-1)</label>
+                            <input type="number" id="priceHigher" placeholder="0.5" min="0" max="1" step="0.001">
+                        </div>
+
+                        <div class="estimate-display" id="estimateHigher">
+                            <div style="color: var(--text-dim);">Введите сумму</div>
+                        </div>
+
+                        <button class="trade-btn buy" onclick="executeTrade('higher')">
+                            КУПИТЬ ВЫШЕ
+                        </button>
+                    </div>
+
+                    <!-- SELL LOWER PANEL -->
+                    <div class="trade-panel sell">
+                        <div class="trade-panel-header">⬇ КУПИТЬ НИЖЕ</div>
+                        
+                        <div class="order-type-selector">
+                            <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
+                                Маркет
+                            </button>
+                            <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
+                                Лимит
+                            </button>
+                        </div>
+
+                        <div class="input-group">
+                            <label class="input-label">Количество (токенов)</label>
+                            <input type="number" id="amountLower" placeholder="0" min="0" step="1">
+                        </div>
+
+                        <div class="input-group limit-price-group" style="display: none;">
+                            <label class="input-label">Цена (0-1)</label>
+                            <input type="number" id="priceLower" placeholder="0.5" min="0" max="1" step="0.001">
+                        </div>
+
+                        <div class="estimate-display" id="estimateLower">
+                            <div style="color: var(--text-dim);">Введите сумму</div>
+                        </div>
+
+                        <button class="trade-btn sell" onclick="executeTrade('lower')">
+                            КУПИТЬ НИЖЕ
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TRADE HISTORY -->
+                <div class="trade-history slide-in">
+                    <div class="trade-history-header">📊 ИСТОРИЯ СДЕЛОК</div>
+                    <div class="trade-history-list" id="tradeHistory">
+                        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                            Загрузка...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ORDER BOOK PANEL -->
+            <div class="orderbook-panel slide-in">
+                <div class="orderbook-header">📖 СТАКАН ОРДЕРОВ</div>
+                <div class="orderbook-content">
+                    <!-- HIGHER ORDERS -->
+                    <div class="orderbook-side">
+                        <div class="orderbook-side-header">
+                            <span>Цена</span>
+                            <span>Кол-во</span>
+                            <span>Ордеров</span>
+                        </div>
+                        <div id="orderBookHigher">
+                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                                Загрузка...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SPREAD INDICATOR -->
+                    <div style="padding: 15px; text-align: center; border: 1px dashed var(--border); margin: 15px 0; background: var(--bg-tertiary);">
+                        <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 5px;">
+                            СПРЕД
+                        </div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">
+                            ---
+                        </div>
+                    </div>
+
+                    <!-- LOWER ORDERS -->
+                    <div class="orderbook-side">
+                        <div class="orderbook-side-header">
+                            <span>Цена</span>
+                            <span>Кол-во</span>
+                            <span>Ордеров</span>
+                        </div>
+                        <div id="orderBookLower">
+                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                                Загрузка...
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="interval-selector">
-            <button class="interval-btn active" data-interval="15">15 МИН</button>
-            <button class="interval-btn" data-interval="60">1 ЧАС</button>
-            <button class="interval-btn" data-interval="240">4 ЧАСА</button>
-        </div>
-
-        <div class="countdown">
-            <div style="font-size: 0.5em; opacity: 0.7;">РАУНД ЗАКРЫВАЕТСЯ ЧЕРЕЗ</div>
-            <div id="countdown">--:--</div>
-        </div>
-
-        <div class="betting-section">
-            <button class="bet-button bet-higher" id="betHigher" disabled>
-                ⬆ ВЫШЕ
-            </button>
-            <button class="bet-button bet-lower" id="betLower" disabled>
-                ⬇ НИЖЕ
-            </button>
-        </div>
-
-        <div class="info-box">
-            <strong>Как работает:</strong><br>
-            1. Подключи Solana кошелек<br>
-            2. Делай ставку: будет ли капа ВЫШЕ или НИЖЕ целевой к концу раунда<br>
-            3. Целевая капа = капитализация монеты в момент окончания предыдущего раунда<br>
-            4. Профит или лось 📈📉
+        <!-- INFO BOX -->
+        <div style="border: 1px solid var(--border); padding: 20px; margin-top: 30px; background: var(--bg-secondary); font-size: 0.9em; line-height: 1.8;">
+            <div style="font-weight: 600; margin-bottom: 15px; color: var(--accent-green); font-size: 1.1em;">
+                🎯 КАК РАБОТАЕТ РЫНОК
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <span style="color: var(--accent-yellow);">•</span> <strong>Маркет ордера</strong> - мгновенная покупка по текущей цене AMM
+            </div>
+            <div style="margin-bottom: 10px;">
+                <span style="color: var(--accent-yellow);">•</span> <strong>Лимит ордера</strong> - размещаются в стакан и ждут исполнения
+            </div>
+            <div style="margin-bottom: 10px;">
+                <span style="color: var(--accent-yellow);">•</span> <strong>AMM Pool</strong> - автоматический маркет-мейкер обеспечивает ликвидность
+            </div>
+            <div style="margin-bottom: 10px;">
+                <span style="color: var(--accent-yellow);">•</span> <strong>Цены</strong> - рассчитываются по формуле x * y = k (как Uniswap)
+            </div>
+            <div style="margin-bottom: 10px;">
+                <span style="color: var(--accent-yellow);">•</span> <strong>Расчет</strong> - в конце раунда выплаты идут владельцам правильных токенов
+            </div>
+            
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.85em;">
+                Базовая капитализация фиксируется в начале раунда. Делай ставку ВЫШЕ или НИЖЕ!
+            </div>
         </div>
     </div>
 
