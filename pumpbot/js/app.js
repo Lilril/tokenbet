@@ -299,13 +299,17 @@ async function updateMarketCap() {
     if (newCap > 0) {
         currentMarketCap = newCap;
         
-        const formatted = currentMarketCap >= 1000000 
-            ? `$${(currentMarketCap / 1000000).toFixed(2)}M`
-            : currentMarketCap >= 1000
-            ? `$${(currentMarketCap / 1000).toFixed(1)}K`
-            : `$${currentMarketCap.toFixed(2)}`;
+        const capElement = document.getElementById('currentCap');
+        capElement.style.opacity = '1'; // Восстанавливаем прозрачность
         
-        document.getElementById('currentCap').textContent = formatted;
+        const formatted = currentMarketCap >= 1000000 
+            ? `${(currentMarketCap / 1000000).toFixed(2)}M`
+            : currentMarketCap >= 1000
+            ? `${(currentMarketCap / 1000).toFixed(1)}K`
+            : `${currentMarketCap.toFixed(2)}`;
+        
+        capElement.textContent = formatted;
+        capElement.style.color = '#ffaa00';
     }
 }
 
