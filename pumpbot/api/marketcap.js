@@ -9,70 +9,42 @@ export default async function handler(req, res) {
   
   const tokenAddress = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
   
-  console.log('🔍 Fetching market cap for:', tokenAddress);
+  // Для pump.fun токенов supply всегда 1 миллиард
+  const TOTAL_SUPPLY = 1000000000;
   
-  // МЕТОД 1: DexScreener API (самый надежный)
+  console.log('🔍 Getting price for token:', tokenAddress);
+  
+  // МЕТОД 1: Jupiter Price API (самый быстрый и надежный)
   try {
-    console.log('Trying DexScreener...');
-    const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, {
+    console.log('Trying Jupiter Price API...');
+    const jupiterUrl = `https://price.jup.ag/v6/price?ids=${tokenAddress}`;
+    console.log('URL:', jupiterUrl);
+    
+    const jupResponse = await fetch(jupiterUrl, {
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
+        'Accept': 'application/json'
       }
     });
-    
-    if (dexResponse.ok) {
-      const dexData = await dexResponse.json();
-      console.log('DexScreener response:', dexData);
-      
-      if (dexData.pairs && dexData.pairs.length > 0) {
-        // Берем первую пару (обычно самая ликвидная)
-        const pair = dexData.pairs[0];
-        const marketCap = parseFloat(pair.fdv || pair.marketCap || 0);
-        
-        if (marketCap > 0) {
-          console.log('✅ DexScreener market cap:', marketCap);
-          return res.status(200).json({
-            success: true,
-            marketCap: marketCap,
-            token: tokenAddress,
-            method: 'dexscreener',
-            pairAddress: pair.pairAddress,
-            priceUsd: pair.priceUsd,
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
-    }
-  } catch (error) {
-    console.log('DexScreener failed:', error.message);
-  }
-  
-  // МЕТОД 2: Jupiter Price API
-  try {
-    console.log('Trying Jupiter...');
-    const jupResponse = await fetch(`https://price.jup.ag/v4/price?ids=${tokenAddress}`);
     
     if (jupResponse.ok) {
       const jupData = await jupResponse.json();
       console.log('Jupiter response:', jupData);
       
       if (jupData.data && jupData.data[tokenAddress]) {
-        const tokenData = jupData.data[tokenAddress];
-        const price = parseFloat(tokenData.price || 0);
+        const price = parseFloat(jupData.data[tokenAddress].price);
         
         if (price > 0) {
-          // Для pump.fun токенов supply обычно 1 миллиард
-          const supply = 1000000000;
-          const marketCap = price * supply;
+          const marketCap = price * TOTAL_SUPPLY;
           
-          console.log('✅ Jupiter market cap:', marketCap);
+          console.log(`✅ Jupiter: Price $${price}, Market Cap $${marketCap}`);
+          
           return res.status(200).json({
             success: true,
             marketCap: marketCap,
-            token: tokenAddress,
-            method: 'jupiter',
             price: price,
+            supply: TOTAL_SUPPLY,
+            token: tokenAddress,
+            method: 'jupiter-price',
             timestamp: new Date().toISOString()
           });
         }
@@ -82,108 +54,172 @@ export default async function handler(req, res) {
     console.log('Jupiter failed:', error.message);
   }
   
-  // МЕТОД 3: Pump.fun API
+  // МЕТОД 2: DexScreener (получаем цену из пары)
   try {
-    console.log('Trying Pump.fun API...');
-    const pumpResponse = await fetch(`https://frontend-api.pump.fun/coins/${tokenAddress}`, {
-      method: 'GET',
+    console.log('Trying DexScreener...');
+    const dexUrl = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
+    
+    const dexResponse = await fetch(dexUrl, {
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
       }
     });
     
-    if (pumpResponse.ok) {
-      const pumpData = await pumpResponse.json();
-      console.log('Pump.fun API response:', pumpData);
+    if (dexResponse.ok) {
+      const dexData = await dexResponse.json();
+      console.log('DexScreener response:', dexData);
       
-      let marketCap = parseFloat(pumpData.usd_market_cap || pumpData.market_cap || 0);
-      
-      // Если market cap в данных
-      if (marketCap > 0) {
-        console.log('✅ Pump.fun market cap:', marketCap);
-        return res.status(200).json({
-          success: true,
-          marketCap: marketCap,
-          token: tokenAddress,
-          method: 'pumpfun-direct',
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      // Считаем из virtual reserves
-      if (pumpData.virtual_sol_reserves) {
-        try {
-          const solPriceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-          const solPriceData = await solPriceResponse.json();
-          const solPrice = solPriceData.solana?.usd || 245;
+      if (dexData.pairs && dexData.pairs.length > 0) {
+        // Берем первую пару (самая ликвидная)
+        const pair = dexData.pairs[0];
+        const price = parseFloat(pair.priceUsd);
+        
+        if (price > 0) {
+          const marketCap = price * TOTAL_SUPPLY;
           
-          marketCap = pumpData.virtual_sol_reserves * solPrice;
-          console.log(`✅ Calculated from bonding curve: ${pumpData.virtual_sol_reserves} SOL × $${solPrice} = $${marketCap}`);
+          console.log(`✅ DexScreener: Price $${price}, Market Cap $${marketCap}`);
           
           return res.status(200).json({
             success: true,
             marketCap: marketCap,
+            price: price,
+            supply: TOTAL_SUPPLY,
             token: tokenAddress,
-            method: 'pumpfun-calculated',
-            solReserves: pumpData.virtual_sol_reserves,
-            solPrice: solPrice,
+            pairAddress: pair.pairAddress,
+            dex: pair.dexId,
+            method: 'dexscreener-price',
             timestamp: new Date().toISOString()
           });
-        } catch (e) {
-          console.log('SOL price fetch failed:', e.message);
         }
       }
     }
   } catch (error) {
-    console.log('Pump.fun failed:', error.message);
+    console.log('DexScreener failed:', error.message);
   }
   
-  // МЕТОД 4: Birdeye API (если есть API key, можно добавить)
-  
-  // МЕТОД 5: Solana RPC (читаем данные напрямую из блокчейна)
+  // МЕТОД 3: Birdeye API (публичный endpoint)
   try {
-    console.log('Trying Solana RPC...');
-    const rpcResponse = await fetch('https://api.mainnet-beta.solana.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'getTokenSupply',
-        params: [tokenAddress]
-      })
+    console.log('Trying Birdeye...');
+    const birdeyeUrl = `https://public-api.birdeye.so/public/price?address=${tokenAddress}`;
+    
+    const birdeyeResponse = await fetch(birdeyeUrl, {
+      headers: {
+        'Accept': 'application/json'
+      }
     });
     
-    const rpcData = await rpcResponse.json();
-    if (rpcData.result && rpcData.result.value) {
-      const supply = rpcData.result.value.uiAmount || 1000000000;
-      // Используем минимальную цену для демонстрации
-      const estimatedPrice = 0.0000036; // ~$3.6K market cap для 1B supply
-      const marketCap = supply * estimatedPrice;
+    if (birdeyeResponse.ok) {
+      const birdeyeData = await birdeyeResponse.json();
+      console.log('Birdeye response:', birdeyeData);
       
-      console.log('✅ RPC estimated market cap:', marketCap);
-      return res.status(200).json({
-        success: true,
-        marketCap: marketCap,
-        token: tokenAddress,
-        method: 'solana-rpc-estimated',
-        supply: supply,
-        timestamp: new Date().toISOString()
-      });
+      if (birdeyeData.data && birdeyeData.data.value) {
+        const price = parseFloat(birdeyeData.data.value);
+        
+        if (price > 0) {
+          const marketCap = price * TOTAL_SUPPLY;
+          
+          console.log(`✅ Birdeye: Price $${price}, Market Cap $${marketCap}`);
+          
+          return res.status(200).json({
+            success: true,
+            marketCap: marketCap,
+            price: price,
+            supply: TOTAL_SUPPLY,
+            token: tokenAddress,
+            method: 'birdeye-price',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
     }
   } catch (error) {
-    console.log('RPC failed:', error.message);
+    console.log('Birdeye failed:', error.message);
   }
   
-  // FALLBACK: Возвращаем демо-данные
-  console.log('⚠️ All methods failed, using demo data');
-  return res.status(200).json({
-    success: true,
-    marketCap: 3600,
+  // МЕТОД 4: Raydium API
+  try {
+    console.log('Trying Raydium...');
+    const raydiumUrl = `https://api-v3.raydium.io/mint/price?mints=${tokenAddress}`;
+    
+    const raydiumResponse = await fetch(raydiumUrl, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (raydiumResponse.ok) {
+      const raydiumData = await raydiumResponse.json();
+      console.log('Raydium response:', raydiumData);
+      
+      if (raydiumData.data && raydiumData.data[tokenAddress]) {
+        const price = parseFloat(raydiumData.data[tokenAddress]);
+        
+        if (price > 0) {
+          const marketCap = price * TOTAL_SUPPLY;
+          
+          console.log(`✅ Raydium: Price $${price}, Market Cap $${marketCap}`);
+          
+          return res.status(200).json({
+            success: true,
+            marketCap: marketCap,
+            price: price,
+            supply: TOTAL_SUPPLY,
+            token: tokenAddress,
+            method: 'raydium-price',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.log('Raydium failed:', error.message);
+  }
+  
+  // МЕТОД 5: CoinGecko (если токен есть в их базе)
+  try {
+    console.log('Trying CoinGecko...');
+    // Сначала ищем ID токена
+    const searchResponse = await fetch(`https://api.coingecko.com/api/v3/search?query=${tokenAddress}`);
+    
+    if (searchResponse.ok) {
+      const searchData = await searchResponse.json();
+      
+      if (searchData.coins && searchData.coins.length > 0) {
+        const coinId = searchData.coins[0].id;
+        
+        const priceResponse = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+        const priceData = await priceResponse.json();
+        
+        if (priceData[coinId] && priceData[coinId].usd) {
+          const price = parseFloat(priceData[coinId].usd);
+          const marketCap = price * TOTAL_SUPPLY;
+          
+          console.log(`✅ CoinGecko: Price $${price}, Market Cap $${marketCap}`);
+          
+          return res.status(200).json({
+            success: true,
+            marketCap: marketCap,
+            price: price,
+            supply: TOTAL_SUPPLY,
+            token: tokenAddress,
+            method: 'coingecko-price',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.log('CoinGecko failed:', error.message);
+  }
+  
+  // Все методы не сработали
+  console.error('❌ All price APIs failed');
+  
+  return res.status(503).json({
+    success: false,
+    marketCap: 0,
+    error: 'Unable to fetch token price from any source',
     token: tokenAddress,
-    method: 'demo-fallback',
-    message: 'Using demo market cap - real data unavailable',
     timestamp: new Date().toISOString()
   });
 }
