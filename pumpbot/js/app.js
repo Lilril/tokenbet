@@ -218,13 +218,25 @@ async function fetchMarketCap(retry = 0) {
     try {
         console.log(`📡 Запрос цены токена... (попытка ${retry + 1}/${MAX_RETRIES})`);
         
-        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}&_t=${Date.now()}`, {
+        // Показываем индикатор загрузки только при первой попытке
+        if (retry === 0 && !currentMarketCap) {
+            capElement.textContent = 'Загрузка...';
+            capElement.style.color = '#ffaa00';
+        }
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        
+        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}&t=${Date.now()}`, {
             method: 'GET',
+            signal: controller.signal,
             headers: {
                 'Cache-Control': 'no-cache',
                 'Pragma': 'no-cache'
             }
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -235,41 +247,44 @@ async function fetchMarketCap(retry = 0) {
         
         if (data.success && data.marketCap > 0) {
             lastSuccessfulFetch = Date.now();
-            fetchRetries = 0; // Сбрасываем счетчик ретраев
+            fetchRetries = 0;
             
-            console.log(`✅ Price: $${data.price?.toFixed(8) || 'N/A'} (via ${data.method})`);
-            console.log(`✅ Market Cap: $${data.marketCap.toFixed(2)}`);
+            console.log(`✅ Price: ${data.price?.toFixed(8)} via ${data.method}`);
             
             if (data.warning) {
                 console.warn('⚠️', data.warning);
             }
             
-            // Убираем индикатор ошибки
             capElement.style.color = '#ffaa00';
-            
             return data.marketCap;
         } else {
-            throw new Error(data.error || 'No market cap data');
+            throw new Error(data.error || 'No data');
         }
         
     } catch (error) {
-        console.error(`❌ Попытка ${retry + 1} не удалась:`, error.message);
+        console.error(`❌ Attempt ${retry + 1}/${MAX_RETRIES}:`, error.message);
         
-        // Пытаемся повторить запрос с экспоненциальной задержкой
+        // Retry with exponential backoff
         if (retry < MAX_RETRIES - 1) {
-            const delay = Math.pow(2, retry) * 1000; // 1s, 2s, 4s
-            console.log(`⏳ Повтор через ${delay}ms...`);
+            const delay = Math.pow(2, retry) * 2000; // 2s, 4s, 8s
+            console.log(`⏳ Retry in ${delay}ms...`);
+            capElement.textContent = `Повтор через ${delay/1000}s...`;
+            capElement.style.color = '#ffaa00';
             await new Promise(resolve => setTimeout(resolve, delay));
             return fetchMarketCap(retry + 1);
         }
         
-        // Все попытки исчерпаны
+        // All retries failed
         const timeSinceSuccess = lastSuccessfulFetch ? Date.now() - lastSuccessfulFetch : Infinity;
         
-        if (timeSinceSuccess > 60000) { // 1 минута без успешных запросов
+        if (currentMarketCap > 0) {
+            // Есть старые данные - продолжаем их показывать
+            console.log('⚠️ Using last known value:', currentMarketCap);
+            capElement.style.opacity = '0.7';
+        } else if (timeSinceSuccess > 60000) {
             capElement.textContent = 'API недоступен';
             capElement.style.color = '#ff6b6b';
-        } else if (timeSinceSuccess > 30000) { // 30 секунд
+        } else {
             capElement.textContent = 'Подключение...';
             capElement.style.color = '#ffaa00';
         }
