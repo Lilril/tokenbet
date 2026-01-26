@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   
-  const tokenAddress = req.query.token || '7MDApufGNAKDDTcM3hrUpUfZ8jcaXdaoSZy1sQdRpump';
+  const tokenAddress = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
   
   try {
     // Делаем запрос напрямую с сервера Vercel (без CORS проблем)
@@ -123,4 +123,5 @@ export default async function handler(req, res) {
     });
   }
 }
+
 
