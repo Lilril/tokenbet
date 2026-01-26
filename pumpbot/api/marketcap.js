@@ -1,7 +1,9 @@
-// В памяти храним последнее успешное значение
-let cachedPrice = null;
-let lastFetchTime = 0;
-const CACHE_DURATION = 5000; // 5 секунд кеш
+// Кеш в памяти
+let priceCache = {
+  price: null,
+  timestamp: 0,
+  duration: 8000 // 8 секунд кеш
+};
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,56 +17,61 @@ export default async function handler(req, res) {
   const tokenAddress = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
   const TOTAL_SUPPLY = 1000000000;
   
-  console.log('🔍 Getting price for:', tokenAddress);
+  console.log('🔍 Price request for:', tokenAddress);
   
-  // Возвращаем кешированное значение если оно свежее
+  // Возвращаем кеш если свежий
   const now = Date.now();
-  if (cachedPrice && (now - lastFetchTime) < CACHE_DURATION) {
-    console.log('📦 Returning cached price:', cachedPrice);
+  if (priceCache.price && (now - priceCache.timestamp) < priceCache.duration) {
+    const marketCap = priceCache.price * TOTAL_SUPPLY;
+    console.log('📦 Cache hit:', priceCache.price);
+    
     return res.status(200).json({
       success: true,
-      marketCap: cachedPrice * TOTAL_SUPPLY,
-      price: cachedPrice,
+      marketCap: marketCap,
+      price: priceCache.price,
       supply: TOTAL_SUPPLY,
       token: tokenAddress,
       method: 'cached',
-      cached: true,
       timestamp: new Date().toISOString()
     });
   }
   
-  // МЕТОД 1: DexScreener (самый надежный для новых токенов)
+  // МЕТОД 1: DexScreener (самый надежный для pump.fun)
   try {
-    console.log('Trying DexScreener...');
-    const dexUrl = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
+    console.log('→ DexScreener...');
     
-    const dexResponse = await fetch(dexUrl, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
+      { 
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0'
+        }
       }
-    });
+    );
     
-    if (dexResponse.ok) {
-      const dexData = await dexResponse.json();
+    clearTimeout(timeout);
+    
+    if (response.ok) {
+      const data = await response.json();
       
-      if (dexData.pairs && dexData.pairs.length > 0) {
-        // Сортируем пары по ликвидности и берем самую ликвидную
-        const sortedPairs = dexData.pairs.sort((a, b) => 
+      if (data.pairs && data.pairs.length > 0) {
+        // Берем пару с наибольшей ликвидностью
+        const bestPair = data.pairs.sort((a, b) => 
           (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
-        );
+        )[0];
         
-        const bestPair = sortedPairs[0];
         const price = parseFloat(bestPair.priceUsd);
         
-        if (price > 0) {
+        if (price > 0 && !isNaN(price)) {
+          priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
           
-          // Кешируем успешный результат
-          cachedPrice = price;
-          lastFetchTime = now;
-          
-          console.log(`✅ DexScreener: $${price} (liquidity: $${bestPair.liquidity?.usd || 0})`);
+          console.log(`✅ DexScreener: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -74,39 +81,46 @@ export default async function handler(req, res) {
             token: tokenAddress,
             pairAddress: bestPair.pairAddress,
             liquidity: bestPair.liquidity?.usd || 0,
-            dex: bestPair.dexId,
             method: 'dexscreener',
             timestamp: new Date().toISOString()
           });
         }
       }
     }
+    
+    console.log('⚠️ DexScreener: no data');
   } catch (error) {
-    console.log('DexScreener failed:', error.message);
+    console.log('❌ DexScreener:', error.message);
   }
   
-  // МЕТОД 2: Jupiter Price API
+  // МЕТОД 2: Jupiter Price API v6
   try {
-    console.log('Trying Jupiter...');
-    const jupiterUrl = `https://price.jup.ag/v6/price?ids=${tokenAddress}`;
+    console.log('→ Jupiter...');
     
-    const jupResponse = await fetch(jupiterUrl, {
-      headers: { 'Accept': 'application/json' }
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     
-    if (jupResponse.ok) {
-      const jupData = await jupResponse.json();
+    const response = await fetch(
+      `https://api.jup.ag/price/v2?ids=${tokenAddress}`,
+      { 
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+    
+    clearTimeout(timeout);
+    
+    if (response.ok) {
+      const data = await response.json();
       
-      if (jupData.data && jupData.data[tokenAddress]) {
-        const price = parseFloat(jupData.data[tokenAddress].price);
+      if (data.data?.[tokenAddress]?.price) {
+        const price = parseFloat(data.data[tokenAddress].price);
         
-        if (price > 0) {
+        if (price > 0 && !isNaN(price)) {
+          priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
           
-          cachedPrice = price;
-          lastFetchTime = now;
-          
-          console.log(`✅ Jupiter: $${price}`);
+          console.log(`✅ Jupiter: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -120,40 +134,40 @@ export default async function handler(req, res) {
         }
       }
     }
+    
+    console.log('⚠️ Jupiter: no data');
   } catch (error) {
-    console.log('Jupiter failed:', error.message);
+    console.log('❌ Jupiter:', error.message);
   }
   
-  // МЕТОД 3: Получаем цену через Raydium swap quote
+  // МЕТОД 3: GeckoTerminal (новый агрегатор)
   try {
-    console.log('Trying Raydium swap quote...');
+    console.log('→ GeckoTerminal...');
     
-    // USDC mint address
-    const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-    const AMOUNT = 1000000; // 1 USDC (6 decimals)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     
-    const swapUrl = `https://api-v3.raydium.io/swap/compute-swap?inputMint=${USDC_MINT}&outputMint=${tokenAddress}&amount=${AMOUNT}&slippage=1`;
+    const response = await fetch(
+      `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenAddress}`,
+      { 
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' }
+      }
+    );
     
-    const swapResponse = await fetch(swapUrl, {
-      headers: { 'Accept': 'application/json' }
-    });
+    clearTimeout(timeout);
     
-    if (swapResponse.ok) {
-      const swapData = await swapResponse.json();
+    if (response.ok) {
+      const data = await response.json();
       
-      if (swapData.data && swapData.data.outputAmount) {
-        const outputAmount = parseFloat(swapData.data.outputAmount);
+      if (data.data?.attributes?.price_usd) {
+        const price = parseFloat(data.data.attributes.price_usd);
         
-        // Рассчитываем цену: 1 USDC / полученное количество токенов
-        const price = 1 / (outputAmount / Math.pow(10, 9)); // assuming 9 decimals
-        
-        if (price > 0) {
+        if (price > 0 && !isNaN(price)) {
+          priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
           
-          cachedPrice = price;
-          lastFetchTime = now;
-          
-          console.log(`✅ Raydium swap: $${price}`);
+          console.log(`✅ GeckoTerminal: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -161,38 +175,46 @@ export default async function handler(req, res) {
             price: price,
             supply: TOTAL_SUPPLY,
             token: tokenAddress,
-            method: 'raydium-swap',
+            method: 'geckoterminal',
             timestamp: new Date().toISOString()
           });
         }
       }
     }
+    
+    console.log('⚠️ GeckoTerminal: no data');
   } catch (error) {
-    console.log('Raydium swap failed:', error.message);
+    console.log('❌ GeckoTerminal:', error.message);
   }
   
-  // МЕТОД 4: Birdeye (публичный endpoint, может быть rate limited)
+  // МЕТОД 4: Birdeye Public API
   try {
-    console.log('Trying Birdeye...');
-    const birdeyeUrl = `https://public-api.birdeye.so/public/price?address=${tokenAddress}`;
+    console.log('→ Birdeye...');
     
-    const birdeyeResponse = await fetch(birdeyeUrl, {
-      headers: { 'Accept': 'application/json' }
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     
-    if (birdeyeResponse.ok) {
-      const birdeyeData = await birdeyeResponse.json();
+    const response = await fetch(
+      `https://public-api.birdeye.so/defi/price?address=${tokenAddress}`,
+      { 
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+    
+    clearTimeout(timeout);
+    
+    if (response.ok) {
+      const data = await response.json();
       
-      if (birdeyeData.data && birdeyeData.data.value) {
-        const price = parseFloat(birdeyeData.data.value);
+      if (data.data?.value) {
+        const price = parseFloat(data.data.value);
         
-        if (price > 0) {
+        if (price > 0 && !isNaN(price)) {
+          priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
           
-          cachedPrice = price;
-          lastFetchTime = now;
-          
-          console.log(`✅ Birdeye: $${price}`);
+          console.log(`✅ Birdeye: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -206,33 +228,38 @@ export default async function handler(req, res) {
         }
       }
     }
+    
+    console.log('⚠️ Birdeye: no data');
   } catch (error) {
-    console.log('Birdeye failed:', error.message);
+    console.log('❌ Birdeye:', error.message);
   }
   
-  // Если есть старое кешированное значение - вернем его с предупреждением
-  if (cachedPrice) {
-    console.log('⚠️ All APIs failed, returning stale cache:', cachedPrice);
+  // Если есть старый кеш - отдаем его с предупреждением
+  if (priceCache.price) {
+    const age = Math.floor((now - priceCache.timestamp) / 1000);
+    const marketCap = priceCache.price * TOTAL_SUPPLY;
+    
+    console.log(`⚠️ Returning stale cache (${age}s old)`);
+    
     return res.status(200).json({
       success: true,
-      marketCap: cachedPrice * TOTAL_SUPPLY,
-      price: cachedPrice,
+      marketCap: marketCap,
+      price: priceCache.price,
       supply: TOTAL_SUPPLY,
       token: tokenAddress,
       method: 'stale-cache',
-      warning: 'Using cached price, APIs temporarily unavailable',
-      cacheAge: Math.floor((now - lastFetchTime) / 1000) + 's',
+      cacheAge: age + 's',
+      warning: 'Using cached data, all APIs temporarily unavailable',
       timestamp: new Date().toISOString()
     });
   }
   
-  // Все провалилось
-  console.error('❌ All methods failed and no cache available');
+  // Совсем ничего не получилось
+  console.error('❌ All methods failed, no cache available');
   
   return res.status(503).json({
     success: false,
-    marketCap: 0,
-    error: 'Unable to fetch token price from any source',
+    error: 'Unable to fetch price from any source',
     token: tokenAddress,
     timestamp: new Date().toISOString()
   });
