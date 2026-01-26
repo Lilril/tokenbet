@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   
-  const tokenAddress = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
+  const tokenAddress = req.query.token || '7MDApufGNAKDDTcM3hrUpUfZ8jcaXdaoSZy1sQdRpump';
   
   try {
     // Получаем данные напрямую из Solana блокчейна
@@ -107,3 +107,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
