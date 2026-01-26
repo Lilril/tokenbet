@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   const walletAddress = req.query.wallet;
-  const tokenMint = req.query.token || '7MDApufGNAKDDTcM3hrUpUfZ8jcaXdaoSZy1sQdRpump';
+  const tokenMint = req.query.token || '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
   
   if (!walletAddress) {
     return res.status(400).json({
