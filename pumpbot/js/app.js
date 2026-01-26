@@ -1,7 +1,7 @@
 // ============================================
 // КОНФИГУРАЦИЯ
 // ============================================
-const TOKEN_ADDRESS = '7chpRdN9x95obVpdVa2xziaEc7CmRtoEtfuvY7LzBAGS';
+const TOKEN_ADDRESS = '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
 
 let wallet = null;
 let selectedInterval = 15;
@@ -467,4 +467,5 @@ window.addEventListener('load', async () => {
     
     console.log('✅ Приложение готово к работе');
 });
+
 
