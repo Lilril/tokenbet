@@ -8,6 +8,7 @@ let selectedInterval = 15;
 let currentMarketCap = 0;
 let targetMarketCap = 0;
 let roundStartTime = null;
+let fetchAttempts = 0;
 
 // ============================================
 // КОШЕЛЬКИ
@@ -127,7 +128,7 @@ function disconnect() {
 }
 
 // ============================================
-// БАЛАНС ТОКЕНОВ (через Vercel API прокси)
+// БАЛАНС ТОКЕНОВ
 // ============================================
 async function fetchTokenBalance() {
     if (!wallet) {
@@ -136,9 +137,8 @@ async function fetchTokenBalance() {
     }
 
     try {
-        console.log('Получаю баланс для:', wallet);
+        console.log('📊 Получаю баланс для:', wallet);
         
-        // Используем свой Vercel API endpoint как прокси
         const apiResponse = await fetch(`/api/balance?wallet=${wallet}&token=${TOKEN_ADDRESS}`);
         
         if (apiResponse.ok) {
@@ -161,50 +161,10 @@ async function fetchTokenBalance() {
             }
         }
         
-        // Fallback: стандартный SPL token
-        console.log('⚠️ Пробую SPL fallback...');
-        const response = await fetch('https://api.mainnet-beta.solana.com', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 1,
-                method: 'getTokenAccountsByOwner',
-                params: [
-                    wallet,
-                    {
-                        mint: TOKEN_ADDRESS
-                    },
-                    {
-                        encoding: 'jsonParsed'
-                    }
-                ]
-            })
-        });
-
-        const data = await response.json();
-        console.log('RPC Response:', data);
-
-        if (data.result && data.result.value && data.result.value.length > 0) {
-            const balance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount;
-            console.log('✅ Баланс токена (SPL):', balance);
-            
-            const formattedBalance = balance ? balance.toLocaleString('en-US', { 
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2 
-            }) : '0';
-            
-            document.getElementById('tokenBalance').textContent = formattedBalance + ' $TOKEN';
-            document.getElementById('betHigher').disabled = !balance || balance === 0;
-            document.getElementById('betLower').disabled = !balance || balance === 0;
-        } else {
-            console.log('⚠️ Токен не найден');
-            document.getElementById('tokenBalance').textContent = '0 $TOKEN';
-            document.getElementById('betHigher').disabled = true;
-            document.getElementById('betLower').disabled = true;
-        }
+        console.log('⚠️ API не вернул данные, показываем 0');
+        document.getElementById('tokenBalance').textContent = '0 $TOKEN';
+        document.getElementById('betHigher').disabled = true;
+        document.getElementById('betLower').disabled = true;
 
     } catch (error) {
         console.error('❌ Ошибка получения баланса:', error);
@@ -252,36 +212,67 @@ function closeModal() {
 // ============================================
 async function fetchMarketCap() {
     try {
-        console.log('📡 Запрашиваю market cap через API...');
+        fetchAttempts++;
+        console.log(`📡 Попытка ${fetchAttempts}: Запрашиваю market cap через API...`);
         
-        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}`);
+        const response = await fetch(`/api/marketcap?token=${TOKEN_ADDRESS}`, {
+            method: 'GET',
+            headers: {
+                'Cache-Control': 'no-cache'
+            }
+        });
+        
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            console.error('API returned error status:', response.status);
+            throw new Error(`API error: ${response.status}`);
+        }
+        
         const data = await response.json();
-        
         console.log('API response:', data);
         
         if (data.success && data.marketCap > 0) {
-            console.log(`✅ Market cap: ${data.marketCap.toFixed(2)} (via ${data.method})`);
+            console.log(`✅ Market cap: $${data.marketCap.toFixed(2)} (via ${data.method})`);
+            fetchAttempts = 0; // Сбрасываем счетчик при успехе
             return data.marketCap;
         } else {
-            console.warn('⚠️ API returned 0 or failed:', data.error);
-            // Возвращаем минимальную демо-капу
+            console.warn('⚠️ API вернул success но marketCap = 0 или failed');
+            console.warn('Error message:', data.error);
+            console.warn('Method used:', data.method);
+            
+            // Если это демо-данные, используем их
+            if (data.method === 'demo-fallback' && data.marketCap > 0) {
+                return data.marketCap;
+            }
+            
+            // Иначе возвращаем минимум
             return 3600;
         }
         
     } catch (error) {
         console.error('❌ Fetch error:', error);
-        return 3600;
+        
+        // После 3 неудачных попыток показываем ошибку пользователю
+        if (fetchAttempts >= 3) {
+            document.getElementById('currentCap').textContent = 'Ошибка API';
+            document.getElementById('currentCap').style.color = '#ff0000';
+        }
+        
+        return 3600; // Fallback значение
     }
 }
 
 async function updateMarketCap() {
-    currentMarketCap = await fetchMarketCap();
+    const cap = await fetchMarketCap();
+    currentMarketCap = cap;
     
     const formatted = currentMarketCap >= 1000000 
         ? `$${(currentMarketCap / 1000000).toFixed(2)}M`
         : `$${(currentMarketCap / 1000).toFixed(1)}K`;
     
     document.getElementById('currentCap').textContent = formatted;
+    document.getElementById('currentCap').style.color = '#ffaa00'; // Восстанавливаем цвет
 }
 
 // ============================================
@@ -341,12 +332,12 @@ document.getElementById('walletModal').onclick = (e) => {
 
 document.getElementById('betHigher').onclick = () => {
     if (!wallet) return openModal();
-    alert(`✅ Ставка ВЫШЕ принята!\nЦелевая капа: $${targetMarketCap.toFixed(0)}`);
+    alert(`✅ Ставка ВЫШЕ принята!\nТекущая капа: $${currentMarketCap.toFixed(0)}\nЦелевая капа: $${targetMarketCap.toFixed(0)}`);
 };
 
 document.getElementById('betLower').onclick = () => {
     if (!wallet) return openModal();
-    alert(`✅ Ставка НИЖЕ принята!\nЦелевая капа: $${targetMarketCap.toFixed(0)}`);
+    alert(`✅ Ставка НИЖЕ принята!\nТекущая капа: $${currentMarketCap.toFixed(0)}\nЦелевая капа: $${targetMarketCap.toFixed(0)}`);
 };
 
 document.querySelectorAll('.interval-btn').forEach(btn => {
@@ -361,7 +352,7 @@ document.querySelectorAll('.interval-btn').forEach(btn => {
 });
 
 // ============================================
-// ИНИЦИАЛИЗАЦИЯ С ОЖИДАНИЕМ КОШЕЛЬКОВ
+// ИНИЦИАЛИЗАЦИЯ
 // ============================================
 async function waitForWallets(maxWait = 3000) {
     const start = Date.now();
@@ -375,7 +366,9 @@ async function waitForWallets(maxWait = 3000) {
 }
 
 window.addEventListener('load', async () => {
+    console.log('🚀 Приложение загружается...');
     console.log('🔄 Ждем инициализацию кошельков...');
+    
     await waitForWallets(3000);
     console.log('✅ Кошельки готовы');
     
@@ -389,23 +382,27 @@ window.addEventListener('load', async () => {
         updateUI(false);
     }
     
+    // Первый запрос капитализации
+    console.log('📊 Первый запрос капитализации...');
     await updateMarketCap();
     initializeRound();
     
+    // Запускаем таймеры
     setInterval(updateCountdown, 1000);
+    
+    // Обновляем капитализацию каждые 10 секунд
     setInterval(async () => {
+        console.log('🔄 Обновление капитализации...');
         await updateMarketCap();
         initializeRound();
-    }, 5000);
+    }, 10000);
     
-    // Обновляем баланс каждые 10 секунд если подключен
+    // Обновляем баланс каждые 15 секунд если подключен
     setInterval(() => {
         if (wallet) {
             fetchTokenBalance();
         }
-    }, 10000);
+    }, 15000);
+    
+    console.log('✅ Приложение инициализировано');
 });
-
-
-
-
