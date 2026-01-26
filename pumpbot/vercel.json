@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; connect-src 'self' https://*.solana.com https://api.dexscreener.com https://frontend-api.pump.fun https://price.jup.ag https://rpc.ankr.com https://solana-api.projectserum.com https://api-v3.raydium.io https://api.coingecko.com https://public-api.birdeye.so; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; connect-src 'self' https://*.solana.com https://api.dexscreener.com https://frontend-api.pump.fun https://price.jup.ag https://api.jup.ag https://rpc.ankr.com https://solana-api.projectserum.com https://api-v3.raydium.io https://api.coingecko.com https://public-api.birdeye.so https://api.geckoterminal.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:;"
         }
       ]
     }
