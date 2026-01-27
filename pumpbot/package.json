@@ -1,6 +1,6 @@
 {
   "name": "token-prediction-market",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "module",
   "description": "Production-ready prediction market for token price with order book and AMM",
   "private": true,
