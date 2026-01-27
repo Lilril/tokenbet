@@ -1,4 +1,11 @@
 {
+  "functions": {
+    "api/**/*.js": {
+      "memory": 1024,
+      "maxDuration": 10,
+      "includeFiles": "database/**"
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
