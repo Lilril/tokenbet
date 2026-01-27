@@ -3,7 +3,7 @@
 // С PostgreSQL, rate limiting, и audit logging
 // ============================================
 
-import db from '../../database/db.js';
+import db from '../database/db.js';
 
 // Helper для получения client IP
 function getClientIP(req) {
