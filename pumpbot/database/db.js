@@ -292,6 +292,106 @@ export async function upsertUserPosition(userId, roundId, side, amount, avgPrice
     }
 }
 
+export async function getUserPositions(userId, roundId) {
+    try {
+        const result = await sql`
+            SELECT *
+            FROM user_positions
+            WHERE user_id = ${userId}
+            AND round_id = ${roundId}
+        `;
+        
+        return result.rows;
+    } catch (error) {
+        console.error('❌ getUserPositions error:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// ORDER MATCHING
+// ============================================
+
+export async function getMatchableOrders(roundId, side, price) {
+    try {
+        // Найти противоположные ордера которые можно сматчить
+        const oppositeSide = side === 'higher' ? 'lower' : 'higher';
+        
+        // Для higher ищем lower где (higher_price + lower_price >= 1)
+        // Для lower ищем higher где (higher_price + lower_price >= 1)
+        const result = await sql`
+            SELECT 
+                id,
+                user_id,
+                side,
+                amount,
+                filled,
+                price
+            FROM limit_orders
+            WHERE round_id = ${roundId}
+            AND side = ${oppositeSide}
+            AND status = 'active'
+            AND amount > filled
+            AND ${price} + price >= 1
+            ORDER BY 
+                CASE WHEN side = 'higher' THEN price END DESC,
+                CASE WHEN side = 'lower' THEN price END ASC,
+                created_at ASC
+            LIMIT 10
+        `;
+        
+        return result.rows;
+    } catch (error) {
+        console.error('❌ getMatchableOrders error:', error);
+        throw error;
+    }
+}
+
+export async function updateOrderFilled(orderId, additionalFilled) {
+    try {
+        const result = await sql`
+            UPDATE limit_orders
+            SET 
+                filled = filled + ${additionalFilled},
+                status = CASE 
+                    WHEN filled + ${additionalFilled} >= amount THEN 'filled'
+                    ELSE 'active'
+                END,
+                filled_at = CASE 
+                    WHEN filled + ${additionalFilled} >= amount THEN NOW()
+                    ELSE filled_at
+                END
+            WHERE id = ${orderId}
+            RETURNING *
+        `;
+        
+        return result.rows[0];
+    } catch (error) {
+        console.error('❌ updateOrderFilled error:', error);
+        throw error;
+    }
+}
+
+export async function cancelOrder(orderId, userId) {
+    try {
+        const result = await sql`
+            UPDATE limit_orders
+            SET 
+                status = 'cancelled',
+                cancelled_at = NOW()
+            WHERE id = ${orderId}
+            AND user_id = ${userId}
+            AND status = 'active'
+            RETURNING *
+        `;
+        
+        return result.rows[0] || null;
+    } catch (error) {
+        console.error('❌ cancelOrder error:', error);
+        throw error;
+    }
+}
+
 // ============================================
 // RATE LIMITING
 // ============================================
@@ -368,6 +468,10 @@ export default {
     recordTrade,
     getRecentTrades,
     upsertUserPosition,
+    getUserPositions,
+    getMatchableOrders,
+    updateOrderFilled,
+    cancelOrder,
     checkRateLimit,
     logAction,
     sql
