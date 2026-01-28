@@ -6,6 +6,57 @@
     <title>$TOKEN Prediction Market - Advanced Trading</title>
     <link rel="stylesheet" href="assets/styles.css">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <style>
+        /* ROUND SELECTOR STYLES */
+        .round-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        
+        .round-tab {
+            flex: 1;
+            padding: 15px 20px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            font-weight: 600;
+            border-radius: 6px;
+        }
+        
+        .round-tab:hover {
+            border-color: var(--accent-yellow);
+            transform: translateY(-2px);
+        }
+        
+        .round-tab.active {
+            background: var(--accent-green);
+            color: #000;
+            border-color: var(--accent-green);
+            box-shadow: 0 0 20px rgba(0, 255, 159, 0.3);
+        }
+        
+        .round-tab-title {
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+        
+        .round-tab-info {
+            font-size: 0.8em;
+            opacity: 0.7;
+        }
+        
+        .round-tab.active .round-tab-info {
+            opacity: 0.9;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -46,6 +97,22 @@
                 <span class="close-modal" id="closeModal">×</span>
                 <div class="modal-header">ВЫБЕРИ КОШЕЛЕК</div>
                 <div id="walletsList"></div>
+            </div>
+        </div>
+
+        <!-- ROUND SELECTOR -->
+        <div class="round-selector slide-in">
+            <div class="round-tab active" data-round-id="1" data-interval="15" onclick="selectRound(1, 15)">
+                <div class="round-tab-title">15m</div>
+                <div class="round-tab-info" id="round-1-time">Загрузка...</div>
+            </div>
+            <div class="round-tab" data-round-id="2" data-interval="60" onclick="selectRound(2, 60)">
+                <div class="round-tab-title">1h</div>
+                <div class="round-tab-info" id="round-2-time">Загрузка...</div>
+            </div>
+            <div class="round-tab" data-round-id="3" data-interval="240" onclick="selectRound(3, 240)">
+                <div class="round-tab-title">4h</div>
+                <div class="round-tab-info" id="round-3-time">Загрузка...</div>
             </div>
         </div>
 
@@ -170,7 +237,7 @@
                         </div>
                         <div id="orderBookHigher">
                             <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                Загрузка...
+                                Нет ордеров
                             </div>
                         </div>
                     </div>
@@ -181,7 +248,7 @@
                             СПРЕД
                         </div>
                         <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">
-                            ---
+                            0.00%
                         </div>
                     </div>
 
@@ -194,7 +261,7 @@
                         </div>
                         <div id="orderBookLower">
                             <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                Загрузка...
+                                Нет ордеров
                             </div>
                         </div>
                     </div>
@@ -209,27 +276,70 @@
             </div>
             
             <div style="margin-bottom: 10px;">
+                <span style="color: var(--accent-yellow);">•</span> <strong>Выбери раунд</strong> - 15 минут, 1 час или 4 часа
+            </div>
+            <div style="margin-bottom: 10px;">
                 <span style="color: var(--accent-yellow);">•</span> <strong>Маркет ордера</strong> - мгновенная покупка по текущей цене AMM
             </div>
             <div style="margin-bottom: 10px;">
                 <span style="color: var(--accent-yellow);">•</span> <strong>Лимит ордера</strong> - размещаются в стакан и ждут исполнения
             </div>
             <div style="margin-bottom: 10px;">
-                <span style="color: var(--accent-yellow);">•</span> <strong>AMM Pool</strong> - автоматический маркет-мейкер обеспечивает ликвидность
-            </div>
-            <div style="margin-bottom: 10px;">
-                <span style="color: var(--accent-yellow);">•</span> <strong>Цены</strong> - рассчитываются по формуле x * y = k (как Uniswap)
-            </div>
-            <div style="margin-bottom: 10px;">
                 <span style="color: var(--accent-yellow);">•</span> <strong>Расчет</strong> - в конце раунда выплаты идут владельцам правильных токенов
             </div>
             
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.85em;">
-                Базовая капитализация фиксируется в начале раунда. Делай ставку ВЫШЕ или НИЖЕ!
+                Раунды синхронизированы с глобальным временем. Делай ставку ВЫШЕ или НИЖЕ!
             </div>
         </div>
     </div>
 
     <script src="js/app.js"></script>
+    <script>
+        // Global variable for current round
+        window.currentRoundId = 1; // Default to 15m round
+        
+        // Round selection function
+        function selectRound(roundId, intervalMinutes) {
+            window.currentRoundId = roundId;
+            
+            // Update active tab
+            document.querySelectorAll('.round-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            const selectedTab = document.querySelector(`[data-round-id="${roundId}"]`);
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+            }
+            
+            // Reload market data for selected round
+            if (typeof window.loadMarketData === 'function') {
+                window.loadMarketData();
+            }
+            
+            console.log(`Selected round ${roundId} (${intervalMinutes}m)`);
+        }
+        
+        // Update round times
+        async function updateRoundTimes() {
+            try {
+                // For now, just fetch the active round data
+                // Later we'll create a dedicated endpoint for all rounds
+                const response = await fetch('/api/orders?action=orderbook');
+                const data = await response.json();
+                
+                if (data.success && data.roundId) {
+                    // Update countdown for current round
+                    // This is handled by existing countdown logic in app.js
+                }
+            } catch (error) {
+                console.error('Failed to update round times:', error);
+            }
+        }
+        
+        // Update round times every 30 seconds
+        setInterval(updateRoundTimes, 30000);
+        setTimeout(updateRoundTimes, 1000);
+    </script>
 </body>
 </html>
