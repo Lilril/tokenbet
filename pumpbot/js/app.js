@@ -54,13 +54,28 @@ let wallet = null;
 let selectedInterval = 15;
 let currentMarketCap = 0;
 let targetMarketCap = 0;
-let roundStartTime = null;
-let roundEndTime = null;
+let roundEndTime = null; // FIXED: Store actual round end time from API
 let tokenBalance = 0;
+
+// FIXED: Store all round data
+let allRounds = {
+    15: null,
+    60: null,
+    240: null
+};
 
 // Round state - синхронизируется с window.currentRoundId из index.html
 function getCurrentRoundId() {
     return window.currentRoundId || 1;
+}
+
+// FIXED: Get interval minutes for current round
+function getCurrentInterval() {
+    const roundId = getCurrentRoundId();
+    if (roundId === 1) return 15;
+    if (roundId === 2) return 60;
+    if (roundId === 3) return 240;
+    return 15;
 }
 
 // Trading state
@@ -98,98 +113,74 @@ const WALLETS = {
         name: 'Coinbase',
         icon: '💼',
         color: '#0052FF',
-        get: () => window.coinbaseSolana
+        get: () => window.coinbaseSolana || (window.solana?.isCoinbaseWallet ? window.solana : null)
     }
 };
 
 function renderWallets() {
-    const html = Object.entries(WALLETS).map(([key, w]) => {
-        const provider = w.get();
-        const available = provider ? '✓' : '✗';
-        const opacity = provider ? '1' : '0.5';
-        
-        return `
-            <div class="wallet-option" onclick="connect('${key}')" style="opacity: ${opacity}">
-                <div class="wallet-icon" style="background:${w.color}">${w.icon}</div>
-                <div style="flex:1">${w.name}</div>
-                <div>${available}</div>
+    const container = document.getElementById('walletsList');
+    
+    container.innerHTML = Object.entries(WALLETS).map(([key, info]) => `
+        <div class="wallet-option" onclick="connectWallet('${key}')" style="border-left: 3px solid ${info.color}">
+            <span style="font-size: 2em; margin-right: 15px;">${info.icon}</span>
+            <div>
+                <div style="font-weight: 600; font-size: 1.1em;">${info.name}</div>
+                <div style="font-size: 0.85em; color: var(--text-dim);">
+                    ${info.get() ? 'Обнаружен' : 'Не установлен'}
+                </div>
             </div>
-        `;
-    }).join('');
-    document.getElementById('walletsList').innerHTML = html;
+        </div>
+    `).join('');
 }
 
-async function connect(key) {
-    const walletConfig = WALLETS[key];
-    const provider = walletConfig.get();
-
-    if (!provider) {
-        const urls = {
-            phantom: "https://phantom.app/",
-            solflare: "https://solflare.com/",
-            coinbase: "https://www.coinbase.com/wallet"
-        };
-        if(confirm(`${walletConfig.name} не найден. Перейти на сайт установки?`)) {
-            window.open(urls[key], '_blank');
-        }
-        return;
-    }
-
+async function connectWallet(walletType) {
     try {
-        if (provider.isConnected && provider.publicKey) {
-            wallet = provider.publicKey.toString();
-            finishConnection();
+        const walletInfo = WALLETS[walletType];
+        const provider = walletInfo.get();
+        
+        if (!provider) {
+            alert(`${walletInfo.name} не установлен!\n\nУстанови расширение браузера или приложение.`);
             return;
         }
-
-        try {
-           if (key === 'phantom') {
-               await provider.connect({ onlyIfTrusted: false });
-           } else {
-               await provider.connect();
-           }
-        } catch (err) {
-            throw new Error('User rejected');
-        }
-
-        if (provider.publicKey) {
-            wallet = provider.publicKey.toString();
-            finishConnection();
-        } else {
-            throw new Error('Public key not found after connect');
-        }
-
-    } catch (error) {
-        console.error('Connection error:', error);
         
-        if (error.message === 'User rejected' || error.message?.includes('rejected')) {
-            console.log('Пользователь отменил подключение');
-        } else {
-            alert(`Ошибка: ${error.message}`);
-        }
+        const response = await provider.connect();
+        wallet = response.publicKey.toString();
+        
+        console.log('✅ Подключен:', wallet);
+        
+        closeModal();
+        updateUI(true);
+        await fetchTokenBalance();
+        
+        provider.on('disconnect', () => {
+            console.log('🔌 Кошелек отключен');
+            disconnect();
+        });
+        
+    } catch (error) {
+        console.error('❌ Ошибка подключения:', error);
+        alert('Ошибка подключения кошелька');
     }
 }
 
-function finishConnection() {
-    console.log('✅ Connected:', wallet);
-    updateUI(true);
-    fetchTokenBalance();
-    closeModal();
-}
-
-function disconnect() {
-    const currentProvider = Object.values(WALLETS).find(w => w.get()?.publicKey?.toString() === wallet)?.get();
-    if (currentProvider && currentProvider.disconnect) {
-        currentProvider.disconnect().catch(console.error);
+async function disconnect() {
+    try {
+        for (const info of Object.values(WALLETS)) {
+            const provider = info.get();
+            if (provider?.isConnected) {
+                await provider.disconnect();
+            }
+        }
+    } catch (error) {
+        console.error('❌ Ошибка отключения:', error);
     }
     
     wallet = null;
-    tokenBalance = 0;
     updateUI(false);
 }
 
 // ============================================
-// БАЛАНС ТОКЕНОВ
+// TOKEN BALANCE
 // ============================================
 async function fetchTokenBalance() {
     if (!wallet) {
@@ -305,17 +296,58 @@ async function updateMarketCap() {
 }
 
 // ============================================
+// FIXED: FETCH ALL ROUNDS DATA
+// ============================================
+async function fetchAllRounds() {
+    try {
+        const response = await fetch(`${API_BASE}/api/orders?action=all-rounds`);
+        const data = await response.json();
+        
+        if (data.success && data.rounds) {
+            data.rounds.forEach(round => {
+                allRounds[round.interval_minutes] = {
+                    id: round.id,
+                    slug: round.slug,
+                    interval_minutes: round.interval_minutes,
+                    start_time: new Date(round.start_time),
+                    end_time: new Date(round.end_time),
+                    status: round.status
+                };
+            });
+            
+            // Update tab times
+            updateAllRoundTabs();
+            
+            // Update countdown for current round
+            const currentInterval = getCurrentInterval();
+            if (allRounds[currentInterval]) {
+                roundEndTime = allRounds[currentInterval].end_time;
+            }
+            
+            console.log('✅ Loaded all rounds:', allRounds);
+        }
+    } catch (error) {
+        console.error('❌ Failed to fetch all rounds:', error);
+    }
+}
+
+// ============================================
 // ORDER BOOK & TRADING
 // ============================================
 async function fetchOrderBook() {
     try {
-        const roundId = getCurrentRoundId();
-        const response = await fetch(`${API_BASE}/api/orders?action=orderbook&roundId=${roundId}`);
+        const intervalMinutes = getCurrentInterval();
+        const response = await fetch(`${API_BASE}/api/orders?action=orderbook&intervalMinutes=${intervalMinutes}`);
         const data = await response.json();
         
         if (data.success) {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
+            
+            // FIXED: Update round end time from API
+            if (data.endTime) {
+                roundEndTime = new Date(data.endTime);
+            }
             
             // Update round info if available
             if (data.roundId) {
@@ -349,13 +381,14 @@ function renderOrderBook() {
         const maxAmount = Math.max(...orderBookData.higher.map(o => o.amount));
         
         higherEl.innerHTML = orderBookData.higher.map(order => {
-            const widthPercent = (order.amount / maxAmount) * 100;
-            
+            const pct = (order.amount / maxAmount) * 100;
             return `
-                <div class="orderbook-row buy" style="--width: ${widthPercent}%">
-                    <span>${order.price.toFixed(3)}</span>
-                    <span>${order.amount.toFixed(0)}</span>
-                    <span>${order.orders}</span>
+                <div class="order-book-row">
+                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(0, 255, 159, 0.2));"></div>
+                    <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
+                        <span class="text-green">${order.price.toFixed(4)}</span>
+                        <span>${order.amount.toFixed(0)}</span>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -368,13 +401,14 @@ function renderOrderBook() {
         const maxAmount = Math.max(...orderBookData.lower.map(o => o.amount));
         
         lowerEl.innerHTML = orderBookData.lower.map(order => {
-            const widthPercent = (order.amount / maxAmount) * 100;
-            
+            const pct = (order.amount / maxAmount) * 100;
             return `
-                <div class="orderbook-row sell" style="--width: ${widthPercent}%">
-                    <span>${order.price.toFixed(3)}</span>
-                    <span>${order.amount.toFixed(0)}</span>
-                    <span>${order.orders}</span>
+                <div class="order-book-row">
+                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(255, 71, 87, 0.2));"></div>
+                    <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
+                        <span class="text-red">${order.price.toFixed(4)}</span>
+                        <span>${order.amount.toFixed(0)}</span>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -382,19 +416,27 @@ function renderOrderBook() {
 }
 
 function updatePriceStats() {
-    const higherPrice = ammPrices.higher || 0.5;
-    const lowerPrice = ammPrices.lower || 0.5;
+    document.getElementById('statHigherPrice').textContent = ammPrices.higher.toFixed(3);
+    document.getElementById('statLowerPrice').textContent = ammPrices.lower.toFixed(3);
     
-    document.getElementById('statHigherPrice').textContent = higherPrice.toFixed(3);
-    document.getElementById('statLowerPrice').textContent = lowerPrice.toFixed(3);
-    document.getElementById('statSpread').textContent = 
-        ((Math.abs(higherPrice - lowerPrice) / higherPrice) * 100).toFixed(2) + '%';
+    if (currentMarketCap > 0) {
+        const formatted = currentMarketCap >= 1000000 
+            ? `$${(currentMarketCap / 1000000).toFixed(2)}M`
+            : currentMarketCap >= 1000
+            ? `$${(currentMarketCap / 1000).toFixed(1)}K`
+            : `$${currentMarketCap.toFixed(2)}`;
+        
+        document.getElementById('targetCap').textContent = formatted;
+    }
 }
 
+// ============================================
+// TRADE HISTORY
+// ============================================
 async function fetchRecentTrades() {
     try {
-        const roundId = getCurrentRoundId();
-        const response = await fetch(`${API_BASE}/api/orders?action=trades&roundId=${roundId}`);
+        const intervalMinutes = getCurrentInterval();
+        const response = await fetch(`${API_BASE}/api/orders?action=trades&intervalMinutes=${intervalMinutes}`);
         const data = await response.json();
         
         if (data.success) {
@@ -415,7 +457,7 @@ function renderTradeHistory() {
     }
     
     container.innerHTML = recentTrades.map(trade => {
-        const time = new Date(trade.timestamp).toLocaleTimeString('ru-RU');
+        const time = new Date(trade.time).toLocaleTimeString('ru-RU');
         const sideClass = trade.side === 'higher' ? 'buy' : 'sell';
         const sideText = trade.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ';
         
@@ -465,9 +507,9 @@ async function calculateEstimate(side) {
     
     if (selectedOrderType === 'market') {
         try {
-            const roundId = getCurrentRoundId();
+            const intervalMinutes = getCurrentInterval();
             const response = await fetch(
-                `${API_BASE}/api/orders?action=quote&side=${side}&amount=${amount}&roundId=${roundId}`
+                `${API_BASE}/api/orders?action=quote&side=${side}&amount=${amount}&intervalMinutes=${intervalMinutes}`
             );
             const data = await response.json();
             
@@ -541,14 +583,14 @@ async function executeTrade(side) {
     }
     
     try {
-        const roundId = getCurrentRoundId();
+        const intervalMinutes = getCurrentInterval();
         
         const orderData = {
             wallet,
             side,
             amount,
             type: selectedOrderType,
-            roundId  // Include roundId in order
+            intervalMinutes  // FIXED: Include interval instead of roundId
         };
         
         if (selectedOrderType === 'limit') {
@@ -605,42 +647,33 @@ async function executeTrade(side) {
 // РАУНДЫ
 // ============================================
 async function loadRoundData() {
-    try {
-        const roundId = getCurrentRoundId();
-        const response = await fetch(`${API_BASE}/api/orders?action=orderbook&roundId=${roundId}`);
-        const data = await response.json();
-        
-        if (data.success && data.roundId) {
-            // Store round end time for countdown
-            // This will come from API once we update it
-            console.log(`✅ Loaded round ${roundId} data`);
-        }
-    } catch (error) {
-        console.error('❌ Failed to load round data:', error);
-    }
+    await fetchAllRounds();
 }
 
 // Make this function available globally for index.html to call
 window.loadMarketData = async function() {
-    console.log(`📊 Loading data for round ${getCurrentRoundId()}`);
+    const intervalMinutes = getCurrentInterval();
+    console.log(`📊 Loading data for ${intervalMinutes}m round`);
     await Promise.all([
         fetchOrderBook(),
         fetchRecentTrades()
     ]);
 };
 
+// FIXED: Update countdown with real round end time
 function updateCountdown() {
-    // This will be updated to use actual round end time from API
-    // For now, keep existing countdown logic
-    if (!roundStartTime) return;
+    if (!roundEndTime) {
+        document.getElementById('countdown').textContent = '--:--';
+        return;
+    }
     
     const now = Date.now();
-    const intervalMs = selectedInterval * 60 * 1000;
-    const elapsed = now - roundStartTime;
-    const remaining = intervalMs - elapsed;
+    const remaining = roundEndTime.getTime() - now;
     
     if (remaining <= 0) {
         document.getElementById('countdown').textContent = '00:00';
+        // Reload round data when time expires
+        fetchAllRounds();
         return;
     }
     
@@ -649,6 +682,31 @@ function updateCountdown() {
     
     document.getElementById('countdown').textContent = 
         `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+// FIXED: Update all round tabs with proper time display
+function updateAllRoundTabs() {
+    [15, 60, 240].forEach((interval, index) => {
+        const roundData = allRounds[interval];
+        const tabElement = document.getElementById(`round-${index + 1}-time`);
+        
+        if (!tabElement) return;
+        
+        if (roundData && roundData.end_time) {
+            const now = Date.now();
+            const remaining = roundData.end_time.getTime() - now;
+            
+            if (remaining > 0) {
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                tabElement.textContent = `Закрывается через ${minutes}:${String(seconds).padStart(2, '0')}`;
+            } else {
+                tabElement.textContent = 'Закрыт';
+            }
+        } else {
+            tabElement.textContent = 'Загрузка...';
+        }
+    });
 }
 
 // ============================================
@@ -707,27 +765,25 @@ window.addEventListener('load', async () => {
     }
     
     console.log('📊 Загрузка данных рынка...');
-    console.log(`📊 Current round: ${getCurrentRoundId()}`);
+    
+    // FIXED: Load all rounds data first
+    await loadRoundData();
     
     await Promise.all([
         updateMarketCap(),
         fetchOrderBook(),
-        fetchRecentTrades(),
-        loadRoundData()
+        fetchRecentTrades()
     ]);
     
-    if (currentMarketCap > 0) {
-        // Initialize with current market cap as target
-        roundStartTime = Date.now();
-        targetMarketCap = currentMarketCap;
-        console.log('✅ Раунд инициализирован');
-    }
+    console.log('✅ Раунд инициализирован');
     
     // Intervals
     setInterval(updateCountdown, 1000);
+    setInterval(updateAllRoundTabs, 1000); // FIXED: Update all tabs every second
     setInterval(updateMarketCap, 15000);
     setInterval(fetchOrderBook, 5000);
     setInterval(fetchRecentTrades, 10000);
+    setInterval(fetchAllRounds, 30000); // FIXED: Refresh round data every 30s
     setInterval(() => {
         if (wallet) fetchTokenBalance();
     }, 20000);
