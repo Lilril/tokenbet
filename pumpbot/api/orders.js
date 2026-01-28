@@ -132,8 +132,9 @@ async function getOrCreateUser(walletAddress) {
     }
 }
 
-async function getActiveRound() {
-    return await getOrCreateCurrentRound(15);
+// FIXED: Now accepts intervalMinutes parameter instead of hardcoded 15
+async function getActiveRound(intervalMinutes = 15) {
+    return await getOrCreateCurrentRound(intervalMinutes);
 }
 
 async function getLatestPoolSnapshot(roundId) {
@@ -454,6 +455,27 @@ export default async function handler(req, res) {
                 });
             }
             
+            // NEW: Get all active rounds for all intervals (simplified version)
+            if (action === 'all-rounds') {
+                const rounds = await Promise.all([
+                    getOrCreateCurrentRound(15),
+                    getOrCreateCurrentRound(60),
+                    getOrCreateCurrentRound(240)
+                ]);
+                
+                return res.status(200).json({
+                    success: true,
+                    rounds: rounds.map(round => ({
+                        id: round.id,
+                        slug: round.slug,
+                        interval_minutes: round.interval_minutes,
+                        start_time: round.start_time,
+                        end_time: round.end_time,
+                        status: round.status
+                    }))
+                });
+            }
+            
             // Получить раунд
             let round;
             
@@ -494,7 +516,9 @@ export default async function handler(req, res) {
                     roundId: round.id,
                     roundSlug: round.slug,
                     roundNumber: round.round_number,
-                    roundEndTime: round.end_time
+                    intervalMinutes: round.interval_minutes,
+                    startTime: round.start_time,
+                    endTime: round.end_time
                 });
             }
             
@@ -511,7 +535,7 @@ export default async function handler(req, res) {
                         amount: parseFloat(t.amount),
                         price: parseFloat(t.price),
                         cost: parseFloat(t.total_cost),
-                        timestamp: new Date(t.created_at).getTime(),
+                        time: t.created_at,
                         type: t.trade_type
                     }))
                 });
