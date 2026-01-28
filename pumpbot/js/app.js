@@ -55,7 +55,13 @@ let selectedInterval = 15;
 let currentMarketCap = 0;
 let targetMarketCap = 0;
 let roundStartTime = null;
+let roundEndTime = null;
 let tokenBalance = 0;
+
+// Round state - синхронизируется с window.currentRoundId из index.html
+function getCurrentRoundId() {
+    return window.currentRoundId || 1;
+}
 
 // Trading state
 let orderBookData = { higher: [], lower: [] };
@@ -303,18 +309,32 @@ async function updateMarketCap() {
 // ============================================
 async function fetchOrderBook() {
     try {
-        const response = await fetch(`${API_BASE}/api/orders?action=orderbook`);
+        const roundId = getCurrentRoundId();
+        const response = await fetch(`${API_BASE}/api/orders?action=orderbook&roundId=${roundId}`);
         const data = await response.json();
         
         if (data.success) {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
             
+            // Update round info if available
+            if (data.roundId) {
+                updateRoundInfo(data);
+            }
+            
             renderOrderBook();
             updatePriceStats();
         }
     } catch (error) {
         console.error('❌ Order book fetch error:', error);
+    }
+}
+
+function updateRoundInfo(data) {
+    // This will be called from fetchOrderBook when we get round data
+    // For now, just log it
+    if (data.roundNumber) {
+        console.log(`📊 Round #${data.roundNumber}`);
     }
 }
 
@@ -373,7 +393,8 @@ function updatePriceStats() {
 
 async function fetchRecentTrades() {
     try {
-        const response = await fetch(`${API_BASE}/api/orders?action=trades`);
+        const roundId = getCurrentRoundId();
+        const response = await fetch(`${API_BASE}/api/orders?action=trades&roundId=${roundId}`);
         const data = await response.json();
         
         if (data.success) {
@@ -444,8 +465,9 @@ async function calculateEstimate(side) {
     
     if (selectedOrderType === 'market') {
         try {
+            const roundId = getCurrentRoundId();
             const response = await fetch(
-                `${API_BASE}/api/orders?action=quote&side=${side}&amount=${amount}`
+                `${API_BASE}/api/orders?action=quote&side=${side}&amount=${amount}&roundId=${roundId}`
             );
             const data = await response.json();
             
@@ -519,11 +541,14 @@ async function executeTrade(side) {
     }
     
     try {
+        const roundId = getCurrentRoundId();
+        
         const orderData = {
             wallet,
             side,
             amount,
-            type: selectedOrderType
+            type: selectedOrderType,
+            roundId  // Include roundId in order
         };
         
         if (selectedOrderType === 'limit') {
@@ -579,32 +604,34 @@ async function executeTrade(side) {
 // ============================================
 // РАУНДЫ
 // ============================================
-function initializeRound() {
-    const now = Date.now();
-    const intervalMs = selectedInterval * 60 * 1000;
-    
-    if (!roundStartTime) {
-        roundStartTime = now;
-        targetMarketCap = currentMarketCap;
+async function loadRoundData() {
+    try {
+        const roundId = getCurrentRoundId();
+        const response = await fetch(`${API_BASE}/api/orders?action=orderbook&roundId=${roundId}`);
+        const data = await response.json();
+        
+        if (data.success && data.roundId) {
+            // Store round end time for countdown
+            // This will come from API once we update it
+            console.log(`✅ Loaded round ${roundId} data`);
+        }
+    } catch (error) {
+        console.error('❌ Failed to load round data:', error);
     }
-    
-    const elapsed = now - roundStartTime;
-    if (elapsed >= intervalMs) {
-        console.log('🎯 Раунд завершен!');
-        targetMarketCap = currentMarketCap;
-        roundStartTime = now;
-    }
-    
-    const targetFormatted = targetMarketCap >= 1000000 
-        ? `$${(targetMarketCap / 1000000).toFixed(2)}M`
-        : targetMarketCap >= 1000
-        ? `$${(targetMarketCap / 1000).toFixed(1)}K`
-        : `$${targetMarketCap.toFixed(2)}`;
-    
-    document.getElementById('targetCap').textContent = targetFormatted;
 }
 
+// Make this function available globally for index.html to call
+window.loadMarketData = async function() {
+    console.log(`📊 Loading data for round ${getCurrentRoundId()}`);
+    await Promise.all([
+        fetchOrderBook(),
+        fetchRecentTrades()
+    ]);
+};
+
 function updateCountdown() {
+    // This will be updated to use actual round end time from API
+    // For now, keep existing countdown logic
     if (!roundStartTime) return;
     
     const now = Date.now();
@@ -613,7 +640,6 @@ function updateCountdown() {
     const remaining = intervalMs - elapsed;
     
     if (remaining <= 0) {
-        initializeRound();
         document.getElementById('countdown').textContent = '00:00';
         return;
     }
@@ -681,15 +707,19 @@ window.addEventListener('load', async () => {
     }
     
     console.log('📊 Загрузка данных рынка...');
+    console.log(`📊 Current round: ${getCurrentRoundId()}`);
     
     await Promise.all([
         updateMarketCap(),
         fetchOrderBook(),
-        fetchRecentTrades()
+        fetchRecentTrades(),
+        loadRoundData()
     ]);
     
     if (currentMarketCap > 0) {
-        initializeRound();
+        // Initialize with current market cap as target
+        roundStartTime = Date.now();
+        targetMarketCap = currentMarketCap;
         console.log('✅ Раунд инициализирован');
     }
     
