@@ -317,29 +317,8 @@
                 window.loadMarketData();
             }
             
-            console.log(`Selected round ${roundId} (${intervalMinutes}m)`);
+            console.log(`✅ Selected round ${roundId} (${intervalMinutes}m)`);
         }
-        
-        // Update round times
-        async function updateRoundTimes() {
-            try {
-                // For now, just fetch the active round data
-                // Later we'll create a dedicated endpoint for all rounds
-                const response = await fetch('/api/orders?action=orderbook');
-                const data = await response.json();
-                
-                if (data.success && data.roundId) {
-                    // Update countdown for current round
-                    // This is handled by existing countdown logic in app.js
-                }
-            } catch (error) {
-                console.error('Failed to update round times:', error);
-            }
-        }
-        
-        // Update round times every 30 seconds
-        setInterval(updateRoundTimes, 30000);
-        setTimeout(updateRoundTimes, 1000);
     </script>
 </body>
 </html>
