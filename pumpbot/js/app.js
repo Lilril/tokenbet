@@ -4,6 +4,51 @@
 const TOKEN_ADDRESS = '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
 const API_BASE = '';
 
+// ============================================
+// HELPER FUNCTIONS FOR SAFE API CALLS
+// ============================================
+
+// Safe JSON parse with content-type check
+async function safeJsonParse(response) {
+    const contentType = response.headers.get('content-type');
+    
+    if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('❌ Server returned non-JSON response:', text.substring(0, 200));
+        throw new Error('Server error - received HTML instead of JSON. Check server logs.');
+    }
+    
+    try {
+        return await response.json();
+    } catch (error) {
+        console.error('❌ JSON parse error:', error);
+        throw new Error('Invalid JSON response from server');
+    }
+}
+
+// API call with error handling
+async function apiCall(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        
+        if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+                const errorData = await safeJsonParse(response);
+                errorMessage = errorData.error || errorData.message || errorMessage;
+            } catch (e) {
+                // If parsing fails, use default error message
+            }
+            throw new Error(errorMessage);
+        }
+        
+        return await safeJsonParse(response);
+    } catch (error) {
+        console.error('❌ API call failed:', url, error);
+        throw error;
+    }
+}
+
 // State
 let wallet = null;
 let selectedInterval = 15;
