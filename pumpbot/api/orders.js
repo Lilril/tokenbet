@@ -132,7 +132,6 @@ async function getOrCreateUser(walletAddress) {
     }
 }
 
-// FIXED: Now accepts intervalMinutes parameter instead of hardcoded 15
 async function getActiveRound(intervalMinutes = 15) {
     return await getOrCreateCurrentRound(intervalMinutes);
 }
@@ -167,20 +166,44 @@ async function savePoolSnapshot(roundId, higherReserve, lowerReserve, kConstant)
 
 async function getAggregatedOrderBook(roundId) {
     try {
-        const result = await sql`
+        // Get HIGHER orders (sorted by price DESC - highest first)
+        const higherResult = await sql`
             SELECT side, price, SUM(amount - filled) as total_amount, COUNT(*) as order_count
             FROM limit_orders
-            WHERE round_id = ${roundId} AND status = 'active' AND amount > filled
+            WHERE round_id = ${roundId} 
+            AND side = 'higher'
+            AND status = 'active' 
+            AND amount > filled
             GROUP BY side, price
-            ORDER BY 
-                CASE WHEN side = 'higher' THEN price END DESC,
-                CASE WHEN side = 'lower' THEN price END ASC
-            LIMIT 50
+            ORDER BY price DESC
+            LIMIT 25
+        `;
+        
+        // Get LOWER orders (sorted by price ASC - lowest first)
+        const lowerResult = await sql`
+            SELECT side, price, SUM(amount - filled) as total_amount, COUNT(*) as order_count
+            FROM limit_orders
+            WHERE round_id = ${roundId} 
+            AND side = 'lower'
+            AND status = 'active' 
+            AND amount > filled
+            GROUP BY side, price
+            ORDER BY price ASC
+            LIMIT 25
         `;
         
         const orderBook = { higher: [], lower: [] };
-        result.rows.forEach(row => {
-            orderBook[row.side].push({
+        
+        higherResult.rows.forEach(row => {
+            orderBook.higher.push({
+                price: parseFloat(row.price),
+                amount: parseFloat(row.total_amount),
+                orders: parseInt(row.order_count)
+            });
+        });
+        
+        lowerResult.rows.forEach(row => {
+            orderBook.lower.push({
                 price: parseFloat(row.price),
                 amount: parseFloat(row.total_amount),
                 orders: parseInt(row.order_count)
@@ -273,21 +296,42 @@ async function getUserPositions(userId, roundId) {
     }
 }
 
+async function getUserOrders(userId, roundId) {
+    try {
+        const result = await sql`
+            SELECT * FROM limit_orders
+            WHERE user_id = ${userId} 
+            AND round_id = ${roundId}
+            AND status = 'active'
+            AND amount > filled
+            ORDER BY created_at DESC
+        `;
+        return result.rows;
+    } catch (error) {
+        console.error('❌ getUserOrders error:', error);
+        throw error;
+    }
+}
+
 async function getMatchableOrders(roundId, side, price) {
     try {
         const oppositeSide = side === 'higher' ? 'lower' : 'higher';
         
+        // For 'higher' buy orders: match with 'lower' sell orders where sell price <= buy price
+        // For 'lower' buy orders: match with 'higher' sell orders where sell price <= buy price
         const result = await sql`
             SELECT id, user_id, side, amount, filled, price
             FROM limit_orders
-            WHERE round_id = ${roundId} AND side = ${oppositeSide}
-            AND status = 'active' AND amount > filled
-            AND ${price} + price >= 1
+            WHERE round_id = ${roundId} 
+            AND side = ${oppositeSide}
+            AND status = 'active' 
+            AND amount > filled
+            AND price <= ${price}
             ORDER BY 
                 CASE WHEN side = 'higher' THEN price END DESC,
                 CASE WHEN side = 'lower' THEN price END ASC,
                 created_at ASC
-            LIMIT 10
+            LIMIT 50
         `;
         return result.rows;
     } catch (error) {
@@ -375,7 +419,7 @@ const db = {
     getOrCreateUser, getActiveRound, getRoundById, getOrCreateCurrentRound,
     getLatestPoolSnapshot, savePoolSnapshot, getAggregatedOrderBook,
     placeLimitOrder, recordTrade, getRecentTrades, upsertUserPosition,
-    getUserPositions, getMatchableOrders, updateOrderFilled, cancelOrder,
+    getUserPositions, getUserOrders, getMatchableOrders, updateOrderFilled, cancelOrder,
     checkRateLimit, logAction, sql
 };
 
@@ -427,7 +471,7 @@ export default async function handler(req, res) {
             if (rateLimitError) return;
             
             // GET ALL CURRENT ROUNDS (для табов)
-            if (action === 'rounds') {
+            if (action === 'rounds' || action === 'all-rounds') {
                 const rounds = [];
                 
                 for (const interval of [15, 60, 240]) {
@@ -440,9 +484,13 @@ export default async function handler(req, res) {
                         rounds.push({
                             id: r.id,
                             slug: r.slug,
+                            interval_minutes: interval,  // Added for compatibility
                             interval: interval,
+                            start_time: r.start_time,   // Added for compatibility
+                            end_time: r.end_time,       // Added for compatibility
                             endTime: r.end_time,
-                            minutesRemaining: minutesRemaining
+                            minutesRemaining: minutesRemaining,
+                            status: r.status            // Added for compatibility
                         });
                     } catch (error) {
                         console.error(`Failed to get round for ${interval}m:`, error);
@@ -452,27 +500,6 @@ export default async function handler(req, res) {
                 return res.status(200).json({
                     success: true,
                     rounds
-                });
-            }
-            
-            // NEW: Get all active rounds for all intervals (simplified version)
-            if (action === 'all-rounds') {
-                const rounds = await Promise.all([
-                    getOrCreateCurrentRound(15),
-                    getOrCreateCurrentRound(60),
-                    getOrCreateCurrentRound(240)
-                ]);
-                
-                return res.status(200).json({
-                    success: true,
-                    rounds: rounds.map(round => ({
-                        id: round.id,
-                        slug: round.slug,
-                        interval_minutes: round.interval_minutes,
-                        start_time: round.start_time,
-                        end_time: round.end_time,
-                        status: round.status
-                    }))
                 });
             }
             
@@ -516,9 +543,15 @@ export default async function handler(req, res) {
                     roundId: round.id,
                     roundSlug: round.slug,
                     roundNumber: round.round_number,
-                    intervalMinutes: round.interval_minutes,
-                    startTime: round.start_time,
-                    endTime: round.end_time
+                    intervalMinutes: round.interval_minutes,  // Added for compatibility
+                    startTime: round.start_time,              // Added for compatibility
+                    endTime: round.end_time,                  // Added for compatibility
+                    roundEndTime: round.end_time,
+                    poolSnapshot: poolSnapshot ? {            // Added for compatibility
+                        higher: parseFloat(poolSnapshot.higher_reserve),
+                        lower: parseFloat(poolSnapshot.lower_reserve),
+                        k: parseFloat(poolSnapshot.k_constant)
+                    } : null
                 });
             }
             
@@ -535,7 +568,9 @@ export default async function handler(req, res) {
                         amount: parseFloat(t.amount),
                         price: parseFloat(t.price),
                         cost: parseFloat(t.total_cost),
-                        time: t.created_at,
+                        totalCost: parseFloat(t.total_cost),  // Added for compatibility
+                        time: t.created_at,                   // Added for compatibility
+                        timestamp: new Date(t.created_at).getTime(),
                         type: t.trade_type
                     }))
                 });
@@ -623,7 +658,7 @@ export default async function handler(req, res) {
             }
             
             // USER POSITIONS
-            if (action === 'positions') {
+            if (action === 'positions' || action === 'user-positions') {
                 const { wallet } = query;
                 
                 if (!wallet) {
@@ -645,6 +680,34 @@ export default async function handler(req, res) {
                         totalCost: parseFloat(p.total_cost),
                         settled: p.settled,
                         payout: p.payout ? parseFloat(p.payout) : null
+                    }))
+                });
+            }
+            
+            // USER ORDERS
+            if (action === 'user-orders') {
+                const { wallet } = query;
+                
+                if (!wallet) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Wallet address required'
+                    });
+                }
+                
+                const user = await db.getOrCreateUser(wallet);
+                const orders = await db.getUserOrders(user.id, round.id);
+                
+                return res.status(200).json({
+                    success: true,
+                    orders: orders.map(o => ({
+                        id: o.id,
+                        side: o.side,
+                        amount: parseFloat(o.amount),
+                        price: parseFloat(o.price),
+                        filled: parseFloat(o.filled),
+                        status: o.status,
+                        created: o.created_at
                     }))
                 });
             }
