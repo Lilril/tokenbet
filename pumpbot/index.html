@@ -213,26 +213,14 @@
                     </div>
                 </div>
 
-                <!-- MY ACTIVE ORDERS -->
-                <div class="trade-history slide-in" id="myOrdersSection" style="display: none;">
-                    <div class="trade-history-header">
-                        🎯 МОИ АКТИВНЫЕ ОРДЕРА
-                        <button onclick="toggleMyOrders()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em;">
-                            Скрыть
-                        </button>
-                    </div>
-                    <div class="trade-history-list" id="myOrdersList">
-                        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                            Нет активных ордеров
-                        </div>
-                    </div>
-                </div>
-
                 <!-- TRADE HISTORY -->
                 <div class="trade-history slide-in">
                     <div class="trade-history-header">
-                        📊 ИСТОРИЯ СДЕЛОК
-                        <button onclick="toggleMyOrders()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em;">
+                        🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
+                        <button onclick="openMyTradesModal()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em;">
+                            Мои сделки
+                        </button>
+                        <button onclick="openMyOrdersModal()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em; margin-right: 10px;">
                             Мои ордера
                         </button>
                     </div>
@@ -308,6 +296,32 @@
             
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.85em;">
                 Раунды синхронизированы с глобальным временем. Делай ставку ВЫШЕ или НИЖЕ!
+            </div>
+        </div>
+
+        <!-- MY ORDERS MODAL -->
+        <div class="modal" id="myOrdersModal">
+            <div class="modal-content" style="max-width: 900px;">
+                <span class="close-modal" onclick="closeMyOrdersModal()">×</span>
+                <div class="modal-header">🎯 МОИ АКТИВНЫЕ ОРДЕРА</div>
+                <div class="trade-history-list" id="myOrdersModalList" style="max-height: 60vh; overflow-y: auto;">
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Нет активных ордеров
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MY TRADES MODAL -->
+        <div class="modal" id="myTradesModal">
+            <div class="modal-content" style="max-width: 900px;">
+                <span class="close-modal" onclick="closeMyTradesModal()">×</span>
+                <div class="modal-header">📊 МОИ СДЕЛКИ</div>
+                <div class="trade-history-list" id="myTradesModalList" style="max-height: 60vh; overflow-y: auto;">
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Нет завершенных сделок
+                    </div>
+                </div>
             </div>
         </div>
     </div>
