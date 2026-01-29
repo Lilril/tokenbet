@@ -519,11 +519,12 @@ async function fetchUserPositions() {
 
     try {
         const intervalMinutes = getCurrentInterval();
-        const response = await fetch(`${API_BASE}/api/orders?action=user-positions&wallet=${wallet}&intervalMinutes=${intervalMinutes}`);
+        // FIXED: Get user trades instead of positions for counting
+        const response = await fetch(`${API_BASE}/api/orders?action=user-trades&wallet=${wallet}&intervalMinutes=${intervalMinutes}`);
         const data = await response.json();
         
         if (data.success) {
-            userPositions = data.positions || [];
+            userPositions = data.trades || []; // Store trades for counting
             updatePositionsDisplay();
         }
     } catch (error) {
@@ -543,9 +544,8 @@ function updateOrdersDisplay() {
 }
 
 function updatePositionsDisplay() {
-    // Update counter
-    const hasPositions = userPositions.length > 0 ? '1' : '0';
-    document.getElementById('openPositionsCount').textContent = hasPositions;
+    // FIXED: Display actual count of trades/positions
+    document.getElementById('openPositionsCount').textContent = userPositions.length;
 }
 
 async function cancelOrder(orderId) {
