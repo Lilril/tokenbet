@@ -737,7 +737,7 @@ export default async function handler(req, res) {
                 });
             }
             
-            // USER TRADES - исполненные ордера пользователя
+            // USER TRADES - FIXED: получаем реальные сделки из таблицы trades, а не orders
             if (action === 'user-trades') {
                 const { wallet } = query;
                 
@@ -750,34 +750,39 @@ export default async function handler(req, res) {
                 
                 const user = await db.getOrCreateUser(wallet);
                 
-                // Получаем все исполненные ордера пользователя для текущего раунда
+                // FIXED: Получаем сделки из таблицы trades, а не orders
                 const trades = await sql`
                     SELECT 
-                        o.id,
-                        o.side,
-                        o.amount,
-                        o.price,
-                        o.filled,
-                        o.order_type,
-                        o.created_at as timestamp,
+                        t.id,
+                        t.side,
+                        t.amount,
+                        t.price,
+                        t.total_cost,
+                        t.trade_type,
+                        t.created_at as timestamp,
                         r.interval_minutes,
-                        r.id as round_id
-                    FROM orders o
-                    JOIN rounds r ON o.round_id = r.id
-                    WHERE o.user_id = ${user.id}
-                    AND o.round_id = ${round.id}
-                    AND o.filled > 0
-                    ORDER BY o.created_at DESC
+                        r.id as round_id,
+                        CASE 
+                            WHEN t.buyer_id = ${user.id} THEN t.side
+                            ELSE (CASE WHEN t.side = 'higher' THEN 'lower' ELSE 'higher' END)
+                        END as user_side
+                    FROM trades t
+                    JOIN rounds r ON t.round_id = r.id
+                    WHERE (t.buyer_id = ${user.id} OR t.seller_id = ${user.id})
+                    AND t.round_id = ${round.id}
+                    ORDER BY t.created_at DESC
+                    LIMIT 50
                 `;
                 
                 return res.status(200).json({
                     success: true,
                     trades: trades.rows.map(t => ({
                         id: t.id,
-                        side: t.side,
-                        amount: parseFloat(t.filled), // Показываем сколько было исполнено
+                        side: t.user_side, // Используем перспективу пользователя
+                        amount: parseFloat(t.amount),
                         price: parseFloat(t.price),
-                        order_type: t.order_type || 'limit',
+                        total_cost: parseFloat(t.total_cost),
+                        order_type: t.trade_type,
                         timestamp: t.timestamp,
                         interval_minutes: t.interval_minutes,
                         round_id: t.round_id
@@ -938,85 +943,41 @@ export default async function handler(req, res) {
                     });
                 }
                 
-                // CRITICAL: If order book was completely empty, reject the market order
+                // FIXED: If order book was completely empty, reject the market order
                 if (totalMatched === 0) {
                     return res.status(400).json({
                         success: false,
-                        error: 'Нет доступных ордеров в стакане. Разместите лимитный ордер или подождите.'
+                        error: 'Стакан пустой - используйте лимитный ордер или подождите пока появятся ордера'
                     });
                 }
                 
-                // If order book was insufficient, use AMM pool for remaining amount
-                const remainingAmount = amt - totalMatched;
-                
-                const poolSnapshot = await db.getLatestPoolSnapshot(round.id);
-                
-                if (!poolSnapshot) {
-                    return res.status(500).json({
-                        success: false,
-                        error: 'Pool not initialized'
+                // FIXED: If order book had partial liquidity, return partial fill WITHOUT using AMM
+                if (totalMatched < amt) {
+                    const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / totalMatched;
+                    const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
+                    
+                    const orderBook = await db.getAggregatedOrderBook(round.id);
+                    
+                    return res.status(200).json({
+                        success: true,
+                        trade: {
+                            id: trades[0].id,
+                            side,
+                            amount: totalMatched,
+                            requested: amt,
+                            price: avgPrice,
+                            cost: totalCost,
+                            source: 'orderbook',
+                            partialFill: true,
+                            message: `Частично исполнено: ${totalMatched} из ${amt} токенов. Остаток не был куплен из AMM.`
+                        },
+                        orderBook
                     });
                 }
                 
-                let higher = parseFloat(poolSnapshot.higher_reserve);
-                let lower = parseFloat(poolSnapshot.lower_reserve);
-                const k = parseFloat(poolSnapshot.k_constant);
-                
-                let tradeCost, avgPrice;
-                
-                if (side === 'higher') {
-                    if (remainingAmount > higher * 0.5) {
-                        return res.status(400).json({
-                            success: false,
-                            error: 'Order too large - max 50% of pool'
-                        });
-                    }
-                    
-                    const newHigher = higher - remainingAmount;
-                    const newLower = k / newHigher;
-                    tradeCost = newLower - lower;
-                    avgPrice = tradeCost / remainingAmount;
-                    
-                    higher = newHigher;
-                    lower = newLower;
-                } else {
-                    if (remainingAmount > lower * 0.5) {
-                        return res.status(400).json({
-                            success: false,
-                            error: 'Order too large - max 50% of pool'
-                        });
-                    }
-                    
-                    const newLower = lower - remainingAmount;
-                    const newHigher = k / newLower;
-                    tradeCost = newHigher - higher;
-                    avgPrice = tradeCost / remainingAmount;
-                    
-                    higher = newHigher;
-                    lower = newLower;
-                }
-                
-                const ammTrade = await db.recordTrade({
-                    roundId: round.id,
-                    buyerId: user.id,
-                    sellerId: null,
-                    buyOrderId: null,
-                    sellOrderId: null,
-                    side,
-                    amount: remainingAmount,
-                    price: avgPrice,
-                    totalCost: tradeCost,
-                    tradeType: 'market'
-                });
-                
-                trades.push(ammTrade);
-                
-                await db.savePoolSnapshot(round.id, higher, lower, k);
-                await db.upsertUserPosition(user.id, round.id, side, remainingAmount, avgPrice, tradeCost);
-                
-                // Calculate combined average
-                const combinedCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
-                const combinedAvgPrice = combinedCost / amt;
+                // Full fill from orderbook - AMM NOT USED
+                const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / amt;
+                const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
@@ -1026,16 +987,18 @@ export default async function handler(req, res) {
                         id: trades[0].id,
                         side,
                         amount: amt,
-                        price: combinedAvgPrice,
-                        cost: combinedCost,
-                        orderbookFilled: totalMatched,
-                        ammFilled: remainingAmount,
-                        source: totalMatched > 0 ? 'mixed' : 'amm'
+                        price: avgPrice,
+                        cost: totalCost,
+                        source: 'orderbook'
                     },
-                    newPool: { higher, lower, k },
-                    newPrice: side === 'higher' ? lower / higher : higher / lower,
                     orderBook
                 });
+                
+                /* REMOVED AMM FALLBACK CODE - Market orders now only use orderbook
+                
+                // If order book was insufficient, use AMM pool for remaining amount
+                const remainingAmount = amt - totalMatched;
+                */
             }
             
             // LIMIT ORDER
