@@ -779,7 +779,22 @@ async function executeTrade(side) {
             const sideText = side === 'higher' ? 'ВЫШЕ' : 'НИЖЕ';
             const typeText = selectedOrderType === 'market' ? 'Маркет' : 'Лимит';
             
-            if (selectedOrderType === 'limit' && result.order) {
+            if (selectedOrderType === 'market' && result.trade) {
+                let message = `✅ ${typeText} ордер на ${sideText} исполнен!\n\n`;
+                message += `Количество: ${amount} токенов\n`;
+                message += `Средняя цена: ${result.trade.price.toFixed(4)}\n`;
+                
+                if (result.trade.source === 'orderbook') {
+                    message += `\n📊 Исполнено из стакана ордеров`;
+                } else if (result.trade.source === 'mixed') {
+                    message += `\n📊 Из стакана: ${result.trade.orderbookFilled} токенов`;
+                    message += `\n🏦 Из AMM пула: ${result.trade.ammFilled} токенов`;
+                } else if (result.trade.source === 'amm') {
+                    message += `\n🏦 Исполнено из AMM пула`;
+                }
+                
+                alert(message);
+            } else if (selectedOrderType === 'limit' && result.order) {
                 const matched = result.matched || 0;
                 const remaining = result.order.amount - matched;
                 
@@ -791,9 +806,7 @@ async function executeTrade(side) {
                     alert(`✅ ${typeText} ордер на ${sideText} полностью исполнен!\n\n` +
                           `Количество: ${matched} токенов`);
                 } else {
-                    alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\n` +
-                          `Количество: ${amount} токенов\n` +
-                          `Ожидает исполнения в стакане`);
+                    alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`);
                 }
             } else {
                 alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`);
