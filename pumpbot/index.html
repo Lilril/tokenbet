@@ -80,13 +80,13 @@
                     <div class="balance-label">Баланс $TOKEN</div>
                     <div class="balance-value" id="tokenBalance">0</div>
                 </div>
-                <div class="balance-item">
-                    <div class="balance-label">Активных ордеров</div>
+                <div class="balance-item" onclick="openMyOrdersModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                    <div class="balance-label">Мои ордера</div>
                     <div class="balance-value text-yellow" id="activeOrdersCount">0</div>
                 </div>
-                <div class="balance-item">
-                    <div class="balance-label">Открытых позиций</div>
-                    <div class="balance-value text-green" id="openPositionsCount">0</div>
+                <div class="balance-item" onclick="openMyTradesModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                    <div class="balance-label">Мои сделки</div>
+                    <div class="balance-value text-green" id="openPositionsCount">1</div>
                 </div>
             </div>
         </div>
@@ -217,12 +217,6 @@
                 <div class="trade-history slide-in">
                     <div class="trade-history-header">
                         🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
-                        <button onclick="openMyTradesModal()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em;">
-                            Мои сделки
-                        </button>
-                        <button onclick="openMyOrdersModal()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em; margin-right: 10px;">
-                            Мои ордера
-                        </button>
                     </div>
                     <div class="trade-history-list" id="tradeHistory">
                         <div style="padding: 20px; text-align: center; color: var(--text-dim);">
