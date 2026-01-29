@@ -729,7 +729,58 @@ export default async function handler(req, res) {
                         price: parseFloat(o.price),
                         filled: parseFloat(o.filled),
                         status: o.status,
+                        order_type: o.order_type || 'limit',
+                        interval_minutes: round.interval_minutes,
+                        round_id: round.id,
                         created: o.created_at
+                    }))
+                });
+            }
+            
+            // USER TRADES - исполненные ордера пользователя
+            if (action === 'user-trades') {
+                const { wallet } = query;
+                
+                if (!wallet) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Wallet address required'
+                    });
+                }
+                
+                const user = await db.getOrCreateUser(wallet);
+                
+                // Получаем все исполненные ордера пользователя для текущего раунда
+                const trades = await sql`
+                    SELECT 
+                        o.id,
+                        o.side,
+                        o.amount,
+                        o.price,
+                        o.filled,
+                        o.order_type,
+                        o.created_at as timestamp,
+                        r.interval_minutes,
+                        r.id as round_id
+                    FROM orders o
+                    JOIN rounds r ON o.round_id = r.id
+                    WHERE o.user_id = ${user.id}
+                    AND o.round_id = ${round.id}
+                    AND o.filled > 0
+                    ORDER BY o.created_at DESC
+                `;
+                
+                return res.status(200).json({
+                    success: true,
+                    trades: trades.rows.map(t => ({
+                        id: t.id,
+                        side: t.side,
+                        amount: parseFloat(t.filled), // Показываем сколько было исполнено
+                        price: parseFloat(t.price),
+                        order_type: t.order_type || 'limit',
+                        timestamp: t.timestamp,
+                        interval_minutes: t.interval_minutes,
+                        round_id: t.round_id
                     }))
                 });
             }
