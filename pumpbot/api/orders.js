@@ -132,7 +132,6 @@ async function getOrCreateUser(walletAddress) {
     }
 }
 
-// FIXED: Now accepts intervalMinutes parameter instead of hardcoded 15
 async function getActiveRound(intervalMinutes = 15) {
     return await getOrCreateCurrentRound(intervalMinutes);
 }
@@ -277,17 +276,21 @@ async function getMatchableOrders(roundId, side, price) {
     try {
         const oppositeSide = side === 'higher' ? 'lower' : 'higher';
         
+        // For 'higher' buy orders: match with 'lower' sell orders where sell price <= buy price
+        // For 'lower' buy orders: match with 'higher' sell orders where sell price <= buy price
         const result = await sql`
             SELECT id, user_id, side, amount, filled, price
             FROM limit_orders
-            WHERE round_id = ${roundId} AND side = ${oppositeSide}
-            AND status = 'active' AND amount > filled
-            AND ${price} + price >= 1
+            WHERE round_id = ${roundId} 
+            AND side = ${oppositeSide}
+            AND status = 'active' 
+            AND amount > filled
+            AND price <= ${price}
             ORDER BY 
                 CASE WHEN side = 'higher' THEN price END DESC,
                 CASE WHEN side = 'lower' THEN price END ASC,
                 created_at ASC
-            LIMIT 10
+            LIMIT 50
         `;
         return result.rows;
     } catch (error) {
@@ -427,7 +430,7 @@ export default async function handler(req, res) {
             if (rateLimitError) return;
             
             // GET ALL CURRENT ROUNDS (для табов)
-            if (action === 'rounds') {
+            if (action === 'rounds' || action === 'all-rounds') {
                 const rounds = [];
                 
                 for (const interval of [15, 60, 240]) {
@@ -440,9 +443,13 @@ export default async function handler(req, res) {
                         rounds.push({
                             id: r.id,
                             slug: r.slug,
+                            interval_minutes: interval,  // Added for compatibility
                             interval: interval,
+                            start_time: r.start_time,   // Added for compatibility
+                            end_time: r.end_time,       // Added for compatibility
                             endTime: r.end_time,
-                            minutesRemaining: minutesRemaining
+                            minutesRemaining: minutesRemaining,
+                            status: r.status            // Added for compatibility
                         });
                     } catch (error) {
                         console.error(`Failed to get round for ${interval}m:`, error);
@@ -452,27 +459,6 @@ export default async function handler(req, res) {
                 return res.status(200).json({
                     success: true,
                     rounds
-                });
-            }
-            
-            // NEW: Get all active rounds for all intervals (simplified version)
-            if (action === 'all-rounds') {
-                const rounds = await Promise.all([
-                    getOrCreateCurrentRound(15),
-                    getOrCreateCurrentRound(60),
-                    getOrCreateCurrentRound(240)
-                ]);
-                
-                return res.status(200).json({
-                    success: true,
-                    rounds: rounds.map(round => ({
-                        id: round.id,
-                        slug: round.slug,
-                        interval_minutes: round.interval_minutes,
-                        start_time: round.start_time,
-                        end_time: round.end_time,
-                        status: round.status
-                    }))
                 });
             }
             
@@ -516,9 +502,15 @@ export default async function handler(req, res) {
                     roundId: round.id,
                     roundSlug: round.slug,
                     roundNumber: round.round_number,
-                    intervalMinutes: round.interval_minutes,
-                    startTime: round.start_time,
-                    endTime: round.end_time
+                    intervalMinutes: round.interval_minutes,  // Added for compatibility
+                    startTime: round.start_time,              // Added for compatibility
+                    endTime: round.end_time,                  // Added for compatibility
+                    roundEndTime: round.end_time,
+                    poolSnapshot: poolSnapshot ? {            // Added for compatibility
+                        higher: parseFloat(poolSnapshot.higher_reserve),
+                        lower: parseFloat(poolSnapshot.lower_reserve),
+                        k: parseFloat(poolSnapshot.k_constant)
+                    } : null
                 });
             }
             
@@ -535,7 +527,9 @@ export default async function handler(req, res) {
                         amount: parseFloat(t.amount),
                         price: parseFloat(t.price),
                         cost: parseFloat(t.total_cost),
-                        time: t.created_at,
+                        totalCost: parseFloat(t.total_cost),  // Added for compatibility
+                        time: t.created_at,                   // Added for compatibility
+                        timestamp: new Date(t.created_at).getTime(),
                         type: t.trade_type
                     }))
                 });
