@@ -631,39 +631,55 @@ function updateMyOrdersModalList() {
         return;
     }
     
-    list.innerHTML = userOrders.map(order => `
-        <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                <div>
-                    <span class="${order.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
-                        ${order.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ'}
-                    </span>
-                    <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
-                        ${order.order_type === 'market' ? 'Маркет' : 'Лимит'}
-                    </span>
+    list.innerHTML = userOrders.map(order => {
+        // Определяем название раунда
+        let roundName = 'undefined';
+        if (order.interval_minutes === 15) roundName = '15m';
+        else if (order.interval_minutes === 60) roundName = '1h';
+        else if (order.interval_minutes === 240) roundName = '4h';
+        
+        // Считаем остаток токенов (если есть filled)
+        const filled = order.filled || 0;
+        const remaining = order.amount - filled;
+        const showRemaining = filled > 0;
+        
+        return `
+            <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <div>
+                        <span class="${order.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
+                            ${order.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ'}
+                        </span>
+                        <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
+                            ${order.order_type === 'market' ? 'Маркет' : 'Лимит'}
+                        </span>
+                    </div>
+                    <div style="color: var(--text-dim); font-size: 0.85em;">
+                        Раунд ${roundName}
+                    </div>
                 </div>
-                <div style="color: var(--text-dim); font-size: 0.85em;">
-                    Раунд ${order.round_id}
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 0.85em; color: var(--text-secondary);">
+                            Кол-во: <span style="color: var(--text-primary); font-weight: 600;">
+                                ${showRemaining ? `${remaining.toFixed(0)} / ${order.amount.toFixed(0)}` : `${order.amount}`} токенов
+                            </span>
+                            ${showRemaining ? `<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 5px;">(${((filled / order.amount) * 100).toFixed(1)}% исполнено)</span>` : ''}
+                        </div>
+                        <div style="font-size: 0.85em; color: var(--text-secondary);">
+                            Цена: <span style="color: var(--accent-yellow); font-weight: 600;">${order.price.toFixed(3)}</span>
+                        </div>
+                    </div>
+                    <button 
+                        onclick="cancelOrder(${order.id})" 
+                        style="padding: 8px 16px; background: var(--accent-red); color: #000; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; font-size: 0.85em;"
+                    >
+                        Отменить
+                    </button>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div style="font-size: 0.85em; color: var(--text-secondary);">
-                        Кол-во: <span style="color: var(--text-primary); font-weight: 600;">${order.amount} токенов</span>
-                    </div>
-                    <div style="font-size: 0.85em; color: var(--text-secondary);">
-                        Цена: <span style="color: var(--accent-yellow); font-weight: 600;">${order.price.toFixed(3)}</span>
-                    </div>
-                </div>
-                <button 
-                    onclick="cancelOrder(${order.id})" 
-                    style="padding: 8px 16px; background: var(--accent-red); color: #000; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; font-size: 0.85em;"
-                >
-                    Отменить
-                </button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 async function fetchUserTrades() {
@@ -699,6 +715,12 @@ async function fetchUserTrades() {
                     minute: '2-digit'
                 });
                 
+                // Определяем название раунда
+                let roundName = 'undefined';
+                if (trade.interval_minutes === 15) roundName = '15m';
+                else if (trade.interval_minutes === 60) roundName = '1h';
+                else if (trade.interval_minutes === 240) roundName = '4h';
+                
                 return `
                     <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
@@ -725,7 +747,7 @@ async function fetchUserTrades() {
                             </div>
                             <div style="text-align: right;">
                                 <div style="font-size: 0.85em; color: var(--text-secondary);">
-                                    Раунд: <span style="color: var(--text-primary);">${trade.round_id}</span>
+                                    Раунд: <span style="color: var(--text-primary);">${roundName}</span>
                                 </div>
                                 ${trade.profit !== undefined ? `
                                     <div style="font-size: 0.85em; color: var(--text-secondary);">
