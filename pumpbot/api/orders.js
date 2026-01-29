@@ -319,20 +319,42 @@ async function getMatchableOrders(roundId, side, price) {
         
         // For 'higher' buy orders: match with 'lower' sell orders where sell price <= buy price
         // For 'lower' buy orders: match with 'higher' sell orders where sell price <= buy price
-        const result = await sql`
-            SELECT id, user_id, side, amount, filled, price
-            FROM limit_orders
-            WHERE round_id = ${roundId} 
-            AND side = ${oppositeSide}
-            AND status = 'active' 
-            AND amount > filled
-            AND price <= ${price}
-            ORDER BY 
-                CASE WHEN side = 'higher' THEN price END DESC,
-                CASE WHEN side = 'lower' THEN price END ASC,
-                created_at ASC
-            LIMIT 50
-        `;
+        // If price is null/undefined (market order), match all available orders
+        let result;
+        
+        if (price === null || price === undefined || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
+            // Market order - match any price
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} 
+                AND side = ${oppositeSide}
+                AND status = 'active' 
+                AND amount > filled
+                ORDER BY 
+                    CASE WHEN side = 'higher' THEN price END DESC,
+                    CASE WHEN side = 'lower' THEN price END ASC,
+                    created_at ASC
+                LIMIT 50
+            `;
+        } else {
+            // Limit order - match only better prices
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} 
+                AND side = ${oppositeSide}
+                AND status = 'active' 
+                AND amount > filled
+                AND price <= ${price}
+                ORDER BY 
+                    CASE WHEN side = 'higher' THEN price END DESC,
+                    CASE WHEN side = 'lower' THEN price END ASC,
+                    created_at ASC
+                LIMIT 50
+            `;
+        }
+        
         return result.rows;
     } catch (error) {
         console.error('❌ getMatchableOrders error:', error);
@@ -806,6 +828,76 @@ export default async function handler(req, res) {
             
             // MARKET ORDER
             if (type === 'market') {
+                // First try to match against order book
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null); // null = match any price
+                
+                let totalMatched = 0;
+                const trades = [];
+                
+                // Try to fill from order book first
+                for (const oppositeOrder of matchableOrders) {
+                    const remainingToFill = amt - totalMatched;
+                    const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
+                    
+                    if (remainingToFill <= 0) break;
+                    
+                    const matchAmount = Math.min(remainingToFill, oppositeRemaining);
+                    const matchPrice = parseFloat(oppositeOrder.price);
+                    
+                    const trade = await db.recordTrade({
+                        roundId: round.id,
+                        buyerId: user.id,
+                        sellerId: oppositeOrder.user_id,
+                        buyOrderId: null, // Market order has no order ID
+                        sellOrderId: oppositeOrder.id,
+                        side,
+                        amount: matchAmount,
+                        price: matchPrice,
+                        totalCost: matchAmount * matchPrice,
+                        tradeType: 'market'
+                    });
+                    
+                    trades.push(trade);
+                    
+                    await db.updateOrderFilled(oppositeOrder.id, matchAmount);
+                    await db.upsertUserPosition(user.id, round.id, side, matchAmount, matchPrice, matchAmount * matchPrice);
+                    await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, matchPrice, matchAmount * matchPrice);
+                    
+                    totalMatched += matchAmount;
+                }
+                
+                // If order book was sufficient, return success
+                if (totalMatched >= amt) {
+                    const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / amt;
+                    const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
+                    
+                    const orderBook = await db.getAggregatedOrderBook(round.id);
+                    
+                    return res.status(200).json({
+                        success: true,
+                        trade: {
+                            id: trades[0].id,
+                            side,
+                            amount: amt,
+                            price: avgPrice,
+                            cost: totalCost,
+                            source: 'orderbook'
+                        },
+                        orderBook
+                    });
+                }
+                
+                // CRITICAL: If order book was completely empty, reject the market order
+                if (totalMatched === 0) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Нет доступных ордеров в стакане. Разместите лимитный ордер или подождите.'
+                    });
+                }
+                
+                // If order book was insufficient, use AMM pool for remaining amount
+                const remainingAmount = amt - totalMatched;
+                
                 const poolSnapshot = await db.getLatestPoolSnapshot(round.id);
                 
                 if (!poolSnapshot) {
@@ -822,64 +914,76 @@ export default async function handler(req, res) {
                 let tradeCost, avgPrice;
                 
                 if (side === 'higher') {
-                    if (amt > higher * 0.5) {
+                    if (remainingAmount > higher * 0.5) {
                         return res.status(400).json({
                             success: false,
                             error: 'Order too large - max 50% of pool'
                         });
                     }
                     
-                    const newHigher = higher - amt;
+                    const newHigher = higher - remainingAmount;
                     const newLower = k / newHigher;
                     tradeCost = newLower - lower;
-                    avgPrice = tradeCost / amt;
+                    avgPrice = tradeCost / remainingAmount;
                     
                     higher = newHigher;
                     lower = newLower;
                 } else {
-                    if (amt > lower * 0.5) {
+                    if (remainingAmount > lower * 0.5) {
                         return res.status(400).json({
                             success: false,
                             error: 'Order too large - max 50% of pool'
                         });
                     }
                     
-                    const newLower = lower - amt;
+                    const newLower = lower - remainingAmount;
                     const newHigher = k / newLower;
                     tradeCost = newHigher - higher;
-                    avgPrice = tradeCost / amt;
+                    avgPrice = tradeCost / remainingAmount;
                     
                     higher = newHigher;
                     lower = newLower;
                 }
                 
-                const trade = await db.recordTrade({
+                const ammTrade = await db.recordTrade({
                     roundId: round.id,
                     buyerId: user.id,
                     sellerId: null,
                     buyOrderId: null,
                     sellOrderId: null,
                     side,
-                    amount: amt,
+                    amount: remainingAmount,
                     price: avgPrice,
                     totalCost: tradeCost,
                     tradeType: 'market'
                 });
                 
+                trades.push(ammTrade);
+                
                 await db.savePoolSnapshot(round.id, higher, lower, k);
-                await db.upsertUserPosition(user.id, round.id, side, amt, avgPrice, tradeCost);
+                await db.upsertUserPosition(user.id, round.id, side, remainingAmount, avgPrice, tradeCost);
+                
+                // Calculate combined average
+                const combinedCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
+                const combinedAvgPrice = combinedCost / amt;
+                
+                const orderBook = await db.getAggregatedOrderBook(round.id);
                 
                 return res.status(200).json({
                     success: true,
                     trade: {
-                        id: trade.id,
+                        id: trades[0].id,
                         side,
                         amount: amt,
-                        price: avgPrice,
-                        cost: tradeCost
+                        price: combinedAvgPrice,
+                        cost: combinedCost,
+                        orderbookFilled: totalMatched,
+                        ammFilled: remainingAmount,
+                        source: totalMatched > 0 ? 'mixed' : 'amm'
                     },
                     newPool: { higher, lower, k },
-                    newPrice: side === 'higher' ? lower / higher : higher / lower
+                    newPrice: side === 'higher' ? lower / higher : higher / lower,
+                    orderBook
                 });
             }
             
