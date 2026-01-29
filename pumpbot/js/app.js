@@ -535,39 +535,11 @@ function updateOrdersDisplay() {
     // Update counter
     document.getElementById('activeOrdersCount').textContent = userOrders.length;
     
-    // Update orders list
-    const container = document.getElementById('myOrdersList');
-    
-    if (userOrders.length === 0) {
-        container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет активных ордеров</div>';
-        return;
+    // Update modal list if modal is open
+    const modal = document.getElementById('myOrdersModal');
+    if (modal && modal.classList.contains('active')) {
+        updateMyOrdersModalList();
     }
-    
-    container.innerHTML = userOrders.map(order => {
-        const sideClass = order.side === 'higher' ? 'buy' : 'sell';
-        const sideText = order.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ';
-        const filled = order.filled || 0;
-        const remaining = order.amount - filled;
-        const filledPercent = (filled / order.amount * 100).toFixed(1);
-        
-        return `
-            <div class="trade-item ${sideClass}" style="position: relative;">
-                <div style="flex: 1;">
-                    <div style="font-weight: 600;">${sideText} @ ${order.price.toFixed(4)}</div>
-                    <div class="trade-time">
-                        ${remaining.toFixed(0)} / ${order.amount.toFixed(0)} шт
-                        ${filled > 0 ? `(${filledPercent}% заполнено)` : ''}
-                    </div>
-                </div>
-                <button 
-                    onclick="cancelOrder(${order.id})" 
-                    style="padding: 8px 16px; background: var(--accent-red); color: #000; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; font-size: 0.9em;"
-                >
-                    ✕
-                </button>
-            </div>
-        `;
-    }).join('');
 }
 
 function updatePositionsDisplay() {
@@ -611,19 +583,199 @@ async function cancelOrder(orderId) {
     }
 }
 
-function toggleMyOrders() {
-    const myOrdersSection = document.getElementById('myOrdersSection');
-    if (myOrdersSection.style.display === 'none') {
-        myOrdersSection.style.display = 'block';
-        fetchUserOrders();
-    } else {
-        myOrdersSection.style.display = 'none';
+// ============================================
+// MODAL FUNCTIONS FOR MY ORDERS AND MY TRADES
+// ============================================
+function openMyOrdersModal() {
+    const modal = document.getElementById('myOrdersModal');
+    modal.classList.add('active');
+    fetchUserOrders(); // Load user orders
+    // Update the modal list
+    updateMyOrdersModalList();
+}
+
+function closeMyOrdersModal() {
+    const modal = document.getElementById('myOrdersModal');
+    modal.classList.remove('active');
+}
+
+function openMyTradesModal() {
+    const modal = document.getElementById('myTradesModal');
+    modal.classList.add('active');
+    fetchUserTrades(); // Load user completed trades
+}
+
+function closeMyTradesModal() {
+    const modal = document.getElementById('myTradesModal');
+    modal.classList.remove('active');
+}
+
+function updateMyOrdersModalList() {
+    const list = document.getElementById('myOrdersModalList');
+    
+    if (!wallet) {
+        list.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                Подключите кошелек для просмотра ордеров
+            </div>
+        `;
+        return;
+    }
+    
+    if (userOrders.length === 0) {
+        list.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                Нет активных ордеров
+            </div>
+        `;
+        return;
+    }
+    
+    list.innerHTML = userOrders.map(order => `
+        <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <div>
+                    <span class="${order.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
+                        ${order.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ'}
+                    </span>
+                    <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
+                        ${order.order_type === 'market' ? 'Маркет' : 'Лимит'}
+                    </span>
+                </div>
+                <div style="color: var(--text-dim); font-size: 0.85em;">
+                    Раунд ${order.round_id}
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 0.85em; color: var(--text-secondary);">
+                        Кол-во: <span style="color: var(--text-primary); font-weight: 600;">${order.amount} токенов</span>
+                    </div>
+                    <div style="font-size: 0.85em; color: var(--text-secondary);">
+                        Цена: <span style="color: var(--accent-yellow); font-weight: 600;">${order.price.toFixed(3)}</span>
+                    </div>
+                </div>
+                <button 
+                    onclick="cancelOrder(${order.id})" 
+                    style="padding: 8px 16px; background: var(--accent-red); color: #000; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; font-size: 0.85em;"
+                >
+                    Отменить
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function fetchUserTrades() {
+    const list = document.getElementById('myTradesModalList');
+    
+    if (!wallet) {
+        list.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                Подключите кошелек для просмотра сделок
+            </div>
+        `;
+        return;
+    }
+    
+    // Show loading
+    list.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+            Загрузка...
+        </div>
+    `;
+    
+    try {
+        const intervalMinutes = getCurrentInterval();
+        const response = await fetch(`${API_BASE}/api/orders?action=user-trades&wallet=${wallet}&intervalMinutes=${intervalMinutes}`);
+        const data = await response.json();
+        
+        if (data.success && data.trades && data.trades.length > 0) {
+            list.innerHTML = data.trades.map(trade => {
+                const timestamp = new Date(trade.timestamp).toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                return `
+                    <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <div>
+                                <span class="${trade.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
+                                    ${trade.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ'}
+                                </span>
+                                <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
+                                    ${trade.order_type === 'market' ? 'Маркет' : 'Лимит'}
+                                </span>
+                            </div>
+                            <div style="color: var(--text-dim); font-size: 0.85em;">
+                                ${timestamp}
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <div>
+                                <div style="font-size: 0.85em; color: var(--text-secondary);">
+                                    Кол-во: <span style="color: var(--text-primary); font-weight: 600;">${trade.amount} токенов</span>
+                                </div>
+                                <div style="font-size: 0.85em; color: var(--text-secondary);">
+                                    Цена: <span style="color: var(--accent-yellow); font-weight: 600;">${trade.price.toFixed(3)}</span>
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 0.85em; color: var(--text-secondary);">
+                                    Раунд: <span style="color: var(--text-primary);">${trade.round_id}</span>
+                                </div>
+                                ${trade.profit !== undefined ? `
+                                    <div style="font-size: 0.85em; color: var(--text-secondary);">
+                                        Прибыль: <span style="color: ${trade.profit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}; font-weight: 600;">
+                                            ${trade.profit >= 0 ? '+' : ''}${trade.profit.toFixed(2)} токенов
+                                        </span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            list.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                    Нет завершенных сделок
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('❌ Failed to fetch user trades:', error);
+        list.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--accent-red);">
+                Ошибка при загрузке сделок
+            </div>
+        `;
+    }
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    const ordersModal = document.getElementById('myOrdersModal');
+    const tradesModal = document.getElementById('myTradesModal');
+    
+    if (event.target === ordersModal) {
+        closeMyOrdersModal();
+    }
+    if (event.target === tradesModal) {
+        closeMyTradesModal();
     }
 }
 
 // Make functions globally available
 window.cancelOrder = cancelOrder;
-window.toggleMyOrders = toggleMyOrders;
+window.openMyOrdersModal = openMyOrdersModal;
+window.closeMyOrdersModal = closeMyOrdersModal;
+window.openMyTradesModal = openMyTradesModal;
+window.closeMyTradesModal = closeMyTradesModal;
+window.updateMyOrdersModalList = updateMyOrdersModalList;
 
 // ============================================
 // TRADING INTERFACE
