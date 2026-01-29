@@ -56,6 +56,272 @@
         .round-tab.active .round-tab-info {
             opacity: 0.9;
         }
+
+        .settlements-alert {
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.1));
+            border: 2px solid var(--accent-yellow);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
+            50% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.5); }
+        }
+
+        .settlements-alert-content {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .settlements-alert-icon {
+            font-size: 3em;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .settlements-alert-text {
+            flex: 1;
+            color: var(--text-primary);
+        }
+
+        .settlements-alert-text strong {
+            display: block;
+            font-size: 1.2em;
+            margin-bottom: 5px;
+            color: var(--accent-yellow);
+        }
+
+        .settlements-alert-btn {
+            padding: 12px 30px;
+            background: var(--accent-yellow);
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+
+        .settlements-alert-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.4);
+        }
+
+        .settlements-tabs {
+            display: flex;
+            gap: 10px;
+            padding: 20px 20px 0 20px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .settlement-tab {
+            padding: 12px 24px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .settlement-tab:hover {
+            background: var(--bg-secondary);
+        }
+
+        .settlement-tab.active {
+            background: var(--accent-green);
+            color: #000;
+            border-color: var(--accent-green);
+        }
+
+        .settlements-list {
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .settlement-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .settlement-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 255, 159, 0.2);
+        }
+
+        .settlement-card.won {
+            border-left: 4px solid var(--accent-green);
+        }
+
+        .settlement-card.lost {
+            border-left: 4px solid var(--accent-red);
+        }
+
+        .settlement-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .settlement-round-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .settlement-round-badge {
+            background: var(--bg-secondary);
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .settlement-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+        }
+
+        .settlement-status.won {
+            background: var(--accent-green);
+            color: #000;
+        }
+
+        .settlement-status.lost {
+            background: var(--accent-red);
+            color: #000;
+        }
+
+        .settlement-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .settlement-detail {
+            text-align: center;
+            padding: 10px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .settlement-detail-label {
+            font-size: 0.8em;
+            color: var(--text-dim);
+            margin-bottom: 5px;
+        }
+
+        .settlement-detail-value {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .settlement-payout {
+            font-size: 1.5em !important;
+            color: var(--accent-green) !important;
+        }
+
+        .settlement-loss {
+            color: var(--accent-red) !important;
+        }
+
+        .settlement-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .settlement-claim-btn {
+            flex: 1;
+            padding: 15px;
+            background: var(--accent-green);
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .settlement-claim-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 20px rgba(0, 255, 159, 0.4);
+        }
+
+        .settlement-claim-btn:disabled {
+            background: var(--bg-secondary);
+            color: var(--text-dim);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .settlement-claimed {
+            background: var(--bg-secondary);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.9em;
+        }
+
+        .settlement-claimed strong {
+            color: var(--accent-green);
+            display: block;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+
+        .settlement-tx-link {
+            color: var(--accent-yellow);
+            text-decoration: none;
+            font-size: 0.85em;
+        }
+
+        .settlement-tx-link:hover {
+            text-decoration: underline;
+        }
+
+        .market-cap-comparison {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            padding: 15px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .market-cap-value {
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+
+        .market-cap-arrow {
+            font-size: 1.5em;
+            color: var(--accent-yellow);
+        }
     </style>
 </head>
 <body>
@@ -97,6 +363,20 @@
                 <span class="close-modal" id="closeModal">×</span>
                 <div class="modal-header">ВЫБЕРИ КОШЕЛЕК</div>
                 <div id="walletsList"></div>
+            </div>
+        </div>
+
+        <!-- UNCLAIMED SETTLEMENTS BANNER -->
+        <div id="settlementsAlert" class="settlements-alert" style="display: none;">
+            <div class="settlements-alert-content">
+                <div class="settlements-alert-icon">🎁</div>
+                <div class="settlements-alert-text">
+                    <strong>У вас есть незабранные выигрыши!</strong>
+                    <span id="settlementsCount">0</span> завершенных раундов ожидают
+                </div>
+                <button class="settlements-alert-btn" onclick="openSettlementsModal()">
+                    Посмотреть
+                </button>
             </div>
         </div>
 
@@ -314,6 +594,38 @@
                 <div class="trade-history-list" id="myTradesModalList" style="max-height: 60vh; overflow-y: auto;">
                     <div style="padding: 20px; text-align: center; color: var(--text-dim);">
                         Нет завершенных сделок
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SETTLEMENTS MODAL -->
+        <div class="modal" id="settlementsModal">
+            <div class="modal-content" style="max-width: 1000px;">
+                <span class="close-modal" onclick="closeSettlementsModal()">×</span>
+                <div class="modal-header">💰 ЗАВЕРШЕННЫЕ РАУНДЫ</div>
+                
+                <!-- Tabs -->
+                <div class="settlements-tabs">
+                    <button class="settlement-tab active" onclick="switchSettlementTab('unclaimed')" id="tab-unclaimed">
+                        Незабранные (<span id="unclaimedCount">0</span>)
+                    </button>
+                    <button class="settlement-tab" onclick="switchSettlementTab('history')" id="tab-history">
+                        История
+                    </button>
+                </div>
+                
+                <!-- Unclaimed settlements -->
+                <div id="settlementsUnclaimed" class="settlements-list">
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Загрузка...
+                    </div>
+                </div>
+                
+                <!-- History -->
+                <div id="settlementsHistory" class="settlements-list" style="display: none;">
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Загрузка...
                     </div>
                 </div>
             </div>
