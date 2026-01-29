@@ -86,7 +86,8 @@ let selectedSide = 'higher';
 let selectedOrderType = 'market';
 let userOrders = [];  // NEW: Track user's active orders
 let userPositions = []; // NEW: Track user's positions
-
+let userSettlements = [];
+let currentSettlementTab = 'unclaimed';
 // ============================================
 // КОШЕЛЬКИ
 // ============================================
@@ -1156,26 +1157,383 @@ window.addEventListener('load', async () => {
         updateMarketCap(),
         fetchOrderBook(),
         fetchRecentTrades(),
-        fetchUserOrders(),      // NEW: Load user orders
-        fetchUserPositions()    // NEW: Load positions
+        fetchUserOrders(),
+        fetchUserPositions(),
+        fetchUnclaimedSettlements() 
     ]);
     
     console.log('✅ Раунд инициализирован');
     
     // Intervals
     setInterval(updateCountdown, 1000);
-    setInterval(updateAllRoundTabs, 1000); // FIXED: Update all tabs every second
+    setInterval(updateAllRoundTabs, 1000);
     setInterval(updateMarketCap, 15000);
     setInterval(fetchOrderBook, 5000);
     setInterval(fetchRecentTrades, 10000);
-    setInterval(fetchAllRounds, 30000); // FIXED: Refresh round data every 30s
+    setInterval(fetchAllRounds, 30000);
     setInterval(() => {
         if (wallet) {
             fetchTokenBalance();
-            fetchUserOrders();      // NEW: Refresh user orders
-            fetchUserPositions();   // NEW: Refresh positions
+            fetchUserOrders();
+            fetchUserPositions();
+            fetchUnclaimedSettlements();
         }
     }, 20000);
     
     console.log('✅ Приложение готово к работе');
+    
+    // ============================================
+    // SETTLEMENTS FUNCTIONALITY
+    // ============================================
+
+    async function fetchUnclaimedSettlements() {
+        if (!wallet) {
+            userSettlements = [];
+            updateSettlementsDisplay();
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/api/settlement?action=unclaimed&wallet=${wallet}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                userSettlements = data.settlements || [];
+                updateSettlementsDisplay();
+                updateSettlementsAlert();
+            }
+        } catch (error) {
+            console.error('❌ Failed to fetch unclaimed settlements:', error);
+        }
+    }
+
+    async function fetchSettlementHistory() {
+        if (!wallet) {
+            return [];
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/api/settlement?action=history&wallet=${wallet}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                return data.settlements || [];
+            }
+        } catch (error) {
+            console.error('❌ Failed to fetch settlement history:', error);
+        }
+        
+        return [];
+    }
+
+    async function claimSettlement(roundId) {
+        if (!wallet) {
+            alert('Подключите кошелек');
+            return;
+        }
+        
+        try {
+            const settlement = userSettlements.find(s => s.roundId === roundId);
+            if (!settlement) {
+                alert('Settlement не найден');
+                return;
+            }
+            
+            const confirmMsg = `Вы собираетесь забрать выигрыш:\n\n` +
+                             `Раунд: ${settlement.roundSlug}\n` +
+                             `Сторона: ${settlement.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ'}\n` +
+                             `Выплата: ${settlement.payout.toFixed(2)} токенов\n` +
+                             `Прибыль: ${settlement.profitLoss.toFixed(2)} токенов`;
+            
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+            
+            const btn = document.getElementById(`claim-btn-${roundId}`);
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Обработка...';
+            }
+            
+            const response = await fetch(`${API_BASE}/api/settlement`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    wallet,
+                    roundId,
+                    txHash: null
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert(`✅ Выигрыш забран!\n\nПолучено: ${result.payout.toFixed(2)} токенов\nПрибыль: ${result.profitLoss.toFixed(2)} токенов`);
+                
+                await Promise.all([
+                    fetchUnclaimedSettlements(),
+                    fetchTokenBalance()
+                ]);
+                
+                if (currentSettlementTab === 'unclaimed') {
+                    renderUnclaimedSettlements();
+                } else {
+                    renderSettlementHistory();
+                }
+            } else {
+                alert(`Ошибка: ${result.error}`);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Забрать';
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Claim settlement error:', error);
+            alert('Ошибка при получении выигрыша');
+        }
+    }
+
+    function updateSettlementsAlert() {
+        const alert = document.getElementById('settlementsAlert');
+        const count = document.getElementById('settlementsCount');
+        
+        if (!alert || !count) return;
+        
+        if (userSettlements.length > 0) {
+            alert.style.display = 'block';
+            count.textContent = userSettlements.length;
+        } else {
+            alert.style.display = 'none';
+        }
+    }
+
+    function updateSettlementsDisplay() {
+        const unclaimedCount = document.getElementById('unclaimedCount');
+        if (unclaimedCount) {
+            unclaimedCount.textContent = userSettlements.length;
+        }
+    }
+
+    function openSettlementsModal() {
+        const modal = document.getElementById('settlementsModal');
+        if (modal) {
+            modal.classList.add('active');
+            switchSettlementTab('unclaimed');
+        }
+    }
+
+    function closeSettlementsModal() {
+        const modal = document.getElementById('settlementsModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    async function switchSettlementTab(tab) {
+        currentSettlementTab = tab;
+        
+        document.querySelectorAll('.settlement-tab').forEach(t => t.classList.remove('active'));
+        const activeTab = document.getElementById(`tab-${tab}`);
+        if (activeTab) activeTab.classList.add('active');
+        
+        document.getElementById('settlementsUnclaimed').style.display = tab === 'unclaimed' ? 'block' : 'none';
+        document.getElementById('settlementsHistory').style.display = tab === 'history' ? 'block' : 'none';
+        
+        if (tab === 'unclaimed') {
+            await renderUnclaimedSettlements();
+        } else {
+            await renderSettlementHistory();
+        }
+    }
+
+    async function renderUnclaimedSettlements() {
+        const container = document.getElementById('settlementsUnclaimed');
+        
+        if (!wallet) {
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--text-dim);">
+                    Подключите кошелек для просмотра
+                </div>
+            `;
+            return;
+        }
+        
+        if (userSettlements.length === 0) {
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--text-dim);">
+                    <div style="font-size: 3em; margin-bottom: 15px;">🎯</div>
+                    <div style="font-size: 1.2em; margin-bottom: 10px;">Нет незабранных выигрышей</div>
+                    <div style="font-size: 0.9em;">Участвуйте в раундах чтобы получать выплаты!</div>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = userSettlements.map(s => renderSettlementCard(s, false)).join('');
+    }
+
+    async function renderSettlementHistory() {
+        const container = document.getElementById('settlementsHistory');
+        
+        if (!wallet) {
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--text-dim);">
+                    Подключите кошелек для просмотра
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                Загрузка истории...
+            </div>
+        `;
+        
+        const history = await fetchSettlementHistory();
+        
+        if (history.length === 0) {
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--text-dim);">
+                    <div style="font-size: 3em; margin-bottom: 15px;">📜</div>
+                    <div style="font-size: 1.2em;">История пуста</div>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = history.map(s => renderSettlementCard(s, true)).join('');
+    }
+
+    function renderSettlementCard(settlement, showClaimed) {
+        const {
+            roundId, roundSlug, intervalMinutes, side, amount, totalCost,
+            won, payout, profitLoss, claimed, claimedAt, claimTxHash,
+            startMarketCap, finalMarketCap
+        } = settlement;
+        
+        const intervalName = intervalMinutes === 15 ? '15m' : 
+                            intervalMinutes === 60 ? '1h' : '4h';
+        
+        const sideName = side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ';
+        const sideColor = side === 'higher' ? 'text-green' : 'text-red';
+        
+        const statusClass = won ? 'won' : 'lost';
+        const statusText = won ? '🎉 ВЫИГРЫШ' : '😔 ПРОИГРЫШ';
+        
+        const capChange = ((finalMarketCap - startMarketCap) / startMarketCap * 100).toFixed(2);
+        const capArrow = finalMarketCap > startMarketCap ? '📈' : '📉';
+        
+        return `
+            <div class="settlement-card ${statusClass}">
+                <div class="settlement-header">
+                    <div class="settlement-round-info">
+                        <div class="settlement-round-badge">${intervalName}</div>
+                        <div>
+                            <div style="font-weight: 600; color: var(--text-primary);">${roundSlug}</div>
+                            <div style="font-size: 0.85em; color: var(--text-dim);">
+                                ${new Date(settlement.endTime).toLocaleString('ru-RU')}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settlement-status ${statusClass}">
+                        ${statusText}
+                    </div>
+                </div>
+                
+                <div class="market-cap-comparison">
+                    <div>
+                        <div style="font-size: 0.8em; color: var(--text-dim);">Начальная кап.</div>
+                        <div class="market-cap-value">$${startMarketCap.toLocaleString()}</div>
+                    </div>
+                    <div class="market-cap-arrow">${capArrow}</div>
+                    <div>
+                        <div style="font-size: 0.8em; color: var(--text-dim);">Финальная кап.</div>
+                        <div class="market-cap-value">$${finalMarketCap.toLocaleString()}</div>
+                    </div>
+                    <div style="padding: 8px 15px; background: var(--bg-tertiary); border-radius: 8px; font-weight: 600;">
+                        ${capChange > 0 ? '+' : ''}${capChange}%
+                    </div>
+                </div>
+                
+                <div class="settlement-details">
+                    <div class="settlement-detail">
+                        <div class="settlement-detail-label">Ваша позиция</div>
+                        <div class="settlement-detail-value ${sideColor}">${sideName}</div>
+                    </div>
+                    <div class="settlement-detail">
+                        <div class="settlement-detail-label">Количество</div>
+                        <div class="settlement-detail-value">${amount.toFixed(2)}</div>
+                    </div>
+                    <div class="settlement-detail">
+                        <div class="settlement-detail-label">Вложено</div>
+                        <div class="settlement-detail-value">${totalCost.toFixed(2)}</div>
+                    </div>
+                    <div class="settlement-detail">
+                        <div class="settlement-detail-label">${won ? 'Выплата' : 'Убыток'}</div>
+                        <div class="settlement-detail-value ${won ? 'settlement-payout' : 'settlement-loss'}">
+                            ${won ? '+' : ''}${profitLoss.toFixed(2)}
+                        </div>
+                    </div>
+                </div>
+                
+                ${showClaimed ? renderClaimedStatus(claimed, claimedAt, claimTxHash) : renderClaimButton(roundId, won, payout)}
+            </div>
+        `;
+    }
+
+    function renderClaimButton(roundId, won, payout) {
+        if (!won || payout <= 0) {
+            return `
+                <div class="settlement-claimed">
+                    Этот раунд завершен. Выплата недоступна.
+                </div>
+            `;
+        }
+        
+        return `
+            <div class="settlement-actions">
+                <button 
+                    class="settlement-claim-btn" 
+                    id="claim-btn-${roundId}"
+                    onclick="claimSettlement(${roundId})"
+                >
+                    💰 Забрать ${payout.toFixed(2)} токенов
+                </button>
+            </div>
+        `;
+    }
+
+    function renderClaimedStatus(claimed, claimedAt, claimTxHash) {
+        if (!claimed) {
+            return '<div class="settlement-claimed">Ожидает получения</div>';
+        }
+        
+        const claimDate = new Date(claimedAt).toLocaleString('ru-RU');
+        
+        return `
+            <div class="settlement-claimed">
+                <strong>✅ Забрано</strong>
+                ${claimDate}
+                ${claimTxHash ? `
+                    <br>
+                    <a href="https://solscan.io/tx/${claimTxHash}" 
+                       target="_blank" 
+                       class="settlement-tx-link">
+                        Посмотреть транзакцию →
+                    </a>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    // ⭐ ВАЖНО: Сделай функции глобально доступными
+    window.claimSettlement = claimSettlement;
+    window.openSettlementsModal = openSettlementsModal;
+    window.closeSettlementsModal = closeSettlementsModal;
+    window.switchSettlementTab = switchSettlementTab;
+
 });
