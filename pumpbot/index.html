@@ -82,11 +82,11 @@
                 </div>
                 <div class="balance-item">
                     <div class="balance-label">Активных ордеров</div>
-                    <div class="balance-value text-yellow" id="activeOrdersCount">0</div>
+                    <div class="balance-value text-yellow">0</div>
                 </div>
                 <div class="balance-item">
                     <div class="balance-label">Открытых позиций</div>
-                    <div class="balance-value text-green" id="openPositionsCount">0</div>
+                    <div class="balance-value text-green">0</div>
                 </div>
             </div>
         </div>
@@ -213,29 +213,9 @@
                     </div>
                 </div>
 
-                <!-- MY ACTIVE ORDERS -->
-                <div class="trade-history slide-in" id="myOrdersSection" style="display: none;">
-                    <div class="trade-history-header">
-                        🎯 МОИ АКТИВНЫЕ ОРДЕРА
-                        <button onclick="toggleMyOrders()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em;">
-                            Скрыть
-                        </button>
-                    </div>
-                    <div class="trade-history-list" id="myOrdersList">
-                        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                            Нет активных ордеров
-                        </div>
-                    </div>
-                </div>
-
                 <!-- TRADE HISTORY -->
                 <div class="trade-history slide-in">
-                    <div class="trade-history-header">
-                        📊 ИСТОРИЯ СДЕЛОК
-                        <button onclick="toggleMyOrders()" style="float: right; padding: 5px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); cursor: pointer; border-radius: 4px; font-size: 0.8em;">
-                            Мои ордера
-                        </button>
-                    </div>
+                    <div class="trade-history-header">📊 ИСТОРИЯ СДЕЛОК</div>
                     <div class="trade-history-list" id="tradeHistory">
                         <div style="padding: 20px; text-align: center; color: var(--text-dim);">
                             Загрузка...
