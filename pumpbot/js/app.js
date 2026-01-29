@@ -84,6 +84,8 @@ let ammPrices = { higher: 0.5, lower: 0.5 };
 let recentTrades = [];
 let selectedSide = 'higher';
 let selectedOrderType = 'market';
+let userOrders = [];  // NEW: Track user's active orders
+let userPositions = []; // NEW: Track user's positions
 
 // ============================================
 // КОШЕЛЬКИ
@@ -477,6 +479,145 @@ function renderTradeHistory() {
 }
 
 // ============================================
+// USER ORDERS & POSITIONS
+// ============================================
+async function fetchUserOrders() {
+    if (!wallet) {
+        userOrders = [];
+        updateOrdersDisplay();
+        return;
+    }
+
+    try {
+        const intervalMinutes = getCurrentInterval();
+        const response = await fetch(`${API_BASE}/api/orders?action=user-orders&wallet=${wallet}&intervalMinutes=${intervalMinutes}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            userOrders = data.orders || [];
+            updateOrdersDisplay();
+        }
+    } catch (error) {
+        console.error('❌ Failed to fetch user orders:', error);
+    }
+}
+
+async function fetchUserPositions() {
+    if (!wallet) {
+        userPositions = [];
+        updatePositionsDisplay();
+        return;
+    }
+
+    try {
+        const intervalMinutes = getCurrentInterval();
+        const response = await fetch(`${API_BASE}/api/orders?action=user-positions&wallet=${wallet}&intervalMinutes=${intervalMinutes}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            userPositions = data.positions || [];
+            updatePositionsDisplay();
+        }
+    } catch (error) {
+        console.error('❌ Failed to fetch user positions:', error);
+    }
+}
+
+function updateOrdersDisplay() {
+    // Update counter
+    document.getElementById('activeOrdersCount').textContent = userOrders.length;
+    
+    // Update orders list
+    const container = document.getElementById('myOrdersList');
+    
+    if (userOrders.length === 0) {
+        container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет активных ордеров</div>';
+        return;
+    }
+    
+    container.innerHTML = userOrders.map(order => {
+        const sideClass = order.side === 'higher' ? 'buy' : 'sell';
+        const sideText = order.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ';
+        const filled = order.filled || 0;
+        const remaining = order.amount - filled;
+        const filledPercent = (filled / order.amount * 100).toFixed(1);
+        
+        return `
+            <div class="trade-item ${sideClass}" style="position: relative;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600;">${sideText} @ ${order.price.toFixed(4)}</div>
+                    <div class="trade-time">
+                        ${remaining.toFixed(0)} / ${order.amount.toFixed(0)} шт
+                        ${filled > 0 ? `(${filledPercent}% заполнено)` : ''}
+                    </div>
+                </div>
+                <button 
+                    onclick="cancelOrder(${order.id})" 
+                    style="padding: 8px 16px; background: var(--accent-red); color: #000; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; font-size: 0.9em;"
+                >
+                    ✕
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+function updatePositionsDisplay() {
+    // Update counter
+    const hasPositions = userPositions.length > 0 ? '1' : '0';
+    document.getElementById('openPositionsCount').textContent = hasPositions;
+}
+
+async function cancelOrder(orderId) {
+    if (!wallet) {
+        alert('Подключите кошелек');
+        return;
+    }
+    
+    if (!confirm('Отменить этот ордер?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/orders?orderId=${orderId}&wallet=${wallet}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('✅ Ордер отменен!');
+            
+            // Refresh data
+            await Promise.all([
+                fetchUserOrders(),
+                fetchOrderBook(),
+                fetchTokenBalance()
+            ]);
+        } else {
+            alert(`Ошибка: ${result.error}`);
+        }
+    } catch (error) {
+        console.error('❌ Failed to cancel order:', error);
+        alert('Ошибка при отмене ордера');
+    }
+}
+
+function toggleMyOrders() {
+    const myOrdersSection = document.getElementById('myOrdersSection');
+    if (myOrdersSection.style.display === 'none') {
+        myOrdersSection.style.display = 'block';
+        fetchUserOrders();
+    } else {
+        myOrdersSection.style.display = 'none';
+    }
+}
+
+// Make functions globally available
+window.cancelOrder = cancelOrder;
+window.toggleMyOrders = toggleMyOrders;
+
+// ============================================
 // TRADING INTERFACE
 // ============================================
 function switchOrderType(type) {
@@ -582,6 +723,15 @@ async function executeTrade(side) {
         return;
     }
     
+    // OPTIONAL: Uncomment to disable market orders when orderbook is empty
+    // if (selectedOrderType === 'market') {
+    //     const hasOrders = orderBookData.higher.length > 0 || orderBookData.lower.length > 0;
+    //     if (!hasOrders) {
+    //         alert('Невозможно разместить маркет ордер - стакан пуст. Используйте лимитный ордер.');
+    //         return;
+    //     }
+    // }
+    
     try {
         const intervalMinutes = getCurrentInterval();
         
@@ -631,7 +781,9 @@ async function executeTrade(side) {
             await Promise.all([
                 fetchOrderBook(),
                 fetchRecentTrades(),
-                fetchTokenBalance()
+                fetchTokenBalance(),
+                fetchUserOrders(),      // NEW: Refresh user orders
+                fetchUserPositions()    // NEW: Refresh positions
             ]);
         } else {
             alert(`Ошибка: ${result.error}`);
@@ -656,7 +808,9 @@ window.loadMarketData = async function() {
     console.log(`📊 Loading data for ${intervalMinutes}m round`);
     await Promise.all([
         fetchOrderBook(),
-        fetchRecentTrades()
+        fetchRecentTrades(),
+        fetchUserOrders(),      // NEW: Load user orders
+        fetchUserPositions()    // NEW: Load positions
     ]);
 };
 
@@ -772,7 +926,9 @@ window.addEventListener('load', async () => {
     await Promise.all([
         updateMarketCap(),
         fetchOrderBook(),
-        fetchRecentTrades()
+        fetchRecentTrades(),
+        fetchUserOrders(),      // NEW: Load user orders
+        fetchUserPositions()    // NEW: Load positions
     ]);
     
     console.log('✅ Раунд инициализирован');
@@ -785,7 +941,11 @@ window.addEventListener('load', async () => {
     setInterval(fetchRecentTrades, 10000);
     setInterval(fetchAllRounds, 30000); // FIXED: Refresh round data every 30s
     setInterval(() => {
-        if (wallet) fetchTokenBalance();
+        if (wallet) {
+            fetchTokenBalance();
+            fetchUserOrders();      // NEW: Refresh user orders
+            fetchUserPositions();   // NEW: Refresh positions
+        }
     }, 20000);
     
     console.log('✅ Приложение готово к работе');
