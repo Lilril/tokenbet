@@ -1,6 +1,5 @@
 // ============================================
 // ORDERS API - PRODUCTION VERSION WITH AUTO ROUND GENERATION
-// FIXED: Matching logic, user stats, order cancellation
 // ============================================
 
 import { sql } from '@vercel/postgres';
@@ -133,8 +132,9 @@ async function getOrCreateUser(walletAddress) {
     }
 }
 
-async function getActiveRound() {
-    return await getOrCreateCurrentRound(15);
+// FIXED: Now accepts intervalMinutes parameter instead of hardcoded 15
+async function getActiveRound(intervalMinutes = 15) {
+    return await getOrCreateCurrentRound(intervalMinutes);
 }
 
 async function getLatestPoolSnapshot(roundId) {
@@ -273,22 +273,16 @@ async function getUserPositions(userId, roundId) {
     }
 }
 
-// FIX #3: Правильная логика matching
 async function getMatchableOrders(roundId, side, price) {
     try {
         const oppositeSide = side === 'higher' ? 'lower' : 'higher';
         
-        // Для матчинга:
-        // - HIGHER покупатель с ценой 0.6 матчится с LOWER продавцом с ценой <= 0.4 (сумма = 1.0)
-        // - LOWER покупатель с ценой 0.3 матчится с HIGHER продавцом с ценой <= 0.7 (сумма = 1.0)
         const result = await sql`
             SELECT id, user_id, side, amount, filled, price
             FROM limit_orders
-            WHERE round_id = ${roundId} 
-            AND side = ${oppositeSide}
-            AND status = 'active' 
-            AND amount > filled
-            AND ABS((${price} + price) - 1.0) < 0.01
+            WHERE round_id = ${roundId} AND side = ${oppositeSide}
+            AND status = 'active' AND amount > filled
+            AND ${price} + price >= 1
             ORDER BY 
                 CASE WHEN side = 'higher' THEN price END DESC,
                 CASE WHEN side = 'lower' THEN price END ASC,
@@ -330,52 +324,6 @@ async function cancelOrder(orderId, userId) {
         return result.rows[0] || null;
     } catch (error) {
         console.error('❌ cancelOrder error:', error);
-        throw error;
-    }
-}
-
-// FIX #1: Получить активные ордера пользователя
-async function getUserActiveOrders(userId, roundId) {
-    try {
-        const result = await sql`
-            SELECT * FROM limit_orders
-            WHERE user_id = ${userId} 
-            AND round_id = ${roundId}
-            AND status = 'active'
-            ORDER BY created_at DESC
-        `;
-        return result.rows;
-    } catch (error) {
-        console.error('❌ getUserActiveOrders error:', error);
-        throw error;
-    }
-}
-
-// FIX #1: Получить статистику пользователя
-async function getUserStats(userId, roundId) {
-    try {
-        const ordersResult = await sql`
-            SELECT COUNT(*) as count
-            FROM limit_orders
-            WHERE user_id = ${userId} 
-            AND round_id = ${roundId}
-            AND status = 'active'
-        `;
-        
-        const positionsResult = await sql`
-            SELECT COUNT(*) as count
-            FROM user_positions
-            WHERE user_id = ${userId} 
-            AND round_id = ${roundId}
-            AND amount > 0
-        `;
-        
-        return {
-            activeOrders: parseInt(ordersResult.rows[0].count),
-            openPositions: parseInt(positionsResult.rows[0].count)
-        };
-    } catch (error) {
-        console.error('❌ getUserStats error:', error);
         throw error;
     }
 }
@@ -428,7 +376,6 @@ const db = {
     getLatestPoolSnapshot, savePoolSnapshot, getAggregatedOrderBook,
     placeLimitOrder, recordTrade, getRecentTrades, upsertUserPosition,
     getUserPositions, getMatchableOrders, updateOrderFilled, cancelOrder,
-    getUserActiveOrders, getUserStats,
     checkRateLimit, logAction, sql
 };
 
@@ -479,7 +426,7 @@ export default async function handler(req, res) {
             const rateLimitError = await enforceRateLimit(req, res, clientIP, `GET:${action}`);
             if (rateLimitError) return;
             
-            // GET ALL CURRENT ROUNDS
+            // GET ALL CURRENT ROUNDS (для табов)
             if (action === 'rounds') {
                 const rounds = [];
                 
@@ -508,68 +455,23 @@ export default async function handler(req, res) {
                 });
             }
             
-            // FIX #1: GET USER STATS
-            if (action === 'userstats') {
-                const { wallet, roundId } = query;
-                
-                if (!wallet) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Wallet address required'
-                    });
-                }
-                
-                const user = await db.getOrCreateUser(wallet);
-                const round = roundId ? await getRoundById(parseInt(roundId)) : await getOrCreateCurrentRound(15);
-                
-                if (!round) {
-                    return res.status(404).json({
-                        success: false,
-                        error: 'Round not found'
-                    });
-                }
-                
-                const stats = await db.getUserStats(user.id, round.id);
+            // NEW: Get all active rounds for all intervals (simplified version)
+            if (action === 'all-rounds') {
+                const rounds = await Promise.all([
+                    getOrCreateCurrentRound(15),
+                    getOrCreateCurrentRound(60),
+                    getOrCreateCurrentRound(240)
+                ]);
                 
                 return res.status(200).json({
                     success: true,
-                    ...stats
-                });
-            }
-            
-            // FIX #4: GET USER'S ACTIVE ORDERS
-            if (action === 'myorders') {
-                const { wallet, roundId } = query;
-                
-                if (!wallet) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Wallet address required'
-                    });
-                }
-                
-                const user = await db.getOrCreateUser(wallet);
-                const round = roundId ? await getRoundById(parseInt(roundId)) : await getOrCreateCurrentRound(15);
-                
-                if (!round) {
-                    return res.status(404).json({
-                        success: false,
-                        error: 'Round not found'
-                    });
-                }
-                
-                const orders = await db.getUserActiveOrders(user.id, round.id);
-                
-                return res.status(200).json({
-                    success: true,
-                    orders: orders.map(o => ({
-                        id: o.id,
-                        side: o.side,
-                        amount: parseFloat(o.amount),
-                        filled: parseFloat(o.filled),
-                        price: parseFloat(o.price),
-                        status: o.status,
-                        createdAt: o.created_at
+                    rounds: rounds.map(round => ({
+                        id: round.id,
+                        slug: round.slug,
+                        interval_minutes: round.interval_minutes,
+                        start_time: round.start_time,
+                        end_time: round.end_time,
+                        status: round.status
                     }))
                 });
             }
@@ -614,7 +516,9 @@ export default async function handler(req, res) {
                     roundId: round.id,
                     roundSlug: round.slug,
                     roundNumber: round.round_number,
-                    roundEndTime: round.end_time
+                    intervalMinutes: round.interval_minutes,
+                    startTime: round.start_time,
+                    endTime: round.end_time
                 });
             }
             
@@ -631,13 +535,13 @@ export default async function handler(req, res) {
                         amount: parseFloat(t.amount),
                         price: parseFloat(t.price),
                         cost: parseFloat(t.total_cost),
-                        timestamp: new Date(t.created_at).getTime(),
+                        time: t.created_at,
                         type: t.trade_type
                     }))
                 });
             }
             
-            // QUOTE
+            // QUOTE для маркет ордера
             if (action === 'quote') {
                 const { side, amount } = query;
                 const amt = parseFloat(amount);
@@ -745,7 +649,7 @@ export default async function handler(req, res) {
                 });
             }
             
-            // DEFAULT
+            // DEFAULT: Вернуть всё
             const orderBook = await db.getAggregatedOrderBook(round.id);
             const poolSnapshot = await db.getLatestPoolSnapshot(round.id);
             const recentTrades = await db.getRecentTrades(round.id, 10);
@@ -810,6 +714,7 @@ export default async function handler(req, res) {
                 });
             }
             
+            // Получить раунд
             let round;
             if (roundId) {
                 round = await getRoundById(roundId);
@@ -981,7 +886,7 @@ export default async function handler(req, res) {
         }
         
         // ============================================
-        // DELETE - Отменить ордер (FIX #4)
+        // DELETE - Отменить ордер
         // ============================================
         if (method === 'DELETE') {
             const { orderId, wallet } = query;
@@ -994,7 +899,7 @@ export default async function handler(req, res) {
             }
             
             const user = await db.getOrCreateUser(wallet);
-            const canceledOrder = await db.cancelOrder(parseInt(orderId), user.id);
+            const canceledOrder = await db.cancelOrder(parseFloat(orderId), user.id);
             
             if (!canceledOrder) {
                 return res.status(404).json({
