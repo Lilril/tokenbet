@@ -631,17 +631,31 @@ function updateMyOrdersModalList() {
         return;
     }
     
+    // Получаем текущий интервал из выбранного раунда
+    const currentInterval = getCurrentInterval();
+    
     list.innerHTML = userOrders.map(order => {
         // Определяем название раунда
         let roundName = 'undefined';
-        if (order.interval_minutes === 15) roundName = '15m';
-        else if (order.interval_minutes === 60) roundName = '1h';
-        else if (order.interval_minutes === 240) roundName = '4h';
+        if (order.interval_minutes) {
+            // Если API вернул interval_minutes - используем его
+            if (order.interval_minutes === 15) roundName = '15m';
+            else if (order.interval_minutes === 60) roundName = '1h';
+            else if (order.interval_minutes === 240) roundName = '4h';
+        } else {
+            // Иначе используем текущий выбранный интервал
+            if (currentInterval === 15) roundName = '15m';
+            else if (currentInterval === 60) roundName = '1h';
+            else if (currentInterval === 240) roundName = '4h';
+        }
         
         // Считаем остаток токенов (если есть filled)
         const filled = order.filled || 0;
         const remaining = order.amount - filled;
         const showRemaining = filled > 0;
+        
+        // Определяем тип ордера
+        const orderType = order.order_type || (order.price === 0 ? 'Маркет' : 'Лимит');
         
         return `
             <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
@@ -651,7 +665,7 @@ function updateMyOrdersModalList() {
                             ${order.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ'}
                         </span>
                         <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
-                            ${order.order_type === 'market' ? 'Маркет' : 'Лимит'}
+                            ${orderType}
                         </span>
                     </div>
                     <div style="color: var(--text-dim); font-size: 0.85em;">
