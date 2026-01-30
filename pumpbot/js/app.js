@@ -1376,26 +1376,29 @@ window.addEventListener('load', async () => {
     }
 
     async function renderSettlementHistory() {
-        const container = document.getElementById('settlementsHistory');
-        
-        if (!wallet) {
-            container.innerHTML = `
-                <div style="padding: 40px; text-align: center; color: var(--text-dim);">
-                    Подключите кошелек для просмотра
-                </div>
-            `;
-            return;
-        }
-        
+    const container = document.getElementById('settlementsHistory');
+    
+    if (!wallet) {
         container.innerHTML = `
-            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                Загрузка истории...
+            <div style="padding: 40px; text-align: center; color: var(--text-dim);">
+                Подключите кошелек для просмотра
             </div>
         `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+            Загрузка истории...
+        </div>
+    `;
+    
+    // ВРЕМЕННОЕ ИСПРАВЛЕНИЕ: прямой вызов API
+    try {
+        const response = await fetch(`${API_BASE}/api/settlement?action=history&wallet=${wallet}`);
+        const data = await response.json();
         
-        const history = await fetchSettlementHistory();
-        
-        if (history.length === 0) {
+        if (!data.success || !data.settlements || data.settlements.length === 0) {
             container.innerHTML = `
                 <div style="padding: 40px; text-align: center; color: var(--text-dim);">
                     <div style="font-size: 3em; margin-bottom: 15px;">📜</div>
@@ -1405,8 +1408,16 @@ window.addEventListener('load', async () => {
             return;
         }
         
-        container.innerHTML = history.map(s => renderSettlementCard(s, true)).join('');
+        container.innerHTML = data.settlements.map(s => renderSettlementCard(s, true)).join('');
+    } catch (error) {
+        console.error('❌ Error loading history:', error);
+        container.innerHTML = `
+            <div style="padding: 40px; text-align: center; color: var(--accent-red);">
+                Ошибка загрузки истории
+            </div>
+        `;
     }
+}
 
     function renderSettlementCard(settlement, showClaimed) {
         const {
@@ -1538,3 +1549,4 @@ window.addEventListener('load', async () => {
 
 });
  
+
