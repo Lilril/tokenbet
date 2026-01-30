@@ -143,8 +143,8 @@ async function settleRound(roundId) {
 
 async function getUserSettlements(userId, includeUnclaimed = false) {
     try {
-        const query = includeUnclaimed 
-            ? sql`
+        const result = includeUnclaimed 
+            ? await sql`
                 SELECT 
                     s.*,
                     r.slug as round_slug,
@@ -158,7 +158,7 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
                 WHERE s.user_id = ${userId} AND s.claimed = false
                 ORDER BY r.end_time DESC
             `
-            : sql`
+            : await sql`
                 SELECT 
                     s.*,
                     r.slug as round_slug,
@@ -174,7 +174,7 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
                 LIMIT 50
             `;
         
-        return query.rows;
+        return result.rows;
     } catch (error) {
         console.error('❌ getUserSettlements error:', error);
         throw error;
@@ -349,4 +349,3 @@ export default async function handler(req, res) {
         });
     }
 }
-
