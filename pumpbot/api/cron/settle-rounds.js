@@ -25,21 +25,28 @@ async function settleRound(roundId) {
         const round = roundResult.rows[0];
         
         // 2. Получаем финальную рыночную капитализацию
-        // TODO: Здесь нужно получить реальную капитализацию из внешнего API
-        // Например, из Jupiter, CoinGecko, или вашего источника данных
-        const finalMarketCap = await fetchFinalMarketCap(round);
+        let finalMarketCap = parseFloat(round.final_market_cap);
         
-        if (!finalMarketCap) {
-            console.error(`❌ Could not fetch final market cap for round ${roundId}`);
-            return { success: false, error: 'Market cap data unavailable' };
+        // Если final_market_cap уже установлен в БД, используем его
+        if (!finalMarketCap || finalMarketCap <= 0) {
+            // Иначе пытаемся получить из API
+            console.log(`📡 Fetching market cap from external API for round ${roundId}...`);
+            finalMarketCap = await fetchFinalMarketCap(round);
+            
+            if (!finalMarketCap) {
+                console.error(`❌ Could not fetch final market cap for round ${roundId}`);
+                return { success: false, error: 'Market cap data unavailable' };
+            }
+            
+            // Сохраняем финальную капитализацию
+            await sql`
+                UPDATE rounds 
+                SET final_market_cap = ${finalMarketCap}
+                WHERE id = ${roundId}
+            `;
+        } else {
+            console.log(`✅ Using existing final_market_cap from DB: ${finalMarketCap}`);
         }
-        
-        // Сохраняем финальную капитализацию
-        await sql`
-            UPDATE rounds 
-            SET final_market_cap = ${finalMarketCap}
-            WHERE id = ${roundId}
-        `;
         
         const initialMarketCap = parseFloat(round.start_market_cap || finalMarketCap);
         const winningSide = finalMarketCap > initialMarketCap ? 'higher' : 'lower';
