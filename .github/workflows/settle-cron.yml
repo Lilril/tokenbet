@@ -1,0 +1,46 @@
+name: Settle Rounds Cron Job
+
+on:
+  schedule:
+    # Запускается каждые 5 минут
+    - cron: '*/5 * * * *'
+  
+  # Позволяет запустить вручную из GitHub UI
+  workflow_dispatch:
+
+jobs:
+  settle-rounds:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Call Settle Rounds API
+        run: |
+          echo "🕐 Starting settle rounds cron job..."
+          echo "Time: $(date -u)"
+          
+          response=$(curl -s -w "\n%{http_code}" -X GET \
+            https://tokenbet.vercel.app/api/cron/settle-rounds \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo ""
+          echo "📊 Response Code: $http_code"
+          echo "📄 Response Body:"
+          echo "$body" | jq '.' || echo "$body"
+          echo ""
+          
+          if [ "$http_code" -ne 200 ]; then
+            echo "❌ Cron job failed with status $http_code"
+            exit 1
+          fi
+          
+          echo "✅ Cron job completed successfully"
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "⚠️ Settlement cron job failed!"
+          echo "Check the logs above for details"
