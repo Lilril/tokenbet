@@ -398,47 +398,74 @@
 
         <!-- MAIN TRADING GRID -->
         <div class="trading-grid">
-            <div class="main-panel">
-                <!-- ORDER BOOK (перемещён сюда) -->
-                <div class="orderbook-panel slide-in">
-                    <div class="orderbook-header">📖 СТАКАН ОРДЕРОВ</div>
-                    <div class="orderbook-content">
-                        <!-- HIGHER ORDERS -->
-                        <div class="orderbook-side">
-                            <div class="orderbook-side-header">
-                                <span>Цена</span>
-                                <span>Токенов</span>
-                            </div>
-                            <div id="orderBookHigher">
-                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                    Нет ордеров
-                                </div>
-                            </div>
+            <!-- ORDER BOOK PANEL (теперь слева) -->
+            <div class="orderbook-panel slide-in">
+                <div class="orderbook-header">📖 СТАКАН ОРДЕРОВ</div>
+                <div class="orderbook-content">
+                    <!-- HIGHER ORDERS -->
+                    <div class="orderbook-side">
+                        <div class="orderbook-side-header">
+                            <span>Цена</span>
+                            <span>Токенов</span>
                         </div>
-
-                        <!-- SPREAD INDICATOR -->
-                        <div style="padding: 15px; text-align: center; border: 1px dashed var(--border); margin: 15px 0; background: var(--bg-tertiary);">
-                            <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 5px;">
-                                СПРЕД
-                            </div>
-                            <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">
-                                0.00%
-                            </div>
-                        </div>
-
-                        <!-- LOWER ORDERS -->
-                        <div class="orderbook-side">
-                            <div class="orderbook-side-header">
-                                <span>Цена</span>
-                                <span>Токенов</span>
-                            </div>
-                            <div id="orderBookLower">
-                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                    Нет ордеров
-                                </div>
+                        <div id="orderBookHigher">
+                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                                Нет ордеров
                             </div>
                         </div>
                     </div>
+
+                    <!-- SPREAD INDICATOR -->
+                    <div style="padding: 15px; text-align: center; border: 1px dashed var(--border); margin: 15px 0; background: var(--bg-tertiary);">
+                        <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 5px;">
+                            СПРЕД
+                        </div>
+                        <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">
+                            0.00%
+                        </div>
+                    </div>
+
+                    <!-- LOWER ORDERS -->
+                    <div class="orderbook-side">
+                        <div class="orderbook-side-header">
+                            <span>Цена</span>
+                            <span>Токенов</span>
+                        </div>
+                        <div id="orderBookLower">
+                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                                Нет ордеров
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="main-panel">
+                <!-- PRICE DISPLAY -->
+                <div class="price-display slide-in">
+                    <div class="price-label">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
+                    <div class="price-value" id="currentCap">Загрузка...</div>
+                    
+                    <div class="price-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">⬆ Выше</div>
+                            <div class="stat-value text-green" id="statHigherPrice">0.500</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Целевая капа</div>
+                            <div class="stat-value text-yellow" id="targetCap">$---</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">⬇ Ниже</div>
+                            <div class="stat-value text-red" id="statLowerPrice">0.500</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COUNTDOWN -->
+                <div class="countdown-section slide-in">
+                    <div class="countdown-label">РАУНД ЗАКРЫВАЕТСЯ ЧЕРЕЗ</div>
+                    <div class="countdown-value" id="countdown">--:--</div>
                 </div>
 
                 <!-- TRADING INTERFACE -->
@@ -521,33 +548,6 @@
                 </div>
             </div>
 
-            <!-- PRICE & COUNTDOWN PANEL (перемещён сюда) -->
-            <div class="orderbook-panel slide-in">
-                <div class="price-display">
-                    <div class="price-label">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
-                    <div class="price-value" id="currentCap">Загрузка...</div>
-                    
-                    <div class="price-stats">
-                        <div class="stat-item">
-                            <div class="stat-label">⬆ Выше</div>
-                            <div class="stat-value text-green" id="statHigherPrice">0.500</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-label">Целевая капа</div>
-                            <div class="stat-value text-yellow" id="targetCap">$---</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-label">⬇ Ниже</div>
-                            <div class="stat-value text-red" id="statLowerPrice">0.500</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="countdown-section">
-                    <div class="countdown-label">РАУНД ЗАКРЫВАЕТСЯ ЧЕРЕЗ</div>
-                    <div class="countdown-value" id="countdown">--:--</div>
-                </div>
-            </div>
         </div>
 
         <!-- INFO BOX -->
