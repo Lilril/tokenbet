@@ -398,8 +398,52 @@
 
         <!-- MAIN TRADING GRID -->
         <div class="trading-grid">
+            <!-- СТАКАН ОРДЕРОВ (теперь слева, большой) -->
             <div class="main-panel">
-                <!-- PRICE DISPLAY -->
+                <div class="orderbook-panel slide-in">
+                    <div class="orderbook-header">📖 СТАКАН ОРДЕРОВ</div>
+                    <div class="orderbook-content">
+                        <!-- HIGHER ORDERS -->
+                        <div class="orderbook-side">
+                            <div class="orderbook-side-header">
+                                <span>Цена</span>
+                                <span>Токенов</span>
+                            </div>
+                            <div id="orderBookHigher">
+                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                                    Нет ордеров
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SPREAD INDICATOR -->
+                        <div style="padding: 15px; text-align: center; border: 1px dashed var(--border); margin: 15px 0; background: var(--bg-tertiary);">
+                            <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 5px;">
+                                СПРЕД
+                            </div>
+                            <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">
+                                0.00%
+                            </div>
+                        </div>
+
+                        <!-- LOWER ORDERS -->
+                        <div class="orderbook-side">
+                            <div class="orderbook-side-header">
+                                <span>Цена</span>
+                                <span>Токенов</span>
+                            </div>
+                            <div id="orderBookLower">
+                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                                    Нет ордеров
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- КАПИТАЛИЗАЦИЯ + COUNTDOWN (теперь справа, маленький) -->
+            <div class="orderbook-panel slide-in" style="max-height: none;">
                 <div class="price-display slide-in">
                     <div class="price-label">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
                     <div class="price-value" id="currentCap">Загрузка...</div>
@@ -420,130 +464,90 @@
                     </div>
                 </div>
 
-                <!-- COUNTDOWN -->
-                <div class="countdown-section slide-in">
+                <div class="countdown-section slide-in" style="margin: 0;">
                     <div class="countdown-label">РАУНД ЗАКРЫВАЕТСЯ ЧЕРЕЗ</div>
                     <div class="countdown-value" id="countdown">--:--</div>
                 </div>
+            </div>
+        </div>
 
-                <!-- TRADING INTERFACE -->
-                <div class="trading-interface slide-in">
-                    <!-- BUY HIGHER PANEL -->
-                    <div class="trade-panel buy">
-                        <div class="trade-panel-header">⬆ КУПИТЬ ВЫШЕ</div>
-                        
-                        <div class="order-type-selector">
-                            <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
-                                Маркет
-                            </button>
-                            <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
-                                Лимит
-                            </button>
-                        </div>
-
-                        <div class="input-group">
-                            <label class="input-label">Количество (токенов)</label>
-                            <input type="number" id="amountHigher" placeholder="0" min="0" step="1">
-                        </div>
-
-                        <div class="input-group limit-price-group" style="display: none;">
-                            <label class="input-label">Цена (0-1)</label>
-                            <input type="number" id="priceHigher" placeholder="0.5" min="0" max="1" step="0.001">
-                        </div>
-
-                        <div class="estimate-display" id="estimateHigher">
-                            <div style="color: var(--text-dim);">Введите сумму</div>
-                        </div>
-
-                        <button class="trade-btn buy" onclick="executeTrade('higher')">
-                            КУПИТЬ ВЫШЕ
+        <!-- TRADING + HISTORY (на всю ширину, под grid) -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <!-- TRADING INTERFACE -->
+            <div class="trading-interface slide-in">
+                <!-- BUY HIGHER PANEL -->
+                <div class="trade-panel buy">
+                    <div class="trade-panel-header">⬆ КУПИТЬ ВЫШЕ</div>
+                    
+                    <div class="order-type-selector">
+                        <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
+                            Маркет
+                        </button>
+                        <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
+                            Лимит
                         </button>
                     </div>
 
-                    <!-- SELL LOWER PANEL -->
-                    <div class="trade-panel sell">
-                        <div class="trade-panel-header">⬇ КУПИТЬ НИЖЕ</div>
-                        
-                        <div class="order-type-selector">
-                            <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
-                                Маркет
-                            </button>
-                            <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
-                                Лимит
-                            </button>
-                        </div>
-
-                        <div class="input-group">
-                            <label class="input-label">Количество (токенов)</label>
-                            <input type="number" id="amountLower" placeholder="0" min="0" step="1">
-                        </div>
-
-                        <div class="input-group limit-price-group" style="display: none;">
-                            <label class="input-label">Цена (0-1)</label>
-                            <input type="number" id="priceLower" placeholder="0.5" min="0" max="1" step="0.001">
-                        </div>
-
-                        <div class="estimate-display" id="estimateLower">
-                            <div style="color: var(--text-dim);">Введите сумму</div>
-                        </div>
-
-                        <button class="trade-btn sell" onclick="executeTrade('lower')">
-                            КУПИТЬ НИЖЕ
-                        </button>
+                    <div class="input-group">
+                        <label class="input-label">Количество (токенов)</label>
+                        <input type="number" id="amountHigher" placeholder="0" min="0" step="1">
                     </div>
+
+                    <div class="input-group limit-price-group" style="display: none;">
+                        <label class="input-label">Цена (0-1)</label>
+                        <input type="number" id="priceHigher" placeholder="0.5" min="0" max="1" step="0.001">
+                    </div>
+
+                    <div class="estimate-display" id="estimateHigher">
+                        <div style="color: var(--text-dim);">Введите сумму</div>
+                    </div>
+
+                    <button class="trade-btn buy" onclick="executeTrade('higher')">
+                        КУПИТЬ ВЫШЕ
+                    </button>
                 </div>
 
-                <!-- TRADE HISTORY -->
-                <div class="trade-history slide-in">
-                    <div class="trade-history-header">
-                        🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
+                <!-- SELL LOWER PANEL -->
+                <div class="trade-panel sell">
+                    <div class="trade-panel-header">⬇ КУПИТЬ НИЖЕ</div>
+                    
+                    <div class="order-type-selector">
+                        <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
+                            Маркет
+                        </button>
+                        <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
+                            Лимит
+                        </button>
                     </div>
-                    <div class="trade-history-list" id="tradeHistory">
-                        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                            Загрузка...
-                        </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Количество (токенов)</label>
+                        <input type="number" id="amountLower" placeholder="0" min="0" step="1">
                     </div>
+
+                    <div class="input-group limit-price-group" style="display: none;">
+                        <label class="input-label">Цена (0-1)</label>
+                        <input type="number" id="priceLower" placeholder="0.5" min="0" max="1" step="0.001">
+                    </div>
+
+                    <div class="estimate-display" id="estimateLower">
+                        <div style="color: var(--text-dim);">Введите сумму</div>
+                    </div>
+
+                    <button class="trade-btn sell" onclick="executeTrade('lower')">
+                        КУПИТЬ НИЖЕ
+                    </button>
                 </div>
             </div>
 
-            <!-- ORDER BOOK PANEL -->
-            <div class="orderbook-panel slide-in">
-                <div class="orderbook-header">📖 СТАКАН ОРДЕРОВ</div>
-                <div class="orderbook-content">
-                    <!-- HIGHER ORDERS -->
-                    <div class="orderbook-side">
-                        <div class="orderbook-side-header">
-                            <span>Цена</span>
-                            <span>Токенов</span>
-                        </div>
-                        <div id="orderBookHigher">
-                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                Нет ордеров
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- SPREAD INDICATOR -->
-                    <div style="padding: 15px; text-align: center; border: 1px dashed var(--border); margin: 15px 0; background: var(--bg-tertiary);">
-                        <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 5px;">
-                            СПРЕД
-                        </div>
-                        <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">
-                            0.00%
-                        </div>
-                    </div>
-
-                    <!-- LOWER ORDERS -->
-                    <div class="orderbook-side">
-                        <div class="orderbook-side-header">
-                            <span>Цена</span>
-                            <span>Токенов</span>
-                        </div>
-                        <div id="orderBookLower">
-                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                Нет ордеров
-                            </div>
-                        </div>
+            <!-- TRADE HISTORY -->
+            <div class="trade-history slide-in">
+                <div class="trade-history-header">
+                    🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
+                </div>
+                <div class="trade-history-list" id="tradeHistory">
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Загрузка...
                     </div>
                 </div>
             </div>
