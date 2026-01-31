@@ -544,39 +544,39 @@ export default async function handler(req, res) {
             }
             
             // ORDER BOOK
-            if (action === 'orderbook') {
-                const orderBook = await db.getAggregatedOrderBook(round.id);
-                const poolSnapshot = await db.getLatestPoolSnapshot(round.id);
-                
-                const ammPrice = poolSnapshot ? {
-                    higher: parseFloat(poolSnapshot.lower_reserve) / parseFloat(poolSnapshot.higher_reserve),
-                    lower: parseFloat(poolSnapshot.higher_reserve) / parseFloat(poolSnapshot.lower_reserve)
-                } : { higher: 0.5, lower: 0.5 };
-                
-                return res.status(200).json({
-                    success: true,
-                    orderBook,
-                    ammPrice,
-                    pool: poolSnapshot ? {
-                        higher: parseFloat(poolSnapshot.higher_reserve),
-                        lower: parseFloat(poolSnapshot.lower_reserve),
-                        k: parseFloat(poolSnapshot.k_constant)
-                    } : null,
-                    roundId: round.id,
-                    roundSlug: round.slug,
-                    roundNumber: round.round_number,
-                    intervalMinutes: round.interval_minutes,  // Added for compatibility
-                    startTime: round.start_time,              // Added for compatibility
-                    endTime: round.end_time,                  // Added for compatibility
-                    roundEndTime: round.end_time,
-                    poolSnapshot: poolSnapshot ? {            // Added for compatibility
-                        higher: parseFloat(poolSnapshot.higher_reserve),
-                        lower: parseFloat(poolSnapshot.lower_reserve),
-                        k: parseFloat(poolSnapshot.k_constant)
-                    } : null
-                });
-            }
-            
+if (action === 'orderbook') {
+    const orderBook = await db.getAggregatedOrderBook(round.id);
+    const poolSnapshot = await db.getLatestPoolSnapshot(round.id);
+    
+    const ammPrice = poolSnapshot ? {
+        higher: parseFloat(poolSnapshot.lower_reserve) / parseFloat(poolSnapshot.higher_reserve),
+        lower: parseFloat(poolSnapshot.higher_reserve) / parseFloat(poolSnapshot.lower_reserve)
+    } : { higher: 0.5, lower: 0.5 };
+    
+    return res.status(200).json({
+        success: true,
+        orderBook,
+        ammPrice,
+        pool: poolSnapshot ? {
+            higher: parseFloat(poolSnapshot.higher_reserve),
+            lower: parseFloat(poolSnapshot.lower_reserve),
+            k: parseFloat(poolSnapshot.k_constant)
+        } : null,
+        roundId: round.id,
+        roundSlug: round.slug,
+        roundNumber: round.round_number,
+        intervalMinutes: round.interval_minutes,
+        startTime: round.start_time,
+        endTime: round.end_time,
+        startMarketCap: round.start_market_cap,  // ← ДОБАВЬ ЭТУ СТРОКУ!
+        roundEndTime: round.end_time,
+        poolSnapshot: poolSnapshot ? {
+            higher: parseFloat(poolSnapshot.higher_reserve),
+            lower: parseFloat(poolSnapshot.lower_reserve),
+            k: parseFloat(poolSnapshot.k_constant)
+        } : null
+    });
+}            
             // TRADE HISTORY
             if (action === 'trades') {
                 const trades = await db.getRecentTrades(round.id, 20);
