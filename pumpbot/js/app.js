@@ -341,11 +341,19 @@ async function fetchOrderBook() {
     try {
         const intervalMinutes = getCurrentInterval();
         const response = await fetch(`${API_BASE}/api/orders?action=orderbook&intervalMinutes=${intervalMinutes}`);
+        //                            ↑ ДОБАВИЛ (
         const data = await response.json();
         
         if (data.success) {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
+            
+            // ✅ ДОБАВЬ ЭТО: Установи targetMarketCap ОДИН РАЗ из данных раунда
+            if (data.startMarketCap && targetMarketCap === 0) {
+                targetMarketCap = data.startMarketCap;
+                console.log(`🎯 Target market cap set: $${targetMarketCap}`);
+                //          ↑ ДОБАВИЛ (
+            }
             
             // DEBUG: Log orderbook data
             console.log('📖 OrderBook loaded:', {
@@ -1550,6 +1558,7 @@ window.addEventListener('load', async () => {
 
 });
  
+
 
 
 
