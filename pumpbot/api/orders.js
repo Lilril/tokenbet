@@ -64,13 +64,36 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         const endTime = new Date(closeTimestamp * 1000);
         const startTime = new Date(endTime.getTime() - intervalMinutes * 60 * 1000);
         
+        // ✅ НОВОЕ: Получаем текущую market cap для нового раунда
+        let startMarketCap = 0;
+        try {
+            const baseUrl = process.env.VERCEL_URL 
+                ? `https://${process.env.VERCEL_URL}` 
+                : 'http://localhost:3000';
+            
+            const marketCapResponse = await fetch(
+                `${baseUrl}/api/marketcap?token=GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump`
+            );
+            
+            if (marketCapResponse.ok) {
+                const marketCapData = await marketCapResponse.json();
+                if (marketCapData.success && marketCapData.marketCap > 0) {
+                    startMarketCap = marketCapData.marketCap;
+                    console.log(`✅ Got start market cap: $${startMarketCap.toFixed(2)}`);
+                }
+            }
+        } catch (error) {
+            console.error('⚠️ Failed to fetch start market cap:', error.message);
+            // Продолжаем с 0, но логируем ошибку
+        }
+        
         const newRound = await sql`
             INSERT INTO rounds (
                 slug, round_number, interval_minutes,
-                start_time, end_time, target_market_cap, status
+                start_time, end_time, target_market_cap, start_market_cap, status
             ) VALUES (
                 ${slug}, ${closeTimestamp}, ${intervalMinutes},
-                ${startTime.toISOString()}, ${endTime.toISOString()}, 0, 'active'
+                ${startTime.toISOString()}, ${endTime.toISOString()}, 0, ${startMarketCap}, 'active'
             ) RETURNING *
         `;
         
@@ -81,7 +104,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
             VALUES (${round.id}, 10000, 10000, 100000000)
         `;
         
-        console.log(`✅ Created round ${slug} (ID: ${round.id})`);
+        console.log(`✅ Created round ${slug} (ID: ${round.id}, Start Cap: $${startMarketCap})`);
         return round;
     } catch (error) {
         console.error('❌ getOrCreateCurrentRound error:', error);
