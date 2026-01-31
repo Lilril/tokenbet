@@ -438,6 +438,9 @@ function updatePriceStats() {
     document.getElementById('statHigherPrice').textContent = ammPrices.higher.toFixed(3);
     document.getElementById('statLowerPrice').textContent = ammPrices.lower.toFixed(3);
     
+    // Update Polymarket-style side buttons
+    if (typeof updateSideOdds === 'function') updateSideOdds();
+    
     // Целевая капа: берём start_market_cap раунда, если он есть
     const capToShow = targetMarketCap > 0 ? targetMarketCap : currentMarketCap;
     
@@ -1037,6 +1040,231 @@ async function executeTrade(side) {
         alert('Ошибка при размещении ордера');
     }
 }
+
+// ============================================
+// POLYMARKET-STYLE UNIFIED TRADING
+// ============================================
+let currentTradeSide = 'higher';
+
+function switchTradeSide(side) {
+    currentTradeSide = side;
+    
+    const higherBtn = document.getElementById('sideHigherBtn');
+    const lowerBtn = document.getElementById('sideLowerBtn');
+    const executeBtn = document.getElementById('tradeExecuteBtn');
+    
+    if (side === 'higher') {
+        higherBtn.style.background = 'var(--accent-green)';
+        higherBtn.style.color = '#000';
+        higherBtn.style.border = 'none';
+        lowerBtn.style.background = 'var(--bg-tertiary)';
+        lowerBtn.style.color = 'var(--text-secondary)';
+        lowerBtn.style.border = '1px solid var(--border)';
+        executeBtn.style.background = 'var(--accent-green)';
+        executeBtn.style.color = '#000';
+        executeBtn.textContent = 'КУПИТЬ ВЫШЕ';
+    } else {
+        lowerBtn.style.background = 'var(--accent-red)';
+        lowerBtn.style.color = '#fff';
+        lowerBtn.style.border = 'none';
+        higherBtn.style.background = 'var(--bg-tertiary)';
+        higherBtn.style.color = 'var(--text-secondary)';
+        higherBtn.style.border = '1px solid var(--border)';
+        executeBtn.style.background = 'var(--accent-red)';
+        executeBtn.style.color = '#fff';
+        executeBtn.textContent = 'КУПИТЬ НИЖЕ';
+    }
+    
+    // Recalculate estimate
+    calculateUnifiedEstimate();
+}
+
+async function calculateUnifiedEstimate() {
+    const amount = parseFloat(document.getElementById('tradeAmount').value) || 0;
+    const estimateEl = document.getElementById('tradeEstimate');
+    
+    if (amount <= 0) {
+        estimateEl.innerHTML = '<div style="color: var(--text-dim);">Введите сумму</div>';
+        return;
+    }
+    
+    const side = currentTradeSide;
+    
+    if (selectedOrderType === 'market') {
+        try {
+            const intervalMinutes = getCurrentInterval();
+            const response = await fetch(
+                `${API_BASE}/api/orders?action=quote&side=${side}&amount=${amount}&intervalMinutes=${intervalMinutes}`
+            );
+            const data = await response.json();
+            
+            if (data.success) {
+                const oppositeSide = side === 'higher' ? 'lower' : 'higher';
+                const cost = data[`${oppositeSide}Needed`] || (data.avgPrice * amount);
+                
+                estimateEl.innerHTML = `
+                    <div class="estimate-row">
+                        <span>Средняя цена:</span>
+                        <span>${data.avgPrice.toFixed(4)}</span>
+                    </div>
+                    <div class="estimate-row">
+                        <span>Price Impact:</span>
+                        <span class="${data.priceImpact > 5 ? 'text-red' : 'text-green'}">
+                            ${data.priceImpact?.toFixed(2) || '0.00'}%
+                        </span>
+                    </div>
+                    <div class="estimate-row">
+                        <span>Итого:</span>
+                        <span class="text-yellow">${cost.toFixed(0)} токенов</span>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('❌ Quote error:', error);
+        }
+    } else {
+        const price = parseFloat(document.getElementById('tradePrice').value) || ammPrices[side];
+        
+        estimateEl.innerHTML = `
+            <div class="estimate-row">
+                <span>Цена:</span>
+                <span>${price.toFixed(4)}</span>
+            </div>
+            <div class="estimate-row">
+                <span>Итого:</span>
+                <span class="text-yellow">${(amount * price).toFixed(0)} токенов</span>
+            </div>
+        `;
+    }
+}
+
+async function executeUnifiedTrade() {
+    // Delegate to existing executeTrade with current side
+    // But use unified inputs
+    if (!wallet) {
+        openModal();
+        return;
+    }
+    
+    const amount = parseFloat(document.getElementById('tradeAmount').value) || 0;
+    const side = currentTradeSide;
+    
+    if (amount <= 0) {
+        alert('Введите корректную сумму');
+        return;
+    }
+    
+    if (amount > tokenBalance) {
+        alert('Недостаточно токенов');
+        return;
+    }
+    
+    try {
+        const intervalMinutes = getCurrentInterval();
+        
+        const orderData = {
+            wallet,
+            side,
+            amount,
+            type: selectedOrderType,
+            intervalMinutes
+        };
+        
+        if (selectedOrderType === 'limit') {
+            const price = parseFloat(document.getElementById('tradePrice').value);
+            
+            if (!price || price <= 0 || price >= 1) {
+                alert('Введите корректную цену (от 0 до 1)');
+                return;
+            }
+            
+            orderData.price = price;
+        }
+        
+        const response = await fetch(`${API_BASE}/api/orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderData)
+        });
+        
+        const result = await response.json();
+        console.log('📝 Order result:', result);
+        
+        if (result.success) {
+            const sideText = side === 'higher' ? 'ВЫШЕ' : 'НИЖЕ';
+            const typeText = selectedOrderType === 'market' ? 'Маркет' : 'Лимит';
+            
+            if (selectedOrderType === 'market' && result.trade) {
+                let message = `✅ ${typeText} ордер на ${sideText} исполнен!\n\n`;
+                message += `Количество: ${amount} токенов\n`;
+                message += `Средняя цена: ${result.trade.price.toFixed(4)}\n`;
+                
+                if (result.trade.source === 'orderbook') {
+                    message += `\n📊 Исполнено из стакана ордеров`;
+                } else if (result.trade.source === 'mixed') {
+                    message += `\n📊 Из стакана: ${result.trade.orderbookFilled} токенов`;
+                    message += `\n🏦 Из AMM пула: ${result.trade.ammFilled} токенов`;
+                } else if (result.trade.source === 'amm') {
+                    message += `\n🏦 Исполнено из AMM пула`;
+                }
+                
+                alert(message);
+            } else {
+                alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`);
+            }
+            
+            // Reset
+            document.getElementById('tradeAmount').value = '';
+            document.getElementById('tradeEstimate').innerHTML = '<div style="color: var(--text-dim);">Введите сумму</div>';
+            
+            // Refresh data
+            await Promise.all([
+                fetchOrderBook(),
+                fetchRecentTrades(),
+                fetchTokenBalance(),
+                fetchUserOrders(),
+                fetchUserPositions()
+            ]);
+        } else {
+            alert(`Ошибка: ${result.error}`);
+        }
+    } catch (error) {
+        console.error('❌ Trade execution error:', error);
+        alert('Ошибка при размещении ордера');
+    }
+}
+
+// Update side odds when prices update
+function updateSideOdds() {
+    const ho = document.getElementById('sideHigherOdds');
+    const lo = document.getElementById('sideLowerOdds');
+    if (ho) ho.textContent = ammPrices.higher.toFixed(3);
+    if (lo) lo.textContent = ammPrices.lower.toFixed(3);
+}
+
+// Attach input listener for unified trade
+document.addEventListener('DOMContentLoaded', function() {
+    const tradeAmountInput = document.getElementById('tradeAmount');
+    const tradePriceInput = document.getElementById('tradePrice');
+    
+    if (tradeAmountInput) {
+        let debounceTimer;
+        tradeAmountInput.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(calculateUnifiedEstimate, 300);
+        });
+    }
+    if (tradePriceInput) {
+        tradePriceInput.addEventListener('input', () => {
+            calculateUnifiedEstimate();
+        });
+    }
+});
+
+// Make new functions globally available
+window.switchTradeSide = switchTradeSide;
+window.executeUnifiedTrade = executeUnifiedTrade;
+window.calculateUnifiedEstimate = calculateUnifiedEstimate;
 
 // ============================================
 // РАУНДЫ
