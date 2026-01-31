@@ -430,12 +430,13 @@ function updatePriceStats() {
     document.getElementById('statHigherPrice').textContent = ammPrices.higher.toFixed(3);
     document.getElementById('statLowerPrice').textContent = ammPrices.lower.toFixed(3);
     
-    if (currentMarketCap > 0) {
-        const formatted = currentMarketCap >= 1000000 
-            ? `$${(currentMarketCap / 1000000).toFixed(2)}M`
-            : currentMarketCap >= 1000
-            ? `$${(currentMarketCap / 1000).toFixed(1)}K`
-            : `$${currentMarketCap.toFixed(2)}`;
+    // ✅ ИСПРАВЛЕНО: Используй targetMarketCap вместо currentMarketCap
+    if (targetMarketCap > 0) {
+        const formatted = targetMarketCap >= 1000000 
+            ? `$${(targetMarketCap / 1000000).toFixed(2)}M`
+            : targetMarketCap >= 1000
+            ? `$${(targetMarketCap / 1000).toFixed(1)}K`
+            : `$${targetMarketCap.toFixed(2)}`;
         
         document.getElementById('targetCap').textContent = formatted;
     }
@@ -1549,5 +1550,6 @@ window.addEventListener('load', async () => {
 
 });
  
+
 
 
