@@ -227,7 +227,7 @@ button:disabled:hover {
    ============================================ */
 .trading-grid {
     display: grid;
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: 1fr 380px;
     gap: 20px;
     margin-bottom: 20px;
 }
@@ -243,7 +243,7 @@ button:disabled:hover {
    ============================================ */
 .price-display {
     border: 2px solid var(--accent-yellow);
-    padding: 30px;
+    padding: 20px;
     text-align: center;
     background: var(--bg-secondary);
     position: relative;
@@ -251,14 +251,14 @@ button:disabled:hover {
 
 .price-label {
     color: var(--accent-yellow);
-    font-size: 0.9em;
-    margin-bottom: 10px;
+    font-size: 0.8em;
+    margin-bottom: 8px;
     text-transform: uppercase;
     letter-spacing: 1px;
 }
 
 .price-value {
-    font-size: 3.5em;
+    font-size: 2.2em;
     font-weight: 700;
     color: var(--accent-yellow);
     text-shadow: 
@@ -270,9 +270,9 @@ button:disabled:hover {
 .price-stats {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
-    margin-top: 20px;
-    padding-top: 20px;
+    gap: 8px;
+    margin-top: 15px;
+    padding-top: 15px;
     border-top: 1px solid var(--border);
 }
 
@@ -281,26 +281,25 @@ button:disabled:hover {
 }
 
 .stat-label {
-    font-size: 0.75em;
+    font-size: 0.7em;
     color: var(--text-dim);
     text-transform: uppercase;
 }
 
 .stat-value {
-    font-size: 1.2em;
+    font-size: 1em;
     font-weight: 600;
-    margin-top: 5px;
+    margin-top: 4px;
 }
 
 /* ============================================
-   ORDER BOOK
+   ORDER BOOK (теперь в main-panel)
    ============================================ */
 .orderbook-panel {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    max-height: 600px;
 }
 
 .orderbook-header {
@@ -310,6 +309,15 @@ button:disabled:hover {
     text-transform: uppercase;
     font-size: 0.9em;
     letter-spacing: 1px;
+}
+
+/* ============================================
+   SIDEBAR (капа + countdown)
+   ============================================ */
+.sidebar-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
 .orderbook-content {
@@ -678,8 +686,8 @@ input[type="number"]:focus {
         grid-template-columns: 1fr;
     }
     
-    .orderbook-panel {
-        max-height: 400px;
+    .price-value {
+        font-size: 2.8em;
     }
 }
 
