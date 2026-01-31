@@ -48,7 +48,44 @@ async function settleRound(roundId) {
             console.log(`✅ Using existing final_market_cap from DB: ${finalMarketCap}`);
         }
         
-        const initialMarketCap = parseFloat(round.start_market_cap || finalMarketCap);
+        const initialMarketCap = parseFloat(round.start_market_cap) || 0;
+        
+        // Если start_market_cap = 0, мы не можем определить победителя — возвращаем ставки
+        if (initialMarketCap <= 0) {
+            console.log(`⚠️ Round ${roundId}: start_market_cap is 0, refunding all positions`);
+            
+            // Получаем все позиции
+            const positions = await sql`
+                SELECT user_id, side, amount, avg_price, total_cost
+                FROM user_positions
+                WHERE round_id = ${roundId}
+            `;
+            
+            // Возвращаем всем их ставки (refund)
+            for (const pos of positions.rows) {
+                const totalCost = parseFloat(pos.total_cost);
+                await sql`
+                    INSERT INTO user_settlements (
+                        user_id, round_id, side, amount, avg_price, total_cost,
+                        won, payout, profit_loss, claimed
+                    ) VALUES (
+                        ${pos.user_id}, ${roundId}, ${pos.side}, ${parseFloat(pos.amount)}, 
+                        ${pos.avg_price}, ${totalCost}, true, ${totalCost}, 0, false
+                    )
+                    ON CONFLICT (user_id, round_id, side) 
+                    DO UPDATE SET won = true, payout = ${totalCost}, profit_loss = 0
+                `;
+            }
+            
+            await sql`
+                UPDATE rounds 
+                SET settlement_status = 'settled', settled_at = NOW(), winning_side = 'tie'
+                WHERE id = ${roundId}
+            `;
+            
+            return { success: true, roundId, winningSide: 'tie (refund)', settlementsCreated: positions.rows.length };
+        }
+        
         const winningSide = finalMarketCap > initialMarketCap ? 'higher' : 'lower';
         
         console.log(`🎯 Settling Round ${roundId}: ${initialMarketCap} → ${finalMarketCap} (Winner: ${winningSide})`);
@@ -121,7 +158,7 @@ async function settleRound(roundId) {
         // 6. Обновляем статус
         await sql`
             UPDATE rounds 
-            SET settlement_status = 'settled', settled_at = NOW()
+            SET settlement_status = 'settled', settled_at = NOW(), winning_side = ${winningSide}
             WHERE id = ${roundId}
         `;
         
@@ -141,33 +178,69 @@ async function settleRound(roundId) {
 }
 
 async function fetchFinalMarketCap(round) {
-    // TODO: Реализовать получение реальной капитализации
-    // Варианты:
-    // 1. Jupiter API: https://price.jup.ag/v4/price?ids=TOKEN_MINT
-    // 2. CoinGecko API
-    // 3. Ваш собственный источник данных
+    const TOKEN_ADDRESS = 'GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump';
+    const TOTAL_SUPPLY = 1000000000;
     
+    // Метод 1: DexScreener
     try {
-        const TOKEN_ADDRESS = '2KhMg3yGW4giMYAnvT28mXr4LEGeBvj8x8FKP5Tfpump';
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
         
-        // Пример с Jupiter (нужно адаптировать под ваш токен)
-        const response = await fetch(`https://price.jup.ag/v4/price?ids=${TOKEN_ADDRESS}`);
-        const data = await response.json();
+        const response = await fetch(
+            `https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`,
+            { 
+                signal: controller.signal,
+                headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+            }
+        );
+        clearTimeout(timeout);
         
-        if (data.data && data.data[TOKEN_ADDRESS]) {
-            const price = data.data[TOKEN_ADDRESS].price;
-            // Умножаем на total supply чтобы получить market cap
-            // Здесь нужна ваша логика получения market cap
-            return price * 1000000; // Примерная капитализация
+        if (response.ok) {
+            const data = await response.json();
+            if (data.pairs && data.pairs.length > 0) {
+                const bestPair = data.pairs.sort((a, b) => 
+                    (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+                )[0];
+                const price = parseFloat(bestPair.priceUsd);
+                if (price > 0 && !isNaN(price)) {
+                    const marketCap = price * TOTAL_SUPPLY;
+                    console.log(`✅ Final market cap from DexScreener: $${marketCap.toFixed(2)}`);
+                    return marketCap;
+                }
+            }
         }
-        
-        // Fallback: используем start_market_cap если не удалось получить данные
-        return parseFloat(round.start_market_cap || 0);
-        
     } catch (error) {
-        console.error('❌ Error fetching market cap:', error);
-        return null;
+        console.error('❌ DexScreener error:', error.message);
     }
+    
+    // Метод 2: Jupiter
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(
+            `https://api.jup.ag/price/v2?ids=${TOKEN_ADDRESS}`,
+            { signal: controller.signal, headers: { 'Accept': 'application/json' } }
+        );
+        clearTimeout(timeout);
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.data?.[TOKEN_ADDRESS]?.price) {
+                const price = parseFloat(data.data[TOKEN_ADDRESS].price);
+                if (price > 0 && !isNaN(price)) {
+                    const marketCap = price * TOTAL_SUPPLY;
+                    console.log(`✅ Final market cap from Jupiter: $${marketCap.toFixed(2)}`);
+                    return marketCap;
+                }
+            }
+        }
+    } catch (error) {
+        console.error('❌ Jupiter error:', error.message);
+    }
+    
+    console.error('❌ All price sources failed for final market cap');
+    return null;
 }
 
 // ============================================
@@ -183,15 +256,37 @@ export default async function handler(req, res) {
     try {
         console.log('🕐 CRON: Starting round settlement check...');
         
-        // Находим все закрытые раунды которые еще не рассчитаны
-        const roundsToSettle = await sql`
-            SELECT id, slug, end_time, settlement_status
-            FROM rounds
-            WHERE status = 'closed' 
-            AND (settlement_status IS NULL OR settlement_status = 'pending')
+        // ============================================
+        // ШАГ 1: Закрыть все истекшие активные раунды
+        // ============================================
+        const closedResult = await sql`
+            UPDATE rounds 
+            SET status = 'closed'
+            WHERE status = 'active' 
             AND end_time < NOW()
-            ORDER BY end_time ASC
-            LIMIT 10
+            RETURNING id, slug
+        `;
+        
+        if (closedResult.rows.length > 0) {
+            console.log(`🔒 Closed ${closedResult.rows.length} expired rounds: ${closedResult.rows.map(r => r.slug).join(', ')}`);
+        }
+        
+        // ============================================
+        // ШАГ 2: Settle закрытые раунды с позициями
+        // ============================================
+        // Находим все закрытые раунды которые еще не рассчитаны
+        // Приоритет: сначала раунды с позициями, потом пустые
+        const roundsToSettle = await sql`
+            SELECT r.id, r.slug, r.end_time, r.settlement_status,
+                   (SELECT COUNT(*) FROM user_positions WHERE round_id = r.id) as position_count
+            FROM rounds r
+            WHERE r.status = 'closed' 
+            AND (r.settlement_status IS NULL OR r.settlement_status = 'pending')
+            AND r.end_time < NOW()
+            ORDER BY 
+                CASE WHEN (SELECT COUNT(*) FROM user_positions WHERE round_id = r.id) > 0 THEN 0 ELSE 1 END,
+                r.end_time ASC
+            LIMIT 20
         `;
         
         if (roundsToSettle.rows.length === 0) {
