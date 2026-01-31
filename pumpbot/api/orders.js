@@ -64,27 +64,40 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         const endTime = new Date(closeTimestamp * 1000);
         const startTime = new Date(endTime.getTime() - intervalMinutes * 60 * 1000);
         
-        // ✅ НОВОЕ: Получаем текущую market cap для нового раунда
+        // ✅ ИСПРАВЛЕНО: Получаем market cap НАПРЯМУЮ из DexScreener 
+        // (вместо самовызова /api/marketcap, который часто фейлит на Vercel serverless)
         let startMarketCap = 0;
+        const TOTAL_SUPPLY = 1000000000;
+        const TOKEN_ADDR = 'GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump';
+        
         try {
-            const baseUrl = process.env.VERCEL_URL 
-                ? `https://${process.env.VERCEL_URL}` 
-                : 'http://localhost:3000';
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
             
-            const marketCapResponse = await fetch(
-                `${baseUrl}/api/marketcap?token=GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump`
+            const dexResponse = await fetch(
+                `https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDR}`,
+                { 
+                    signal: controller.signal,
+                    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+                }
             );
+            clearTimeout(timeout);
             
-            if (marketCapResponse.ok) {
-                const marketCapData = await marketCapResponse.json();
-                if (marketCapData.success && marketCapData.marketCap > 0) {
-                    startMarketCap = marketCapData.marketCap;
-                    console.log(`✅ Got start market cap: $${startMarketCap.toFixed(2)}`);
+            if (dexResponse.ok) {
+                const dexData = await dexResponse.json();
+                if (dexData.pairs && dexData.pairs.length > 0) {
+                    const bestPair = dexData.pairs.sort((a, b) => 
+                        (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+                    )[0];
+                    const price = parseFloat(bestPair.priceUsd);
+                    if (price > 0 && !isNaN(price)) {
+                        startMarketCap = price * TOTAL_SUPPLY;
+                        console.log(`✅ Got start market cap from DexScreener: $${startMarketCap.toFixed(2)}`);
+                    }
                 }
             }
         } catch (error) {
             console.error('⚠️ Failed to fetch start market cap:', error.message);
-            // Продолжаем с 0, но логируем ошибку
         }
         
         const newRound = await sql`
@@ -591,7 +604,7 @@ if (action === 'orderbook') {
         intervalMinutes: round.interval_minutes,
         startTime: round.start_time,
         endTime: round.end_time,
-        startMarketCap: round.start_market_cap,  // ← ДОБАВЬ ЭТУ СТРОКУ!
+        startMarketCap: parseFloat(round.start_market_cap) || 0,
         roundEndTime: round.end_time,
         poolSnapshot: poolSnapshot ? {
             higher: parseFloat(poolSnapshot.higher_reserve),
