@@ -393,19 +393,43 @@ function renderOrderBook() {
     const higherEl = document.getElementById('orderBookHigher');
     const lowerEl = document.getElementById('orderBookLower');
     
-    // Render HIGHER orders
-    if (orderBookData.higher.length === 0) {
+    // Determine which side is "asks" and which is "bids" based on currentTradeSide
+    // When trading HIGHER: higher orders are asks (sell side), lower are bids (buy side)  
+    // When trading LOWER: lower orders are asks, higher are bids — FLIP the book
+    const side = (typeof currentTradeSide !== 'undefined') ? currentTradeSide : 'higher';
+    
+    let asksData, bidsData, asksColor, bidsColor, asksBarColor, bidsBarColor;
+    
+    if (side === 'higher') {
+        // Normal: higher = asks (top, green), lower = bids (bottom, red)
+        asksData = orderBookData.higher;
+        bidsData = orderBookData.lower;
+        asksColor = 'text-green';
+        bidsColor = 'text-red';
+        asksBarColor = 'rgba(0, 255, 159, 0.2)';
+        bidsBarColor = 'rgba(255, 71, 87, 0.2)';
+    } else {
+        // Flipped: lower = asks (top, red), higher = bids (bottom, green)
+        asksData = orderBookData.lower;
+        bidsData = orderBookData.higher;
+        asksColor = 'text-red';
+        bidsColor = 'text-green';
+        asksBarColor = 'rgba(255, 71, 87, 0.2)';
+        bidsBarColor = 'rgba(0, 255, 159, 0.2)';
+    }
+    
+    // Render ASKS (top section)
+    if (asksData.length === 0) {
         higherEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>';
     } else {
-        const maxAmount = Math.max(...orderBookData.higher.map(o => o.amount));
-        
-        higherEl.innerHTML = orderBookData.higher.map(order => {
+        const maxAmount = Math.max(...asksData.map(o => o.amount));
+        higherEl.innerHTML = asksData.map(order => {
             const pct = (order.amount / maxAmount) * 100;
             return `
-                <div class="order-book-row">
-                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(0, 255, 159, 0.2));"></div>
+                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer;" title="Нажмите чтобы подставить">
+                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, ${asksBarColor});"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="text-green">${order.price.toFixed(4)}</span>
+                        <span class="${asksColor}">${order.price.toFixed(4)}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
@@ -413,19 +437,18 @@ function renderOrderBook() {
         }).join('');
     }
     
-    // Render LOWER orders
-    if (orderBookData.lower.length === 0) {
+    // Render BIDS (bottom section)
+    if (bidsData.length === 0) {
         lowerEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>';
     } else {
-        const maxAmount = Math.max(...orderBookData.lower.map(o => o.amount));
-        
-        lowerEl.innerHTML = orderBookData.lower.map(order => {
+        const maxAmount = Math.max(...bidsData.map(o => o.amount));
+        lowerEl.innerHTML = bidsData.map(order => {
             const pct = (order.amount / maxAmount) * 100;
             return `
-                <div class="order-book-row">
-                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(255, 71, 87, 0.2));"></div>
+                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer;" title="Нажмите чтобы подставить">
+                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, ${bidsBarColor});"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="text-red">${order.price.toFixed(4)}</span>
+                        <span class="${bidsColor}">${order.price.toFixed(4)}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
@@ -433,6 +456,26 @@ function renderOrderBook() {
         }).join('');
     }
 }
+
+// Click orderbook row → fill price & amount into trade form, switch to limit
+function fillFromOrderBook(price, amount) {
+    // Switch to limit mode
+    switchOrderType('limit');
+    
+    // Fill price and amount
+    const priceInput = document.getElementById('tradePrice');
+    const amountInput = document.getElementById('tradeAmount');
+    
+    if (priceInput) priceInput.value = price;
+    if (amountInput) amountInput.value = Math.floor(amount);
+    
+    // Recalculate estimate
+    if (typeof calculateUnifiedEstimate === 'function') {
+        calculateUnifiedEstimate();
+    }
+}
+
+window.fillFromOrderBook = fillFromOrderBook;
 
 function updatePriceStats() {
     document.getElementById('statHigherPrice').textContent = ammPrices.higher.toFixed(3);
@@ -1077,6 +1120,9 @@ function switchTradeSide(side) {
     
     // Recalculate estimate
     calculateUnifiedEstimate();
+    
+    // Re-render orderbook flipped for new side
+    renderOrderBook();
 }
 
 async function calculateUnifiedEstimate() {
@@ -1540,16 +1586,16 @@ window.addEventListener('load', async () => {
     }
 
     function updateSettlementsAlert() {
-        const alert = document.getElementById('settlementsAlert');
+        const alertEl = document.getElementById('settlementsAlert');
         const count = document.getElementById('settlementsCount');
         
-        if (!alert || !count) return;
+        if (!alertEl || !count) return;
         
         if (userSettlements.length > 0) {
-            alert.style.display = 'block';
+            alertEl.style.display = '';
             count.textContent = userSettlements.length;
         } else {
-            alert.style.display = 'none';
+            alertEl.style.display = 'none';
         }
     }
 
