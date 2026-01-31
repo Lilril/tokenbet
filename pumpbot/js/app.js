@@ -349,8 +349,8 @@ async function fetchOrderBook() {
             ammPrices = data.ammPrice;
             
             // ✅ ДОБАВЬ ЭТО: Установи targetMarketCap ОДИН РАЗ из данных раунда
-            if (data.startMarketCap && targetMarketCap === 0) {
-                targetMarketCap = data.startMarketCap;
+            if (data.startMarketCap && parseFloat(data.startMarketCap) > 0) {
+                targetMarketCap = parseFloat(data.startMarketCap);
                 console.log(`🎯 Target market cap set: $${targetMarketCap}`);
                 //          ↑ ДОБАВИЛ (
             }
@@ -438,15 +438,19 @@ function updatePriceStats() {
     document.getElementById('statHigherPrice').textContent = ammPrices.higher.toFixed(3);
     document.getElementById('statLowerPrice').textContent = ammPrices.lower.toFixed(3);
     
-    // ✅ ИСПРАВЛЕНО: Используй targetMarketCap вместо currentMarketCap
-    if (targetMarketCap > 0) {
-        const formatted = targetMarketCap >= 1000000 
-            ? `$${(targetMarketCap / 1000000).toFixed(2)}M`
-            : targetMarketCap >= 1000
-            ? `$${(targetMarketCap / 1000).toFixed(1)}K`
-            : `$${targetMarketCap.toFixed(2)}`;
+    // Целевая капа: берём start_market_cap раунда, если он есть
+    const capToShow = targetMarketCap > 0 ? targetMarketCap : currentMarketCap;
+    
+    if (capToShow > 0) {
+        const formatted = capToShow >= 1000000 
+            ? `$${(capToShow / 1000000).toFixed(2)}M`
+            : capToShow >= 1000
+            ? `$${(capToShow / 1000).toFixed(1)}K`
+            : `$${capToShow.toFixed(2)}`;
         
         document.getElementById('targetCap').textContent = formatted;
+    } else {
+        document.getElementById('targetCap').textContent = '$---';
     }
 }
 
@@ -1045,6 +1049,8 @@ async function loadRoundData() {
 window.loadMarketData = async function() {
     const intervalMinutes = getCurrentInterval();
     console.log(`📊 Loading data for ${intervalMinutes}m round`);
+    // Сбрасываем целевую капу при смене раунда — fetchOrderBook() установит новую
+    targetMarketCap = 0;
     await Promise.all([
         fetchOrderBook(),
         fetchRecentTrades(),
@@ -1557,8 +1563,3 @@ window.addEventListener('load', async () => {
     window.switchSettlementTab = switchSettlementTab;
 
 });
- 
-
-
-
-
