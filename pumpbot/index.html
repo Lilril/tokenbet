@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$TOKEN Prediction Market - Advanced Trading</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20260201">
+    <link rel="stylesheet" href="assets/styles.css?v=20260201b">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <style>
         /* ROUND SELECTOR STYLES */
@@ -355,6 +355,19 @@
                     <div class="balance-value text-green" id="openPositionsCount">1</div>
                 </div>
             </div>
+            <!-- UNCLAIMED SETTLEMENTS (moved inside wallet section) -->
+            <div id="settlementsAlert" class="settlements-alert" style="display: none; margin-top: 15px; margin-bottom: 0;">
+                <div class="settlements-alert-content">
+                    <div class="settlements-alert-icon">🎁</div>
+                    <div class="settlements-alert-text">
+                        <strong>У вас есть незабранные выигрыши!</strong>
+                        <span id="settlementsCount">0</span> завершенных раундов ожидают
+                    </div>
+                    <button class="settlements-alert-btn" onclick="openSettlementsModal()">
+                        Посмотреть
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- WALLET MODAL -->
@@ -363,20 +376,6 @@
                 <span class="close-modal" id="closeModal">×</span>
                 <div class="modal-header">ВЫБЕРИ КОШЕЛЕК</div>
                 <div id="walletsList"></div>
-            </div>
-        </div>
-
-        <!-- UNCLAIMED SETTLEMENTS BANNER -->
-        <div id="settlementsAlert" class="settlements-alert" style="display: none;">
-            <div class="settlements-alert-content">
-                <div class="settlements-alert-icon">🎁</div>
-                <div class="settlements-alert-text">
-                    <strong>У вас есть незабранные выигрыши!</strong>
-                    <span id="settlementsCount">0</span> завершенных раундов ожидают
-                </div>
-                <button class="settlements-alert-btn" onclick="openSettlementsModal()">
-                    Посмотреть
-                </button>
             </div>
         </div>
 
@@ -398,57 +397,44 @@
 
         <!-- MAIN TRADING GRID -->
         <div class="trading-grid">
-            <!-- СТАКАН ОРДЕРОВ (теперь слева, большой) -->
+            <!-- СТАКАН ОРДЕРОВ (слева, большой 1fr) -->
             <div class="main-panel">
-                <div class="orderbook-panel slide-in">
+                <div class="orderbook-panel slide-in" style="max-height: none;">
                     <div class="orderbook-header">📖 СТАКАН ОРДЕРОВ</div>
                     <div class="orderbook-content">
-                        <!-- HIGHER ORDERS -->
                         <div class="orderbook-side">
                             <div class="orderbook-side-header">
                                 <span>Цена</span>
                                 <span>Токенов</span>
                             </div>
                             <div id="orderBookHigher">
-                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                    Нет ордеров
-                                </div>
+                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>
                             </div>
                         </div>
-
-                        <!-- SPREAD INDICATOR -->
-                        <div style="padding: 15px; text-align: center; border: 1px dashed var(--border); margin: 15px 0; background: var(--bg-tertiary);">
-                            <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 5px;">
-                                СПРЕД
-                            </div>
-                            <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">
-                                0.00%
-                            </div>
+                        <div style="padding: 12px; text-align: center; border: 1px dashed var(--border); margin: 10px 0; background: var(--bg-tertiary);">
+                            <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 3px;">СПРЕД</div>
+                            <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="statSpread">0.00%</div>
                         </div>
-
-                        <!-- LOWER ORDERS -->
                         <div class="orderbook-side">
                             <div class="orderbook-side-header">
                                 <span>Цена</span>
                                 <span>Токенов</span>
                             </div>
                             <div id="orderBookLower">
-                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                                    Нет ордеров
-                                </div>
+                                <div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- КАПИТАЛИЗАЦИЯ + COUNTDOWN (теперь справа, маленький) -->
-            <div class="orderbook-panel slide-in" style="max-height: none;">
-                <div class="price-display slide-in">
+            <!-- ПРАВАЯ ПАНЕЛЬ (300px) -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <!-- PRICE DISPLAY -->
+                <div class="price-display slide-in" style="padding: 20px;">
                     <div class="price-label">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
-                    <div class="price-value" id="currentCap">Загрузка...</div>
-                    
-                    <div class="price-stats">
+                    <div class="price-value" id="currentCap" style="font-size: 2.2em;">Загрузка...</div>
+                    <div class="price-stats" style="gap: 8px; margin-top: 12px; padding-top: 12px;">
                         <div class="stat-item">
                             <div class="stat-label">⬆ Выше</div>
                             <div class="stat-value text-green" id="statHigherPrice">0.500</div>
@@ -464,94 +450,63 @@
                     </div>
                 </div>
 
-                <div class="countdown-section slide-in" style="margin: 0;">
+                <!-- COUNTDOWN -->
+                <div class="countdown-section slide-in" style="padding: 15px;">
                     <div class="countdown-label">РАУНД ЗАКРЫВАЕТСЯ ЧЕРЕЗ</div>
-                    <div class="countdown-value" id="countdown">--:--</div>
+                    <div class="countdown-value" id="countdown" style="font-size: 2em;">--:--</div>
                 </div>
-            </div>
-        </div>
 
-        <!-- TRADING + HISTORY (на всю ширину, под grid) -->
-        <div style="display: flex; flex-direction: column; gap: 20px;">
-            <!-- TRADING INTERFACE -->
-            <div class="trading-interface slide-in">
-                <!-- BUY HIGHER PANEL -->
-                <div class="trade-panel buy">
-                    <div class="trade-panel-header">⬆ КУПИТЬ ВЫШЕ</div>
-                    
-                    <div class="order-type-selector">
-                        <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
-                            Маркет
-                        </button>
-                        <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
-                            Лимит
-                        </button>
+                <!-- POLYMARKET-STYLE TRADE PANEL -->
+                <div style="background: var(--bg-secondary); border: 1px solid var(--border); padding: 15px;" class="slide-in">
+                    <!-- Side buttons like Polymarket Yes/No -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;">
+                        <button id="sideHigherBtn" onclick="switchTradeSide('higher')" style="padding: 12px; background: var(--accent-green); color: #000; border: none; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">⬆ Выше <span id="sideHigherOdds" style="opacity:0.8">0.500</span></button>
+                        <button id="sideLowerBtn" onclick="switchTradeSide('lower')" style="padding: 12px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">⬇ Ниже <span id="sideLowerOdds" style="opacity:0.8">0.500</span></button>
                     </div>
 
-                    <div class="input-group">
-                        <label class="input-label">Количество (токенов)</label>
-                        <input type="number" id="amountHigher" placeholder="0" min="0" step="1">
+                    <!-- Order type selector -->
+                    <div class="order-type-selector" style="margin-bottom: 15px;">
+                        <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">Маркет</button>
+                        <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">Лимит</button>
                     </div>
 
+                    <!-- Limit price (hidden by default) -->
                     <div class="input-group limit-price-group" style="display: none;">
                         <label class="input-label">Цена (0-1)</label>
-                        <input type="number" id="priceHigher" placeholder="0.5" min="0" max="1" step="0.001">
+                        <input type="number" id="tradePrice" placeholder="0.5" min="0" max="1" step="0.001">
                     </div>
 
-                    <div class="estimate-display" id="estimateHigher">
+                    <!-- Amount -->
+                    <div class="input-group">
+                        <label class="input-label">Количество (токенов)</label>
+                        <input type="number" id="tradeAmount" placeholder="0" min="0" step="1">
+                    </div>
+
+                    <!-- Estimate -->
+                    <div class="estimate-display" id="tradeEstimate">
                         <div style="color: var(--text-dim);">Введите сумму</div>
                     </div>
 
-                    <button class="trade-btn buy" onclick="executeTrade('higher')">
+                    <!-- Execute button -->
+                    <button id="tradeExecuteBtn" onclick="executeUnifiedTrade()" style="width: 100%; padding: 14px; background: var(--accent-green); color: #000; border: none; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 1.1em; margin-top: 10px;">
                         КУПИТЬ ВЫШЕ
                     </button>
                 </div>
-
-                <!-- SELL LOWER PANEL -->
-                <div class="trade-panel sell">
-                    <div class="trade-panel-header">⬇ КУПИТЬ НИЖЕ</div>
-                    
-                    <div class="order-type-selector">
-                        <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">
-                            Маркет
-                        </button>
-                        <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">
-                            Лимит
-                        </button>
-                    </div>
-
-                    <div class="input-group">
-                        <label class="input-label">Количество (токенов)</label>
-                        <input type="number" id="amountLower" placeholder="0" min="0" step="1">
-                    </div>
-
-                    <div class="input-group limit-price-group" style="display: none;">
-                        <label class="input-label">Цена (0-1)</label>
-                        <input type="number" id="priceLower" placeholder="0.5" min="0" max="1" step="0.001">
-                    </div>
-
-                    <div class="estimate-display" id="estimateLower">
-                        <div style="color: var(--text-dim);">Введите сумму</div>
-                    </div>
-
-                    <button class="trade-btn sell" onclick="executeTrade('lower')">
-                        КУПИТЬ НИЖЕ
-                    </button>
-                </div>
-            </div>
-
-            <!-- TRADE HISTORY -->
-            <div class="trade-history slide-in">
-                <div class="trade-history-header">
-                    🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
-                </div>
-                <div class="trade-history-list" id="tradeHistory">
-                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                        Загрузка...
-                    </div>
-                </div>
             </div>
         </div>
+
+        <!-- TRADE HISTORY -->
+        <div class="trade-history slide-in" style="margin-bottom: 20px;">
+                    <div class="trade-history-header">
+                        🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
+                    </div>
+                    <div class="trade-history-list" id="tradeHistory">
+                        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                            Загрузка...
+                        </div>
+                    </div>
+                </div>
+            </div>
 
         <!-- INFO BOX -->
         <div style="border: 1px solid var(--border); padding: 20px; margin-top: 30px; background: var(--bg-secondary); font-size: 0.9em; line-height: 1.8;">
@@ -636,7 +591,7 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=20260201"></script>
+    <script src="js/app.js?v=20260201b"></script>
     <script>
         // Global variable for current round
         window.currentRoundId = 1; // Default to 15m round
