@@ -1,7 +1,7 @@
 // ============================================
 // КОНФИГУРАЦИЯ
 // ============================================
-const TOKEN_ADDRESS = 'GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump';
+const TOKEN_ADDRESS = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
 const API_BASE = '';
 
 // ============================================
