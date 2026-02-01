@@ -525,9 +525,15 @@ function createTransferInstructionJS(source, destination, owner, amount) {
     // SPL Token Transfer instruction layout:
     // byte 0: instruction index (3 = Transfer)
     // bytes 1-8: amount (u64 little-endian)
-    const data = Buffer.alloc(9);
-    data.writeUInt8(3, 0); // Transfer instruction
-    data.writeBigUInt64LE(BigInt(amount), 1);
+    const data = new Uint8Array(9);
+    data[0] = 3; // Transfer instruction
+    
+    // Write u64 little-endian
+    let amt = BigInt(amount);
+    for (let i = 1; i < 9; i++) {
+        data[i] = Number(amt & 0xFFn);
+        amt >>= 8n;
+    }
     
     return new TransactionInstruction({
         keys: [
