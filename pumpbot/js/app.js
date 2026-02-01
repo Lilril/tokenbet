@@ -275,7 +275,7 @@ function closeDepositModal() {
 
 async function loadDepositInfo() {
     try {
-        // 1. Получаем адрес платформы
+        // Всегда запрашиваем свежие данные (blockhash устаревает быстро)
         const infoResp = await fetch(`${API_BASE}/api/balance`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -288,9 +288,10 @@ async function loadDepositInfo() {
                 const el = document.getElementById('minDepositAmount');
                 if (el) el.textContent = info.minDeposit;
             }
+            console.log('✅ Deposit info loaded, blockhash:', info.blockhash ? 'yes' : 'no');
         }
         
-        // 2. Получаем on-chain баланс токена (для MAX)
+        // Получаем on-chain баланс токена (для MAX)
         await fetchOnChainTokenBalance();
     } catch (e) {
         console.error('❌ loadDepositInfo:', e);
@@ -400,40 +401,31 @@ async function executeDeposit() {
         const transaction = new Transaction();
         transaction.add(transferIx);
         
-        // Получаем blockhash через рабочий публичный RPC
+        // Blockhash уже получен от бэкенда (через Helius RPC на сервере)
         btn.textContent = '⏳ Подготовка транзакции...';
         
-        let blockhash = null;
-        const rpcEndpoints = [
-            'https://rpc.ankr.com/solana',
-            'https://solana-mainnet.g.alchemy.com/v2/demo',
-            'https://solana.public-rpc.com',
-        ];
+        let blockhash = platformDepositInfo.blockhash;
         
-        for (const rpc of rpcEndpoints) {
+        // Если blockhash устарел или отсутствует — запросить свежий от бэкенда
+        if (!blockhash) {
             try {
-                const bhResp = await fetch(rpc, {
+                const freshInfo = await fetch(`${API_BASE}/api/balance`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0', id: 1,
-                        method: 'getLatestBlockhash',
-                        params: [{ commitment: 'finalized' }]
-                    })
+                    body: JSON.stringify({ action: 'deposit-info' })
                 });
-                const bhData = await bhResp.json();
-                if (bhData.result?.value?.blockhash) {
-                    blockhash = bhData.result.value.blockhash;
-                    console.log('✅ Blockhash from', rpc);
-                    break;
+                const freshData = await freshInfo.json();
+                if (freshData.success && freshData.blockhash) {
+                    blockhash = freshData.blockhash;
+                    platformDepositInfo = freshData;
                 }
             } catch (e) {
-                console.warn('⚠️ RPC failed:', rpc, e.message);
+                console.error('Failed to refresh blockhash:', e);
             }
         }
         
         if (!blockhash) {
-            throw new Error('Не удалось получить blockhash. Попробуйте позже.');
+            throw new Error('Не удалось получить blockhash. Проверьте подключение.');
         }
         
         transaction.recentBlockhash = blockhash;
