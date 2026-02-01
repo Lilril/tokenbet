@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$TOKEN Prediction Market - Advanced Trading</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20260201e">
+    <link rel="stylesheet" href="assets/styles.css?v=20260201f">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <style>
         /* ROUND SELECTOR STYLES */
@@ -360,6 +360,10 @@
                             <div class="balance-label">Мои сделки</div>
                             <div class="balance-value text-green" id="openPositionsCount">1</div>
                         </div>
+                        <div class="balance-item" id="settlementsAlert" onclick="openSettlementsModal()" style="display: none; cursor: pointer; transition: all 0.2s; border-color: var(--accent-yellow);" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                            <div class="balance-label" style="color: var(--accent-yellow);">🎁 Выигрыши</div>
+                            <div class="balance-value" style="color: var(--accent-yellow);" id="settlementsCount">0</div>
+                        </div>
                     </div>
                 </div>
 
@@ -412,12 +416,6 @@
 
             <!-- ===== RIGHT COLUMN (300px, full height) ===== -->
             <div style="display: flex; flex-direction: column; gap: 15px;">
-
-                <!-- SETTLEMENTS -->
-                <div id="settlementsAlert" onclick="openSettlementsModal()" style="display: none; cursor: pointer; transition: all 0.2s; background: var(--bg-secondary); border: 2px solid var(--accent-yellow); padding: 20px;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
-                    <div style="font-size: 0.8em; color: var(--accent-yellow); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">🎁 Выигрыши</div>
-                    <div style="font-size: 2em; font-weight: 700; color: var(--accent-yellow);" id="settlementsCount">0</div>
-                </div>
 
                 <!-- PRICE DISPLAY -->
                 <div class="price-display slide-in" style="padding: 20px;">
@@ -578,7 +576,7 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=20260201e"></script>
+    <script src="js/app.js?v=20260201f"></script>
     <script>
         // Global variable for current round
         window.currentRoundId = 1; // Default to 15m round
