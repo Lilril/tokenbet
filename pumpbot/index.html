@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$TOKEN Prediction Market - Advanced Trading</title>
     <link rel="stylesheet" href="assets/styles.css?v=20260201k">
-    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <style>
         /* ROUND SELECTOR STYLES */
         .round-selector {
@@ -484,28 +483,24 @@
                 <div class="modal-header">💰 ПОПОЛНИТЬ БАЛАНС</div>
                 
                 <div id="depositStep1">
-                    <div style="padding: 15px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 15px;">
-                        <div style="font-size: 0.8em; color: var(--text-dim); margin-bottom: 5px;">Отправьте токены на адрес платформы:</div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <code id="depositAddress" style="flex: 1; font-size: 0.85em; word-break: break-all; color: var(--accent-yellow); background: var(--bg-primary); padding: 10px; border-radius: 4px;">Загрузка...</code>
-                            <button onclick="copyDepositAddress()" style="padding: 8px 12px; background: var(--accent-green); color: #000; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap;">📋 Copy</button>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <label class="input-label">Сумма пополнения (токены)</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="number" id="depositAmount" placeholder="0" min="0" style="flex: 1; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); font-family: inherit; border-radius: 4px; font-size: 1.1em;">
+                            <button onclick="setMaxDeposit()" style="padding: 10px 15px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--accent-yellow); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 4px;">MAX</button>
                         </div>
                     </div>
                     
                     <div style="padding: 12px; background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.3); border-radius: 8px; margin-bottom: 15px; font-size: 0.85em;">
-                        <strong style="color: var(--accent-yellow);">⚠️ Важно:</strong><br>
-                        • Отправляйте только токен <strong>$TOKEN</strong><br>
-                        • Минимальный депозит: <span id="minDepositAmount">1000</span> токенов<br>
-                        • После отправки вставьте хэш транзакции ниже
+                        <strong style="color: var(--accent-yellow);">ℹ️ Как это работает:</strong><br>
+                        • Phantom попросит подписать транзакцию<br>
+                        • Токены будут отправлены на кошелёк платформы<br>
+                        • Баланс зачислится автоматически<br>
+                        • Минимум: <span id="minDepositAmount">1000</span> токенов
                     </div>
 
-                    <div class="input-group" style="margin-bottom: 15px;">
-                        <label class="input-label">Хэш транзакции (TX Signature)</label>
-                        <input type="text" id="depositTxHash" placeholder="Вставьте signature транзакции..." style="width: 100%; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); font-family: inherit; border-radius: 4px;">
-                    </div>
-
-                    <button onclick="confirmDeposit()" id="confirmDepositBtn" style="width: 100%; padding: 14px; background: var(--accent-green); color: #000; border: none; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 1.1em; border-radius: 6px;">
-                        ✅ ПОДТВЕРДИТЬ ДЕПОЗИТ
+                    <button onclick="executeDeposit()" id="executeDepositBtn" style="width: 100%; padding: 14px; background: var(--accent-green); color: #000; border: none; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 1.1em; border-radius: 6px;">
+                        ✅ ПОПОЛНИТЬ ЧЕРЕЗ PHANTOM
                     </button>
                 </div>
 
@@ -646,6 +641,7 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/@solana/web3.js@1.95.0/lib/index.iife.min.js"></script>
     <script src="js/app.js?v=20260201k"></script>
     <script>
         // Global variable for current round
