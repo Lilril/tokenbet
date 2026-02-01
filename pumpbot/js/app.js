@@ -1592,7 +1592,7 @@ window.addEventListener('load', async () => {
         if (!alertEl || !count) return;
         
         if (userSettlements.length > 0) {
-            alertEl.style.display = 'block';
+            alertEl.style.display = '';
             count.textContent = userSettlements.length;
         } else {
             alertEl.style.display = 'none';
