@@ -301,31 +301,49 @@ async function fetchOnChainTokenBalance() {
     if (!wallet || !platformDepositInfo) return;
     
     try {
-        // Используем Solana RPC через window.solana (Phantom)
-        // Или простой RPC запрос
-        const rpcUrl = 'https://api.mainnet-beta.solana.com';
+        const provider = window.phantom?.solana || window.solana;
+        if (!provider) { walletOnChainBalance = 0; return; }
+        
+        // Используем Phantom для RPC запроса через его встроенное соединение
+        const { PublicKey } = solanaWeb3;
         const tokenMint = platformDepositInfo.tokenMint || TOKEN_ADDRESS;
         
-        const resp = await fetch(rpcUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jsonrpc: '2.0', id: 1,
-                method: 'getTokenAccountsByOwner',
-                params: [
-                    wallet,
-                    { mint: tokenMint },
-                    { encoding: 'jsonParsed' }
-                ]
-            })
-        });
+        // Пробуем через несколько RPC (Phantom часто проксирует)
+        const rpcUrls = [
+            'https://rpc.ankr.com/solana',
+            'https://solana-mainnet.g.alchemy.com/v2/demo',
+        ];
         
-        const data = await resp.json();
-        if (data.result?.value?.length > 0) {
-            walletOnChainBalance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
-        } else {
-            walletOnChainBalance = 0;
+        for (const rpcUrl of rpcUrls) {
+            try {
+                const resp = await fetch(rpcUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0', id: 1,
+                        method: 'getTokenAccountsByOwner',
+                        params: [
+                            wallet,
+                            { mint: tokenMint },
+                            { encoding: 'jsonParsed' }
+                        ]
+                    })
+                });
+                
+                const data = await resp.json();
+                if (data.result?.value?.length > 0) {
+                    walletOnChainBalance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
+                    return;
+                } else if (data.result) {
+                    walletOnChainBalance = 0;
+                    return;
+                }
+            } catch (e) {
+                continue;
+            }
         }
+        
+        walletOnChainBalance = 0;
     } catch (e) {
         console.error('❌ fetchOnChainTokenBalance:', e);
         walletOnChainBalance = 0;
@@ -351,7 +369,7 @@ async function executeDeposit() {
     
     const btn = document.getElementById('executeDepositBtn');
     btn.disabled = true;
-    btn.textContent = '⏳ Подписываем в Phantom...';
+    btn.textContent = '⏳ Подготовка...';
     
     try {
         // Получаем провайдер Phantom
@@ -360,10 +378,8 @@ async function executeDeposit() {
             throw new Error('Phantom не найден');
         }
         
-        // Импорты из Solana web3 (загружаем из CDN)
-        const { Connection, PublicKey, Transaction } = solanaWeb3;
+        const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
         
-        const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
         const mintPubkey = new PublicKey(platformDepositInfo.tokenMint);
         const senderPubkey = new PublicKey(wallet);
         const recipientAta = new PublicKey(platformDepositInfo.depositAta);
@@ -384,48 +400,46 @@ async function executeDeposit() {
         const transaction = new Transaction();
         transaction.add(transferIx);
         
-        // Получаем свежий blockhash
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = senderPubkey;
-        
+        // Получаем blockhash через Phantom RPC (он использует свой node)
         btn.textContent = '⏳ Подтвердите в Phantom...';
         
-        // Phantom подписывает и отправляет
+        // signAndSendTransaction — Phantom сам получит blockhash, подпишет и отправит
         const { signature } = await provider.signAndSendTransaction(transaction);
         
         btn.textContent = '⏳ Ожидаем подтверждение...';
         
-        // Ждём подтверждения
-        await connection.confirmTransaction({
-            signature,
-            blockhash,
-            lastValidBlockHeight
-        }, 'confirmed');
+        // Ждём подтверждения — поллим через бэкенд или просто ждём
+        // Phantom уже отправил, ждём 5-10 сек для индексации
+        await new Promise(r => setTimeout(r, 6000));
         
         btn.textContent = '⏳ Зачисляем баланс...';
         
-        // Ждем немного чтобы RPC проиндексировал
-        await new Promise(r => setTimeout(r, 3000));
-        
-        // Подтверждаем на бэкенде
-        const confirmResp = await fetch(`${API_BASE}/api/balance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'confirm-deposit',
-                wallet: wallet,
-                txSignature: signature
-            })
-        });
-        
-        const data = await confirmResp.json();
+        // Подтверждаем на бэкенде (с ретраем)
+        let data = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const confirmResp = await fetch(`${API_BASE}/api/balance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'confirm-deposit',
+                        wallet: wallet,
+                        txSignature: signature
+                    })
+                });
+                data = await confirmResp.json();
+                if (data.success) break;
+            } catch (e) {
+                console.error(`Attempt ${attempt + 1} confirm:`, e);
+            }
+            if (attempt < 2) await new Promise(r => setTimeout(r, 4000));
+        }
         
         const resultEl = document.getElementById('depositResult');
         document.getElementById('depositStep1').style.display = 'none';
         resultEl.style.display = 'block';
         
-        if (data.success) {
+        if (data && data.success) {
             resultEl.innerHTML = `
                 <div style="font-size: 3em; margin-bottom: 15px;">✅</div>
                 <div style="font-size: 1.3em; font-weight: 700; color: var(--accent-green); margin-bottom: 10px;">
@@ -439,9 +453,6 @@ async function executeDeposit() {
                         Транзакция в Solscan →
                     </a>
                 </div>
-                <div style="color: var(--text-dim); font-size: 0.85em; margin-bottom: 20px;">
-                    Новый баланс: ${data.newBalance} токенов
-                </div>
                 <button onclick="closeDepositModal()" style="padding: 12px 30px; background: var(--accent-green); color: #000; border: none; font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px; font-size: 1em;">
                     ГОТОВО
                 </button>
@@ -451,35 +462,34 @@ async function executeDeposit() {
             resultEl.innerHTML = `
                 <div style="font-size: 3em; margin-bottom: 15px;">⚠️</div>
                 <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-yellow); margin-bottom: 10px;">
-                    Токены отправлены, но зачисление задерживается
+                    Токены отправлены!
                 </div>
                 <div style="color: var(--text-dim); margin-bottom: 10px; font-size: 0.9em;">
-                    ${data.error || 'Транзакция ещё индексируется'}
+                    Зачисление может занять до 1-2 минут.
+                    ${data?.error ? `<br><span style="font-size:0.85em">(${data.error})</span>` : ''}
                 </div>
-                <div style="color: var(--text-dim); margin-bottom: 20px; font-size: 0.85em;">
-                    TX: <a href="https://solscan.io/tx/${signature}" target="_blank" style="color: var(--accent-yellow);">${signature.substring(0,20)}...</a>
-                    <br><br>Баланс обновится в течение 1-2 минут. Если нет — обратитесь в поддержку с TX хэшем.
+                <div style="margin-bottom: 20px;">
+                    <a href="https://solscan.io/tx/${signature}" target="_blank" style="color: var(--accent-yellow); text-decoration: underline; font-size: 0.85em;">
+                        Транзакция в Solscan →
+                    </a>
                 </div>
                 <button onclick="closeDepositModal()" style="padding: 12px 30px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px;">
                     ЗАКРЫТЬ
                 </button>
             `;
-            // Всё равно обновляем баланс через несколько секунд
-            setTimeout(() => fetchTokenBalance(), 10000);
+            setTimeout(() => fetchTokenBalance(), 15000);
         }
         
     } catch (error) {
         console.error('❌ Deposit error:', error);
         
-        const resultEl = document.getElementById('depositResult');
-        
-        if (error.message?.includes('User rejected')) {
-            // Пользователь отменил в Phantom — просто сбросить кнопку
+        if (error.message?.includes('User rejected') || error.message?.includes('rejected')) {
             btn.disabled = false;
             btn.textContent = '✅ ПОПОЛНИТЬ ЧЕРЕЗ PHANTOM';
             return;
         }
         
+        const resultEl = document.getElementById('depositResult');
         document.getElementById('depositStep1').style.display = 'none';
         resultEl.style.display = 'block';
         resultEl.innerHTML = `
