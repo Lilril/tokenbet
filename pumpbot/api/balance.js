@@ -400,6 +400,16 @@ export default async function handler(req, res) {
                 const platformAddress = getPlatformPublicKey().toBase58();
                 const platformAta = await getAssociatedTokenAddress(getMintPublicKey(), getPlatformPublicKey());
 
+                // Получаем blockhash через серверный Helius RPC
+                const connection = getConnection();
+                let blockhash = null;
+                try {
+                    const bh = await connection.getLatestBlockhash('finalized');
+                    blockhash = bh.blockhash;
+                } catch (e) {
+                    console.error('⚠️ Failed to get blockhash:', e.message);
+                }
+
                 return res.status(200).json({
                     success: true,
                     depositAddress: platformAddress,
@@ -407,6 +417,7 @@ export default async function handler(req, res) {
                     tokenMint: MINT_ADDRESS,
                     minDeposit: MIN_DEPOSIT,
                     decimals: TOKEN_DECIMALS,
+                    blockhash: blockhash,
                 });
             }
 
