@@ -183,46 +183,302 @@ async function disconnect() {
 }
 
 // ============================================
-// TOKEN BALANCE
+// TOKEN BALANCE (кастодиальная модель — из БД)
 // ============================================
+let balanceAvailable = 0;
+let balanceLocked = 0;
+let depositAddress = '';
+
 async function fetchTokenBalance() {
     if (!wallet) {
         tokenBalance = 0;
+        balanceAvailable = 0;
+        balanceLocked = 0;
         updateBalanceDisplay();
         return;
     }
 
     try {
-        const apiResponse = await fetch(`${API_BASE}/api/balance?wallet=${wallet}&token=${TOKEN_ADDRESS}`);
+        const apiResponse = await fetch(`${API_BASE}/api/balance?wallet=${wallet}`);
         
         if (apiResponse.ok) {
             const data = await apiResponse.json();
             
-            if (data.success && data.balance !== undefined) {
-                tokenBalance = data.balance;
-                console.log('✅ Баланс токена:', tokenBalance);
+            if (data.success) {
+                balanceAvailable = data.available || 0;
+                balanceLocked = data.locked || 0;
+                tokenBalance = balanceAvailable;
+                depositAddress = data.depositAddress || '';
+                console.log(`✅ Баланс: ${balanceAvailable} доступно, ${balanceLocked} заблокировано`);
                 updateBalanceDisplay();
                 return;
             }
         }
         
         tokenBalance = 0;
+        balanceAvailable = 0;
+        balanceLocked = 0;
         updateBalanceDisplay();
 
     } catch (error) {
         console.error('❌ Ошибка получения баланса:', error);
         tokenBalance = 0;
+        balanceAvailable = 0;
+        balanceLocked = 0;
         updateBalanceDisplay();
     }
 }
 
 function updateBalanceDisplay() {
-    const formatted = tokenBalance.toLocaleString('en-US', { 
+    const formatted = balanceAvailable.toLocaleString('en-US', { 
         minimumFractionDigits: 0,
         maximumFractionDigits: 2 
     });
     
     document.getElementById('tokenBalance').textContent = formatted;
+    
+    const lockedEl = document.getElementById('lockedBalance');
+    if (lockedEl) {
+        if (balanceLocked > 0) {
+            lockedEl.textContent = `🔒 ${balanceLocked.toLocaleString('en-US', { maximumFractionDigits: 2 })} в ордерах`;
+        } else {
+            lockedEl.textContent = '';
+        }
+    }
+}
+
+// ============================================
+// DEPOSIT
+// ============================================
+
+function openDepositModal() {
+    if (!wallet) {
+        alert('Сначала подключите кошелёк!');
+        return;
+    }
+    
+    document.getElementById('depositModal').style.display = 'flex';
+    document.getElementById('depositStep1').style.display = 'block';
+    document.getElementById('depositResult').style.display = 'none';
+    document.getElementById('depositTxHash').value = '';
+    
+    // Показать адрес депозита
+    if (depositAddress) {
+        document.getElementById('depositAddress').textContent = depositAddress;
+    } else {
+        // Запросить с сервера
+        fetch(`${API_BASE}/api/balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'deposit-info' })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                depositAddress = data.depositAddress;
+                document.getElementById('depositAddress').textContent = depositAddress;
+                if (data.minDeposit) {
+                    document.getElementById('minDepositAmount').textContent = data.minDeposit;
+                }
+            }
+        })
+        .catch(() => {
+            document.getElementById('depositAddress').textContent = 'Ошибка загрузки';
+        });
+    }
+}
+
+function closeDepositModal() {
+    document.getElementById('depositModal').style.display = 'none';
+}
+
+function copyDepositAddress() {
+    const addr = document.getElementById('depositAddress').textContent;
+    navigator.clipboard.writeText(addr).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '✅ Скопировано!';
+        setTimeout(() => btn.textContent = orig, 2000);
+    });
+}
+
+async function confirmDeposit() {
+    const txHash = document.getElementById('depositTxHash').value.trim();
+    
+    if (!txHash) {
+        alert('Введите хэш транзакции!');
+        return;
+    }
+    
+    if (txHash.length < 40) {
+        alert('Некорректный хэш транзакции');
+        return;
+    }
+    
+    const btn = document.getElementById('confirmDepositBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Проверяем транзакцию...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'confirm-deposit',
+                wallet: wallet,
+                txSignature: txHash
+            })
+        });
+        
+        const data = await response.json();
+        
+        const resultEl = document.getElementById('depositResult');
+        document.getElementById('depositStep1').style.display = 'none';
+        resultEl.style.display = 'block';
+        
+        if (data.success) {
+            resultEl.innerHTML = `
+                <div style="font-size: 3em; margin-bottom: 15px;">✅</div>
+                <div style="font-size: 1.3em; font-weight: 700; color: var(--accent-green); margin-bottom: 10px;">
+                    Депозит зачислен!
+                </div>
+                <div style="font-size: 1.5em; font-weight: 700; margin-bottom: 15px;">
+                    +${data.amount} токенов
+                </div>
+                <div style="color: var(--text-dim); font-size: 0.85em; margin-bottom: 20px;">
+                    Новый баланс: ${data.newBalance} токенов
+                </div>
+                <button onclick="closeDepositModal()" style="padding: 12px 30px; background: var(--accent-green); color: #000; border: none; font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px; font-size: 1em;">
+                    ГОТОВО
+                </button>
+            `;
+            
+            // Обновить баланс
+            await fetchTokenBalance();
+        } else {
+            resultEl.innerHTML = `
+                <div style="font-size: 3em; margin-bottom: 15px;">❌</div>
+                <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-red); margin-bottom: 10px;">
+                    Ошибка верификации
+                </div>
+                <div style="color: var(--text-dim); margin-bottom: 20px; font-size: 0.9em;">
+                    ${data.error || 'Неизвестная ошибка'}
+                </div>
+                <button onclick="document.getElementById('depositStep1').style.display='block'; document.getElementById('depositResult').style.display='none';" style="padding: 12px 30px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px; font-size: 1em;">
+                    ПОПРОБОВАТЬ СНОВА
+                </button>
+            `;
+        }
+    } catch (error) {
+        console.error('❌ Deposit error:', error);
+        alert('Ошибка сети. Попробуйте ещё раз.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ ПОДТВЕРДИТЬ ДЕПОЗИТ';
+    }
+}
+
+// ============================================
+// WITHDRAW
+// ============================================
+
+function openWithdrawModal() {
+    if (!wallet) {
+        alert('Сначала подключите кошелёк!');
+        return;
+    }
+    
+    document.getElementById('withdrawModal').style.display = 'flex';
+    document.getElementById('withdrawStep1').style.display = 'block';
+    document.getElementById('withdrawResult').style.display = 'none';
+    document.getElementById('withdrawAmount').value = '';
+    document.getElementById('withdrawAvailable').textContent = balanceAvailable.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+function closeWithdrawModal() {
+    document.getElementById('withdrawModal').style.display = 'none';
+}
+
+function setMaxWithdraw() {
+    document.getElementById('withdrawAmount').value = Math.floor(balanceAvailable);
+}
+
+async function processWithdraw() {
+    const amount = parseFloat(document.getElementById('withdrawAmount').value);
+    
+    if (!amount || amount <= 0) {
+        alert('Введите сумму!');
+        return;
+    }
+    
+    if (amount > balanceAvailable) {
+        alert(`Недостаточно средств! Доступно: ${balanceAvailable}`);
+        return;
+    }
+    
+    const btn = document.getElementById('processWithdrawBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Отправляем токены...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'withdraw',
+                wallet: wallet,
+                amount: amount
+            })
+        });
+        
+        const data = await response.json();
+        
+        const resultEl = document.getElementById('withdrawResult');
+        document.getElementById('withdrawStep1').style.display = 'none';
+        resultEl.style.display = 'block';
+        
+        if (data.success) {
+            resultEl.innerHTML = `
+                <div style="font-size: 3em; margin-bottom: 15px;">✅</div>
+                <div style="font-size: 1.3em; font-weight: 700; color: var(--accent-green); margin-bottom: 10px;">
+                    Вывод выполнен!
+                </div>
+                <div style="font-size: 1.5em; font-weight: 700; margin-bottom: 10px;">
+                    -${data.amount} токенов
+                </div>
+                ${data.fee > 0 ? `<div style="color: var(--text-dim); font-size: 0.85em; margin-bottom: 5px;">Комиссия: ${data.fee}</div>` : ''}
+                <div style="margin-bottom: 20px;">
+                    <a href="https://solscan.io/tx/${data.txSignature}" target="_blank" style="color: var(--accent-yellow); text-decoration: underline; font-size: 0.85em;">
+                        Транзакция в Solscan →
+                    </a>
+                </div>
+                <button onclick="closeWithdrawModal()" style="padding: 12px 30px; background: var(--accent-green); color: #000; border: none; font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px; font-size: 1em;">
+                    ГОТОВО
+                </button>
+            `;
+            
+            await fetchTokenBalance();
+        } else {
+            resultEl.innerHTML = `
+                <div style="font-size: 3em; margin-bottom: 15px;">❌</div>
+                <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-red); margin-bottom: 10px;">
+                    Ошибка вывода
+                </div>
+                <div style="color: var(--text-dim); margin-bottom: 20px; font-size: 0.9em;">
+                    ${data.error || 'Неизвестная ошибка'}
+                </div>
+                <button onclick="document.getElementById('withdrawStep1').style.display='block'; document.getElementById('withdrawResult').style.display='none';" style="padding: 12px 30px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px; font-size: 1em;">
+                    ПОПРОБОВАТЬ СНОВА
+                </button>
+            `;
+        }
+    } catch (error) {
+        console.error('❌ Withdraw error:', error);
+        alert('Ошибка сети. Попробуйте ещё раз.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📤 ВЫВЕСТИ';
+    }
 }
 
 // ============================================
@@ -1310,6 +1566,14 @@ document.addEventListener('DOMContentLoaded', function() {
 // Make new functions globally available
 window.switchTradeSide = switchTradeSide;
 window.executeUnifiedTrade = executeUnifiedTrade;
+window.openDepositModal = openDepositModal;
+window.closeDepositModal = closeDepositModal;
+window.copyDepositAddress = copyDepositAddress;
+window.confirmDeposit = confirmDeposit;
+window.openWithdrawModal = openWithdrawModal;
+window.closeWithdrawModal = closeWithdrawModal;
+window.setMaxWithdraw = setMaxWithdraw;
+window.processWithdraw = processWithdraw;
 window.calculateUnifiedEstimate = calculateUnifiedEstimate;
 
 // ============================================
