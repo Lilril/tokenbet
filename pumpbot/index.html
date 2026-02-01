@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$TOKEN Prediction Market - Advanced Trading</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20260201c">
+    <link rel="stylesheet" href="assets/styles.css?v=20260201d">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <style>
         /* ROUND SELECTOR STYLES */
@@ -332,32 +332,37 @@
             <p>Advanced Trading Terminal • Order Book • AMM</p>
         </div>
 
-        <!-- WALLET SECTION -->
-        <div class="wallet-section slide-in">
-            <div class="wallet-status">
-                <div>
-                    <span class="status-dot status-disconnected" id="statusDot"></span>
-                    <span id="walletStatus">НЕ ПОДКЛЮЧЕН</span>
+        <!-- TOP ROW: WALLET + SETTLEMENTS -->
+        <div style="display: grid; grid-template-columns: 1fr 300px; gap: 20px; margin-bottom: 20px;">
+            <!-- WALLET SECTION (left, big) -->
+            <div class="wallet-section slide-in" style="margin-bottom: 0;">
+                <div class="wallet-status">
+                    <div>
+                        <span class="status-dot status-disconnected" id="statusDot"></span>
+                        <span id="walletStatus">НЕ ПОДКЛЮЧЕН</span>
+                    </div>
+                    <button id="connectBtn">ПОДКЛЮЧИТЬ</button>
                 </div>
-                <button id="connectBtn">ПОДКЛЮЧИТЬ</button>
+                <div class="balance-display">
+                    <div class="balance-item">
+                        <div class="balance-label">Баланс $TOKEN</div>
+                        <div class="balance-value" id="tokenBalance">0</div>
+                    </div>
+                    <div class="balance-item" onclick="openMyOrdersModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        <div class="balance-label">Мои ордера</div>
+                        <div class="balance-value text-yellow" id="activeOrdersCount">0</div>
+                    </div>
+                    <div class="balance-item" onclick="openMyTradesModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        <div class="balance-label">Мои сделки</div>
+                        <div class="balance-value text-green" id="openPositionsCount">1</div>
+                    </div>
+                </div>
             </div>
-            <div class="balance-display">
-                <div class="balance-item">
-                    <div class="balance-label">Баланс $TOKEN</div>
-                    <div class="balance-value" id="tokenBalance">0</div>
-                </div>
-                <div class="balance-item" onclick="openMyOrdersModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                    <div class="balance-label">Мои ордера</div>
-                    <div class="balance-value text-yellow" id="activeOrdersCount">0</div>
-                </div>
-                <div class="balance-item" onclick="openMyTradesModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                    <div class="balance-label">Мои сделки</div>
-                    <div class="balance-value text-green" id="openPositionsCount">1</div>
-                </div>
-                <div class="balance-item" id="settlementsAlert" onclick="openSettlementsModal()" style="display: none; cursor: pointer; transition: all 0.2s; border-color: var(--accent-yellow);" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                    <div class="balance-label" style="color: var(--accent-yellow);">🎁 Выигрыши</div>
-                    <div class="balance-value" style="color: var(--accent-yellow);" id="settlementsCount">0</div>
-                </div>
+
+            <!-- SETTLEMENTS (right, 300px) -->
+            <div id="settlementsAlert" onclick="openSettlementsModal()" style="display: none; cursor: pointer; transition: all 0.2s; background: var(--bg-secondary); border: 2px solid var(--accent-yellow); padding: 20px; display: none;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-size: 0.8em; color: var(--accent-yellow); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">🎁 Выигрыши</div>
+                <div style="font-size: 2em; font-weight: 700; color: var(--accent-yellow);" id="settlementsCount">0</div>
             </div>
         </div>
 
@@ -582,7 +587,7 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=20260201c"></script>
+    <script src="js/app.js?v=20260201d"></script>
     <script>
         // Global variable for current round
         window.currentRoundId = 1; // Default to 15m round
