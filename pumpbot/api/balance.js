@@ -401,13 +401,19 @@ export default async function handler(req, res) {
                 const platformAta = await getAssociatedTokenAddress(getMintPublicKey(), getPlatformPublicKey());
 
                 // Получаем blockhash через серверный Helius RPC
-                const connection = getConnection();
                 let blockhash = null;
+                let rpcDebug = null;
                 try {
+                    const connection = getConnection();
                     const bh = await connection.getLatestBlockhash('finalized');
                     blockhash = bh.blockhash;
                 } catch (e) {
                     console.error('⚠️ Failed to get blockhash:', e.message);
+                    rpcDebug = {
+                        error: e.message,
+                        rpcUrl: RPC_URL ? RPC_URL.replace(/api-key=.*/, 'api-key=***') : 'not set',
+                        heliusKeySet: !!HELIUS_API_KEY,
+                    };
                 }
 
                 return res.status(200).json({
@@ -418,6 +424,7 @@ export default async function handler(req, res) {
                     minDeposit: MIN_DEPOSIT,
                     decimals: TOKEN_DECIMALS,
                     blockhash: blockhash,
+                    _debug: rpcDebug,
                 });
             }
 
