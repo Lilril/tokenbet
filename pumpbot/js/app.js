@@ -248,8 +248,11 @@ function updateBalanceDisplay() {
 }
 
 // ============================================
-// DEPOSIT
+// DEPOSIT — через Phantom подпись SPL-transfer
 // ============================================
+
+let platformDepositInfo = null; // { depositAddress, depositAta, tokenMint, minDeposit, decimals }
+let walletOnChainBalance = 0;   // On-chain баланс для MAX кнопки
 
 function openDepositModal() {
     if (!wallet) {
@@ -260,77 +263,163 @@ function openDepositModal() {
     document.getElementById('depositModal').style.display = 'flex';
     document.getElementById('depositStep1').style.display = 'block';
     document.getElementById('depositResult').style.display = 'none';
-    document.getElementById('depositTxHash').value = '';
+    document.getElementById('depositAmount').value = '';
     
-    // Показать адрес депозита
-    if (depositAddress) {
-        document.getElementById('depositAddress').textContent = depositAddress;
-    } else {
-        // Запросить с сервера
-        fetch(`${API_BASE}/api/balance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'deposit-info' })
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                depositAddress = data.depositAddress;
-                document.getElementById('depositAddress').textContent = depositAddress;
-                if (data.minDeposit) {
-                    document.getElementById('minDepositAmount').textContent = data.minDeposit;
-                }
-            }
-        })
-        .catch(() => {
-            document.getElementById('depositAddress').textContent = 'Ошибка загрузки';
-        });
-    }
+    // Запросить инфо о депозитном адресе + on-chain баланс
+    loadDepositInfo();
 }
 
 function closeDepositModal() {
     document.getElementById('depositModal').style.display = 'none';
 }
 
-function copyDepositAddress() {
-    const addr = document.getElementById('depositAddress').textContent;
-    navigator.clipboard.writeText(addr).then(() => {
-        const btn = event.target;
-        const orig = btn.textContent;
-        btn.textContent = '✅ Скопировано!';
-        setTimeout(() => btn.textContent = orig, 2000);
-    });
+async function loadDepositInfo() {
+    try {
+        // 1. Получаем адрес платформы
+        const infoResp = await fetch(`${API_BASE}/api/balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'deposit-info' })
+        });
+        const info = await infoResp.json();
+        if (info.success) {
+            platformDepositInfo = info;
+            if (info.minDeposit) {
+                const el = document.getElementById('minDepositAmount');
+                if (el) el.textContent = info.minDeposit;
+            }
+        }
+        
+        // 2. Получаем on-chain баланс токена (для MAX)
+        await fetchOnChainTokenBalance();
+    } catch (e) {
+        console.error('❌ loadDepositInfo:', e);
+    }
 }
 
-async function confirmDeposit() {
-    const txHash = document.getElementById('depositTxHash').value.trim();
-    
-    if (!txHash) {
-        alert('Введите хэш транзакции!');
-        return;
-    }
-    
-    if (txHash.length < 40) {
-        alert('Некорректный хэш транзакции');
-        return;
-    }
-    
-    const btn = document.getElementById('confirmDepositBtn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Проверяем транзакцию...';
+async function fetchOnChainTokenBalance() {
+    if (!wallet || !platformDepositInfo) return;
     
     try {
-        const response = await fetch(`${API_BASE}/api/balance`, {
+        // Используем Solana RPC через window.solana (Phantom)
+        // Или простой RPC запрос
+        const rpcUrl = 'https://api.mainnet-beta.solana.com';
+        const tokenMint = platformDepositInfo.tokenMint || TOKEN_ADDRESS;
+        
+        const resp = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0', id: 1,
+                method: 'getTokenAccountsByOwner',
+                params: [
+                    wallet,
+                    { mint: tokenMint },
+                    { encoding: 'jsonParsed' }
+                ]
+            })
+        });
+        
+        const data = await resp.json();
+        if (data.result?.value?.length > 0) {
+            walletOnChainBalance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
+        } else {
+            walletOnChainBalance = 0;
+        }
+    } catch (e) {
+        console.error('❌ fetchOnChainTokenBalance:', e);
+        walletOnChainBalance = 0;
+    }
+}
+
+function setMaxDeposit() {
+    document.getElementById('depositAmount').value = Math.floor(walletOnChainBalance);
+}
+
+async function executeDeposit() {
+    const amount = parseFloat(document.getElementById('depositAmount').value);
+    
+    if (!amount || amount <= 0) {
+        alert('Введите сумму!');
+        return;
+    }
+    
+    if (!platformDepositInfo) {
+        alert('Ошибка: не удалось загрузить информацию о депозите. Попробуйте закрыть и открыть окно.');
+        return;
+    }
+    
+    const btn = document.getElementById('executeDepositBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Подписываем в Phantom...';
+    
+    try {
+        // Получаем провайдер Phantom
+        const provider = window.phantom?.solana || window.solana;
+        if (!provider?.isPhantom) {
+            throw new Error('Phantom не найден');
+        }
+        
+        // Импорты из Solana web3 (загружаем из CDN)
+        const { Connection, PublicKey, Transaction } = solanaWeb3;
+        
+        const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+        const mintPubkey = new PublicKey(platformDepositInfo.tokenMint);
+        const senderPubkey = new PublicKey(wallet);
+        const recipientAta = new PublicKey(platformDepositInfo.depositAta);
+        
+        // Получаем ATA отправителя
+        const senderAta = await getAssociatedTokenAddressJS(mintPubkey, senderPubkey);
+        
+        // Формируем SPL transfer instruction
+        const rawAmount = Math.floor(amount * Math.pow(10, platformDepositInfo.decimals || 6));
+        
+        const transferIx = createTransferInstructionJS(
+            senderAta,       // source ATA
+            recipientAta,    // destination ATA (платформа)
+            senderPubkey,    // owner (подписант)
+            rawAmount
+        );
+        
+        const transaction = new Transaction();
+        transaction.add(transferIx);
+        
+        // Получаем свежий blockhash
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = senderPubkey;
+        
+        btn.textContent = '⏳ Подтвердите в Phantom...';
+        
+        // Phantom подписывает и отправляет
+        const { signature } = await provider.signAndSendTransaction(transaction);
+        
+        btn.textContent = '⏳ Ожидаем подтверждение...';
+        
+        // Ждём подтверждения
+        await connection.confirmTransaction({
+            signature,
+            blockhash,
+            lastValidBlockHeight
+        }, 'confirmed');
+        
+        btn.textContent = '⏳ Зачисляем баланс...';
+        
+        // Ждем немного чтобы RPC проиндексировал
+        await new Promise(r => setTimeout(r, 3000));
+        
+        // Подтверждаем на бэкенде
+        const confirmResp = await fetch(`${API_BASE}/api/balance`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'confirm-deposit',
                 wallet: wallet,
-                txSignature: txHash
+                txSignature: signature
             })
         });
         
-        const data = await response.json();
+        const data = await confirmResp.json();
         
         const resultEl = document.getElementById('depositResult');
         document.getElementById('depositStep1').style.display = 'none';
@@ -342,8 +431,13 @@ async function confirmDeposit() {
                 <div style="font-size: 1.3em; font-weight: 700; color: var(--accent-green); margin-bottom: 10px;">
                     Депозит зачислен!
                 </div>
-                <div style="font-size: 1.5em; font-weight: 700; margin-bottom: 15px;">
+                <div style="font-size: 1.5em; font-weight: 700; margin-bottom: 10px;">
                     +${data.amount} токенов
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <a href="https://solscan.io/tx/${signature}" target="_blank" style="color: var(--accent-yellow); text-decoration: underline; font-size: 0.85em;">
+                        Транзакция в Solscan →
+                    </a>
                 </div>
                 <div style="color: var(--text-dim); font-size: 0.85em; margin-bottom: 20px;">
                     Новый баланс: ${data.newBalance} токенов
@@ -352,30 +446,98 @@ async function confirmDeposit() {
                     ГОТОВО
                 </button>
             `;
-            
-            // Обновить баланс
             await fetchTokenBalance();
         } else {
             resultEl.innerHTML = `
-                <div style="font-size: 3em; margin-bottom: 15px;">❌</div>
-                <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-red); margin-bottom: 10px;">
-                    Ошибка верификации
+                <div style="font-size: 3em; margin-bottom: 15px;">⚠️</div>
+                <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-yellow); margin-bottom: 10px;">
+                    Токены отправлены, но зачисление задерживается
                 </div>
-                <div style="color: var(--text-dim); margin-bottom: 20px; font-size: 0.9em;">
-                    ${data.error || 'Неизвестная ошибка'}
+                <div style="color: var(--text-dim); margin-bottom: 10px; font-size: 0.9em;">
+                    ${data.error || 'Транзакция ещё индексируется'}
                 </div>
-                <button onclick="document.getElementById('depositStep1').style.display='block'; document.getElementById('depositResult').style.display='none';" style="padding: 12px 30px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px; font-size: 1em;">
-                    ПОПРОБОВАТЬ СНОВА
+                <div style="color: var(--text-dim); margin-bottom: 20px; font-size: 0.85em;">
+                    TX: <a href="https://solscan.io/tx/${signature}" target="_blank" style="color: var(--accent-yellow);">${signature.substring(0,20)}...</a>
+                    <br><br>Баланс обновится в течение 1-2 минут. Если нет — обратитесь в поддержку с TX хэшем.
+                </div>
+                <button onclick="closeDepositModal()" style="padding: 12px 30px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px;">
+                    ЗАКРЫТЬ
                 </button>
             `;
+            // Всё равно обновляем баланс через несколько секунд
+            setTimeout(() => fetchTokenBalance(), 10000);
         }
+        
     } catch (error) {
         console.error('❌ Deposit error:', error);
-        alert('Ошибка сети. Попробуйте ещё раз.');
+        
+        const resultEl = document.getElementById('depositResult');
+        
+        if (error.message?.includes('User rejected')) {
+            // Пользователь отменил в Phantom — просто сбросить кнопку
+            btn.disabled = false;
+            btn.textContent = '✅ ПОПОЛНИТЬ ЧЕРЕЗ PHANTOM';
+            return;
+        }
+        
+        document.getElementById('depositStep1').style.display = 'none';
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = `
+            <div style="font-size: 3em; margin-bottom: 15px;">❌</div>
+            <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-red); margin-bottom: 10px;">
+                Ошибка
+            </div>
+            <div style="color: var(--text-dim); margin-bottom: 20px; font-size: 0.9em;">
+                ${error.message || 'Неизвестная ошибка'}
+            </div>
+            <button onclick="document.getElementById('depositStep1').style.display='block'; document.getElementById('depositResult').style.display='none';" style="padding: 12px 30px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 6px;">
+                ПОПРОБОВАТЬ СНОВА
+            </button>
+        `;
     } finally {
         btn.disabled = false;
-        btn.textContent = '✅ ПОДТВЕРДИТЬ ДЕПОЗИТ';
+        btn.textContent = '✅ ПОПОЛНИТЬ ЧЕРЕЗ PHANTOM';
     }
+}
+
+// ============================================
+// SPL HELPERS (чистый JS, без импорта @solana/spl-token)
+// ============================================
+
+// Вычисляет Associated Token Address
+async function getAssociatedTokenAddressJS(mint, owner) {
+    const { PublicKey } = solanaWeb3;
+    const SPL_TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    const SPL_ATA = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+    
+    const [address] = await PublicKey.findProgramAddress(
+        [owner.toBuffer(), SPL_TOKEN.toBuffer(), mint.toBuffer()],
+        SPL_ATA
+    );
+    return address;
+}
+
+// Создаёт SPL Transfer Instruction
+function createTransferInstructionJS(source, destination, owner, amount) {
+    const { PublicKey, TransactionInstruction } = solanaWeb3;
+    const SPL_TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    
+    // SPL Token Transfer instruction layout:
+    // byte 0: instruction index (3 = Transfer)
+    // bytes 1-8: amount (u64 little-endian)
+    const data = Buffer.alloc(9);
+    data.writeUInt8(3, 0); // Transfer instruction
+    data.writeBigUInt64LE(BigInt(amount), 1);
+    
+    return new TransactionInstruction({
+        keys: [
+            { pubkey: source, isSigner: false, isWritable: true },
+            { pubkey: destination, isSigner: false, isWritable: true },
+            { pubkey: owner, isSigner: true, isWritable: false },
+        ],
+        programId: SPL_TOKEN,
+        data,
+    });
 }
 
 // ============================================
@@ -1568,8 +1730,8 @@ window.switchTradeSide = switchTradeSide;
 window.executeUnifiedTrade = executeUnifiedTrade;
 window.openDepositModal = openDepositModal;
 window.closeDepositModal = closeDepositModal;
-window.copyDepositAddress = copyDepositAddress;
-window.confirmDeposit = confirmDeposit;
+window.setMaxDeposit = setMaxDeposit;
+window.executeDeposit = executeDeposit;
 window.openWithdrawModal = openWithdrawModal;
 window.closeWithdrawModal = closeWithdrawModal;
 window.setMaxWithdraw = setMaxWithdraw;
