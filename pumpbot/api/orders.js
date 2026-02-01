@@ -352,13 +352,9 @@ async function getMatchableOrders(roundId, side, price) {
     try {
         const oppositeSide = side === 'higher' ? 'lower' : 'higher';
         
-        // For 'higher' buy orders: match with 'lower' sell orders where sell price <= buy price
-        // For 'lower' buy orders: match with 'higher' sell orders where sell price <= buy price
-        // If price is null/undefined (market order), match all available orders
         let result;
         
         if (price === null || price === undefined || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
-            // Market order - match any price
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price
                 FROM limit_orders
@@ -373,7 +369,6 @@ async function getMatchableOrders(roundId, side, price) {
                 LIMIT 50
             `;
         } else {
-            // Limit order - match only better prices
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price
                 FROM limit_orders
@@ -503,6 +498,93 @@ async function enforceRateLimit(req, res, identifier, endpoint) {
 }
 
 // ============================================
+// BALANCE HELPERS (кастодиальная модель)
+// ============================================
+
+async function getOrCreateBalance(userId) {
+    const existing = await sql`
+        SELECT * FROM user_balances WHERE user_id = ${userId}
+    `;
+    if (existing.rows.length > 0) return existing.rows[0];
+    
+    const created = await sql`
+        INSERT INTO user_balances (user_id, available, locked)
+        VALUES (${userId}, 0, 0)
+        RETURNING *
+    `;
+    return created.rows[0];
+}
+
+async function lockBalance(userId, amount) {
+    // Переводит средства из available в locked
+    const balance = await getOrCreateBalance(userId);
+    const available = parseFloat(balance.available);
+    
+    if (available < amount) {
+        throw new Error(`Недостаточно средств. Доступно: ${available.toFixed(2)}, нужно: ${amount.toFixed(2)}. Пополните баланс.`);
+    }
+    
+    await sql`
+        UPDATE user_balances 
+        SET available = available - ${amount},
+            locked = locked + ${amount},
+            updated_at = NOW()
+        WHERE user_id = ${userId}
+    `;
+    
+    // Лог
+    await sql`
+        INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+        VALUES (${userId}, 'order_lock', ${-amount}, ${available}, ${available - amount}, ${'Lock for order'})
+    `;
+}
+
+async function unlockBalance(userId, amount) {
+    // Возвращает средства из locked в available (отмена ордера, переплата)
+    await sql`
+        UPDATE user_balances 
+        SET available = available + ${amount},
+            locked = locked - ${amount},
+            updated_at = NOW()
+        WHERE user_id = ${userId}
+    `;
+    
+    const balance = await getOrCreateBalance(userId);
+    await sql`
+        INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+        VALUES (${userId}, 'order_unlock', ${amount}, ${parseFloat(balance.available) - amount}, ${parseFloat(balance.available)}, ${'Unlock from order'})
+    `;
+}
+
+async function deductLocked(userId, amount) {
+    // Списывает из locked (исполнение ордера — деньги ушли)
+    await sql`
+        UPDATE user_balances 
+        SET locked = locked - ${amount},
+            updated_at = NOW()
+        WHERE user_id = ${userId}
+    `;
+}
+
+async function creditBalance(userId, amount, description) {
+    // Зачисляет в available (выигрыш, продажа)
+    const balance = await getOrCreateBalance(userId);
+    const before = parseFloat(balance.available);
+    
+    await sql`
+        UPDATE user_balances 
+        SET available = available + ${amount},
+            updated_at = NOW()
+        WHERE user_id = ${userId}
+    `;
+    
+    await sql`
+        INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+        VALUES (${userId}, 'trade_credit', ${amount}, ${before}, ${before + amount}, ${description})
+    `;
+}
+
+// ============================================
 // INLINE SETTLEMENT — мгновенный расчёт при запросе пользователя
 // ============================================
 let lastSettlementCheck = 0;
@@ -586,6 +668,7 @@ async function inlineSettleRound(roundId) {
         if (startMC <= 0) {
             for (const pos of positions.rows) {
                 const tc = parseFloat(pos.total_cost);
+                await creditBalance(pos.user_id, tc, `Refund round #${roundId} (no start cap)`);
                 await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
                     VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
                     ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
@@ -607,8 +690,15 @@ async function inlineSettleRound(roundId) {
             const won = pos.side === winningSide;
             const amt = parseFloat(pos.amount), tc = parseFloat(pos.total_cost);
             let payout = 0, pl = 0;
-            if (won && totalWinAmt > 0) { payout = tc + totalLoseCost * (amt / totalWinAmt); pl = payout - tc; }
-            else if (!won) { pl = -tc; }
+            if (won && totalWinAmt > 0) {
+                payout = tc + totalLoseCost * (amt / totalWinAmt);
+                pl = payout - tc;
+                // ✅ Зачисляем выигрыш на баланс
+                await creditBalance(pos.user_id, payout, `Won round #${roundId}: ${winningSide}, payout ${payout.toFixed(2)}`);
+            } else if (!won) {
+                pl = -tc;
+                // Проигравшие — деньги уже были списаны при размещении ордера, ничего не делаем
+            }
             
             await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
                 VALUES (${pos.user_id},${roundId},${pos.side},${amt},${pos.avg_price},${tc},${won},${payout},${pl},false)
@@ -664,13 +754,13 @@ export default async function handler(req, res) {
                         rounds.push({
                             id: r.id,
                             slug: r.slug,
-                            interval_minutes: interval,  // Added for compatibility
+                            interval_minutes: interval,
                             interval: interval,
-                            start_time: r.start_time,   // Added for compatibility
-                            end_time: r.end_time,       // Added for compatibility
+                            start_time: r.start_time,
+                            end_time: r.end_time,
                             endTime: r.end_time,
                             minutesRemaining: minutesRemaining,
-                            status: r.status            // Added for compatibility
+                            status: r.status
                         });
                     } catch (error) {
                         console.error(`Failed to get round for ${interval}m:`, error);
@@ -748,8 +838,8 @@ if (action === 'orderbook') {
                         amount: parseFloat(t.amount),
                         price: parseFloat(t.price),
                         cost: parseFloat(t.total_cost),
-                        totalCost: parseFloat(t.total_cost),  // Added for compatibility
-                        time: t.created_at,                   // Added for compatibility
+                        totalCost: parseFloat(t.total_cost),
+                        time: t.created_at,
                         timestamp: new Date(t.created_at).getTime(),
                         type: t.trade_type
                     }))
@@ -895,7 +985,7 @@ if (action === 'orderbook') {
                 });
             }
             
-            // USER TRADES - FIXED: получаем реальные сделки из таблицы trades, а не orders
+            // USER TRADES
             if (action === 'user-trades') {
                 const { wallet } = query;
                 
@@ -908,7 +998,6 @@ if (action === 'orderbook') {
                 
                 const user = await db.getOrCreateUser(wallet);
                 
-                // FIXED: Получаем сделки из таблицы trades, а не orders
                 const trades = await sql`
                     SELECT 
                         t.id,
@@ -936,7 +1025,7 @@ if (action === 'orderbook') {
                     success: true,
                     trades: trades.rows.map(t => ({
                         id: t.id,
-                        side: t.user_side, // Используем перспективу пользователя
+                        side: t.user_side,
                         amount: parseFloat(t.amount),
                         price: parseFloat(t.price),
                         total_cost: parseFloat(t.total_cost),
@@ -981,7 +1070,7 @@ if (action === 'orderbook') {
         }
         
         // ============================================
-        // POST - Разместить ордер
+        // POST - Разместить ордер (С ПРОВЕРКОЙ БАЛАНСА)
         // ============================================
         if (method === 'POST') {
             const { wallet, side, amount, price, type, roundId, intervalMinutes } = 
@@ -1040,15 +1129,34 @@ if (action === 'orderbook') {
                 req.headers['user-agent']
             );
             
+            // ============================================
+            // ПРОВЕРКА И БЛОКИРОВКА БАЛАНСА
+            // ============================================
+            let estimatedCost;
+            if (type === 'market') {
+                // Для маркета блокируем максимум = amount * 1.0
+                estimatedCost = amt;
+            } else {
+                // Для лимитного = amount * price
+                estimatedCost = amt * parseFloat(price);
+            }
+            
+            try {
+                await lockBalance(user.id, estimatedCost);
+            } catch (balanceError) {
+                return res.status(400).json({
+                    success: false,
+                    error: balanceError.message
+                });
+            }
+            
             // MARKET ORDER
             if (type === 'market') {
-                // First try to match against order book
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null); // null = match any price
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null);
                 
                 let totalMatched = 0;
                 const trades = [];
                 
-                // Try to fill from order book first
                 for (const oppositeOrder of matchableOrders) {
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
@@ -1062,7 +1170,7 @@ if (action === 'orderbook') {
                         roundId: round.id,
                         buyerId: user.id,
                         sellerId: oppositeOrder.user_id,
-                        buyOrderId: null, // Market order has no order ID
+                        buyOrderId: null,
                         sellOrderId: oppositeOrder.id,
                         side,
                         amount: matchAmount,
@@ -1080,10 +1188,14 @@ if (action === 'orderbook') {
                     totalMatched += matchAmount;
                 }
                 
-                // If order book was sufficient, return success
                 if (totalMatched >= amt) {
                     const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / amt;
                     const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
+                    
+                    // ✅ Списываем реальную стоимость, возвращаем переплату
+                    await deductLocked(user.id, totalCost);
+                    const refund = estimatedCost - totalCost;
+                    if (refund > 0) await unlockBalance(user.id, refund);
                     
                     const orderBook = await db.getAggregatedOrderBook(round.id);
                     
@@ -1101,18 +1213,24 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                // FIXED: If order book was completely empty, reject the market order
+                // Стакан пустой — разблокируем всё
                 if (totalMatched === 0) {
+                    await unlockBalance(user.id, estimatedCost);
+                    
                     return res.status(400).json({
                         success: false,
                         error: 'Стакан пустой - используйте лимитный ордер или подождите пока появятся ордера'
                     });
                 }
                 
-                // FIXED: If order book had partial liquidity, return partial fill WITHOUT using AMM
+                // Частичное исполнение — списываем исполненное, возвращаем остаток
                 if (totalMatched < amt) {
                     const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / totalMatched;
                     const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
+                    
+                    await deductLocked(user.id, totalCost);
+                    const refund = estimatedCost - totalCost;
+                    if (refund > 0) await unlockBalance(user.id, refund);
                     
                     const orderBook = await db.getAggregatedOrderBook(round.id);
                     
@@ -1133,9 +1251,13 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                // Full fill from orderbook - AMM NOT USED
+                // Full fill from orderbook
                 const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / amt;
                 const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
+                
+                await deductLocked(user.id, totalCost);
+                const refund = estimatedCost - totalCost;
+                if (refund > 0) await unlockBalance(user.id, refund);
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
@@ -1151,12 +1273,6 @@ if (action === 'orderbook') {
                     },
                     orderBook
                 });
-                
-                /* REMOVED AMM FALLBACK CODE - Market orders now only use orderbook
-                
-                // If order book was insufficient, use AMM pool for remaining amount
-                const remainingAmount = amt - totalMatched;
-                */
             }
             
             // LIMIT ORDER
@@ -1164,6 +1280,8 @@ if (action === 'orderbook') {
                 const prc = parseFloat(price);
                 
                 if (!prc || prc <= 0 || prc >= 1 || isNaN(prc)) {
+                    // Разблокируем — невалидная цена
+                    await unlockBalance(user.id, estimatedCost);
                     return res.status(400).json({
                         success: false,
                         error: 'Invalid limit price (must be between 0 and 1)'
@@ -1206,6 +1324,13 @@ if (action === 'orderbook') {
                     totalMatched += matchAmount;
                 }
                 
+                // ✅ Для лимитного: исполненная часть списывается, остаток остаётся locked
+                if (totalMatched > 0) {
+                    const matchedCost = totalMatched * prc;
+                    await deductLocked(user.id, matchedCost);
+                }
+                // Неисполненная часть остаётся в locked до отмены или исполнения
+                
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
                 return res.status(200).json({
@@ -1225,7 +1350,7 @@ if (action === 'orderbook') {
         }
         
         // ============================================
-        // DELETE - Отменить ордер
+        // DELETE - Отменить ордер (С ВОЗВРАТОМ БАЛАНСА)
         // ============================================
         if (method === 'DELETE') {
             const { orderId, wallet } = query;
@@ -1238,6 +1363,13 @@ if (action === 'orderbook') {
             }
             
             const user = await db.getOrCreateUser(wallet);
+            
+            // Получаем ордер ДО отмены чтобы знать сумму для разблокировки
+            const orderBefore = await sql`
+                SELECT * FROM limit_orders 
+                WHERE id = ${parseInt(orderId)} AND user_id = ${user.id} AND status = 'active'
+            `;
+            
             const canceledOrder = await db.cancelOrder(parseFloat(orderId), user.id);
             
             if (!canceledOrder) {
@@ -1245,6 +1377,13 @@ if (action === 'orderbook') {
                     success: false,
                     error: 'Order not found or already filled/cancelled'
                 });
+            }
+            
+            // ✅ Возвращаем заблокированные средства за неисполненную часть
+            const unfilledAmount = parseFloat(canceledOrder.amount) - parseFloat(canceledOrder.filled);
+            const unfilledCost = unfilledAmount * parseFloat(canceledOrder.price);
+            if (unfilledCost > 0) {
+                await unlockBalance(user.id, unfilledCost);
             }
             
             await db.logAction(user.id, 'cancel_order', { orderId }, clientIP, req.headers['user-agent']);
@@ -1258,7 +1397,8 @@ if (action === 'orderbook') {
                     id: canceledOrder.id,
                     side: canceledOrder.side,
                     amount: parseFloat(canceledOrder.amount),
-                    filled: parseFloat(canceledOrder.filled)
+                    filled: parseFloat(canceledOrder.filled),
+                    refunded: unfilledCost
                 },
                 orderBook
             });
