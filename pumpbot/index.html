@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$TOKEN Prediction Market - Advanced Trading</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20260201d">
+    <link rel="stylesheet" href="assets/styles.css?v=20260201e">
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <style>
         /* ROUND SELECTOR STYLES */
@@ -332,70 +332,55 @@
             <p>Advanced Trading Terminal • Order Book • AMM</p>
         </div>
 
-        <!-- TOP ROW: WALLET + SETTLEMENTS -->
+        <!-- MASTER GRID: left content + right sidebar -->
         <div style="display: grid; grid-template-columns: 1fr 300px; gap: 20px; margin-bottom: 20px;">
-            <!-- WALLET SECTION (left, big) -->
-            <div class="wallet-section slide-in" style="margin-bottom: 0;">
-                <div class="wallet-status">
-                    <div>
-                        <span class="status-dot status-disconnected" id="statusDot"></span>
-                        <span id="walletStatus">НЕ ПОДКЛЮЧЕН</span>
+
+            <!-- ===== LEFT COLUMN ===== -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+
+                <!-- WALLET SECTION -->
+                <div class="wallet-section slide-in" style="margin-bottom: 0;">
+                    <div class="wallet-status">
+                        <div>
+                            <span class="status-dot status-disconnected" id="statusDot"></span>
+                            <span id="walletStatus">НЕ ПОДКЛЮЧЕН</span>
+                        </div>
+                        <button id="connectBtn">ПОДКЛЮЧИТЬ</button>
                     </div>
-                    <button id="connectBtn">ПОДКЛЮЧИТЬ</button>
+                    <div class="balance-display">
+                        <div class="balance-item">
+                            <div class="balance-label">Баланс $TOKEN</div>
+                            <div class="balance-value" id="tokenBalance">0</div>
+                        </div>
+                        <div class="balance-item" onclick="openMyOrdersModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                            <div class="balance-label">Мои ордера</div>
+                            <div class="balance-value text-yellow" id="activeOrdersCount">0</div>
+                        </div>
+                        <div class="balance-item" onclick="openMyTradesModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                            <div class="balance-label">Мои сделки</div>
+                            <div class="balance-value text-green" id="openPositionsCount">1</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="balance-display">
-                    <div class="balance-item">
-                        <div class="balance-label">Баланс $TOKEN</div>
-                        <div class="balance-value" id="tokenBalance">0</div>
+
+                <!-- ROUND SELECTOR -->
+                <div class="round-selector slide-in" style="margin-bottom: 0;">
+                    <div class="round-tab active" data-round-id="1" data-interval="15" onclick="selectRound(1, 15)">
+                        <div class="round-tab-title">15m</div>
+                        <div class="round-tab-info" id="round-1-time">Загрузка...</div>
                     </div>
-                    <div class="balance-item" onclick="openMyOrdersModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                        <div class="balance-label">Мои ордера</div>
-                        <div class="balance-value text-yellow" id="activeOrdersCount">0</div>
+                    <div class="round-tab" data-round-id="2" data-interval="60" onclick="selectRound(2, 60)">
+                        <div class="round-tab-title">1h</div>
+                        <div class="round-tab-info" id="round-2-time">Загрузка...</div>
                     </div>
-                    <div class="balance-item" onclick="openMyTradesModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                        <div class="balance-label">Мои сделки</div>
-                        <div class="balance-value text-green" id="openPositionsCount">1</div>
+                    <div class="round-tab" data-round-id="3" data-interval="240" onclick="selectRound(3, 240)">
+                        <div class="round-tab-title">4h</div>
+                        <div class="round-tab-info" id="round-3-time">Загрузка...</div>
                     </div>
                 </div>
-            </div>
 
-            <!-- SETTLEMENTS (right, 300px) -->
-            <div id="settlementsAlert" onclick="openSettlementsModal()" style="display: none; cursor: pointer; transition: all 0.2s; background: var(--bg-secondary); border: 2px solid var(--accent-yellow); padding: 20px; display: none;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
-                <div style="font-size: 0.8em; color: var(--accent-yellow); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">🎁 Выигрыши</div>
-                <div style="font-size: 2em; font-weight: 700; color: var(--accent-yellow);" id="settlementsCount">0</div>
-            </div>
-        </div>
-
-        <!-- WALLET MODAL -->
-        <div class="modal" id="walletModal">
-            <div class="modal-content">
-                <span class="close-modal" id="closeModal">×</span>
-                <div class="modal-header">ВЫБЕРИ КОШЕЛЕК</div>
-                <div id="walletsList"></div>
-            </div>
-        </div>
-
-        <!-- ROUND SELECTOR -->
-        <div class="round-selector slide-in">
-            <div class="round-tab active" data-round-id="1" data-interval="15" onclick="selectRound(1, 15)">
-                <div class="round-tab-title">15m</div>
-                <div class="round-tab-info" id="round-1-time">Загрузка...</div>
-            </div>
-            <div class="round-tab" data-round-id="2" data-interval="60" onclick="selectRound(2, 60)">
-                <div class="round-tab-title">1h</div>
-                <div class="round-tab-info" id="round-2-time">Загрузка...</div>
-            </div>
-            <div class="round-tab" data-round-id="3" data-interval="240" onclick="selectRound(3, 240)">
-                <div class="round-tab-title">4h</div>
-                <div class="round-tab-info" id="round-3-time">Загрузка...</div>
-            </div>
-        </div>
-
-        <!-- MAIN TRADING GRID -->
-        <div class="trading-grid">
-            <!-- СТАКАН ОРДЕРОВ (слева, большой 1fr) -->
-            <div class="main-panel">
-                <div class="orderbook-panel slide-in" style="max-height: none;">
+                <!-- СТАКАН ОРДЕРОВ -->
+                <div class="orderbook-panel slide-in" style="max-height: none; flex: 1;">
                     <div class="orderbook-header">📖 СТАКАН ОРДЕРОВ</div>
                     <div class="orderbook-content">
                         <div class="orderbook-side">
@@ -422,10 +407,18 @@
                         </div>
                     </div>
                 </div>
+
             </div>
 
-            <!-- ПРАВАЯ ПАНЕЛЬ (300px) -->
+            <!-- ===== RIGHT COLUMN (300px, full height) ===== -->
             <div style="display: flex; flex-direction: column; gap: 15px;">
+
+                <!-- SETTLEMENTS -->
+                <div id="settlementsAlert" onclick="openSettlementsModal()" style="display: none; cursor: pointer; transition: all 0.2s; background: var(--bg-secondary); border: 2px solid var(--accent-yellow); padding: 20px;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                    <div style="font-size: 0.8em; color: var(--accent-yellow); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">🎁 Выигрыши</div>
+                    <div style="font-size: 2em; font-weight: 700; color: var(--accent-yellow);" id="settlementsCount">0</div>
+                </div>
+
                 <!-- PRICE DISPLAY -->
                 <div class="price-display slide-in" style="padding: 20px;">
                     <div class="price-label">ТЕКУЩАЯ КАПИТАЛИЗАЦИЯ</div>
@@ -454,55 +447,53 @@
 
                 <!-- POLYMARKET-STYLE TRADE PANEL -->
                 <div style="background: var(--bg-secondary); border: 1px solid var(--border); padding: 15px;" class="slide-in">
-                    <!-- Side buttons like Polymarket Yes/No -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;">
                         <button id="sideHigherBtn" onclick="switchTradeSide('higher')" style="padding: 12px; background: var(--accent-green); color: #000; border: none; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">⬆ Выше <span id="sideHigherOdds" style="opacity:0.8">0.500</span></button>
                         <button id="sideLowerBtn" onclick="switchTradeSide('lower')" style="padding: 12px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">⬇ Ниже <span id="sideLowerOdds" style="opacity:0.8">0.500</span></button>
                     </div>
-
-                    <!-- Order type selector -->
                     <div class="order-type-selector" style="margin-bottom: 15px;">
                         <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">Маркет</button>
                         <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">Лимит</button>
                     </div>
-
-                    <!-- Limit price (hidden by default) -->
                     <div class="input-group limit-price-group" style="display: none;">
                         <label class="input-label">Цена (0-1)</label>
                         <input type="number" id="tradePrice" placeholder="0.5" min="0" max="1" step="0.001">
                     </div>
-
-                    <!-- Amount -->
                     <div class="input-group">
                         <label class="input-label">Количество (токенов)</label>
                         <input type="number" id="tradeAmount" placeholder="0" min="0" step="1">
                     </div>
-
-                    <!-- Estimate -->
                     <div class="estimate-display" id="tradeEstimate">
                         <div style="color: var(--text-dim);">Введите сумму</div>
                     </div>
-
-                    <!-- Execute button -->
                     <button id="tradeExecuteBtn" onclick="executeUnifiedTrade()" style="width: 100%; padding: 14px; background: var(--accent-green); color: #000; border: none; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 1.1em; margin-top: 10px;">
                         КУПИТЬ ВЫШЕ
                     </button>
                 </div>
+
+            </div>
+        </div>
+
+        <!-- WALLET MODAL -->
+        <div class="modal" id="walletModal">
+            <div class="modal-content">
+                <span class="close-modal" id="closeModal">×</span>
+                <div class="modal-header">ВЫБЕРИ КОШЕЛЕК</div>
+                <div id="walletsList"></div>
             </div>
         </div>
 
         <!-- TRADE HISTORY -->
         <div class="trade-history slide-in" style="margin-bottom: 20px;">
-                    <div class="trade-history-header">
-                        🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
-                    </div>
-                    <div class="trade-history-list" id="tradeHistory">
-                        <div style="padding: 20px; text-align: center; color: var(--text-dim);">
-                            Загрузка...
-                        </div>
-                    </div>
+            <div class="trade-history-header">
+                🌍 ГЛОБАЛЬНАЯ ИСТОРИЯ СДЕЛОК
+            </div>
+            <div class="trade-history-list" id="tradeHistory">
+                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                    Загрузка...
                 </div>
             </div>
+        </div>
 
         <!-- INFO BOX -->
         <div style="border: 1px solid var(--border); padding: 20px; margin-top: 30px; background: var(--bg-secondary); font-size: 0.9em; line-height: 1.8;">
@@ -587,7 +578,7 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=20260201d"></script>
+    <script src="js/app.js?v=20260201e"></script>
     <script>
         // Global variable for current round
         window.currentRoundId = 1; // Default to 15m round
