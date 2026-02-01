@@ -67,7 +67,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         // ✅ ИСПРАВЛЕНО: Получаем market cap НАПРЯМУЮ из DexScreener 
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
-        const TOKEN_ADDR = 'GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump';
+        const TOKEN_ADDR = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
         
         try {
             const controller = new AbortController();
@@ -636,7 +636,7 @@ async function inlineSettleRound(roundId) {
         // Final market cap
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
-            const TOKEN = 'GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump';
+            const TOKEN = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
             try {
                 const ctrl = new AbortController();
                 const t = setTimeout(() => ctrl.abort(), 4000);
