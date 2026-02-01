@@ -425,7 +425,8 @@ async function executeDeposit() {
         }
         
         if (!blockhash) {
-            throw new Error('Не удалось получить blockhash. Проверьте подключение.');
+            const debugInfo = platformDepositInfo._debug ? JSON.stringify(platformDepositInfo._debug) : 'no debug';
+            throw new Error(`Не удалось получить blockhash. Debug: ${debugInfo}`);
         }
         
         transaction.recentBlockhash = blockhash;
