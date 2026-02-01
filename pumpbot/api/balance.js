@@ -29,7 +29,7 @@ import bs58 from 'bs58';
 // ============================================
 // КОНФИГУРАЦИЯ — всё из ENV
 // ============================================
-const MINT_ADDRESS = process.env.TOKEN_MINT || 'BY2ToaJ3dSyVzgUjKkxbByzZWeFCUtMQroDJspT6pump';
+const MINT_ADDRESS = process.env.TOKEN_MINT || 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
 const PLATFORM_WALLET_SECRET = process.env.PLATFORM_WALLET_SECRET; // Base58 приватный ключ
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
 const RPC_URL = HELIUS_API_KEY
