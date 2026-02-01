@@ -400,7 +400,45 @@ async function executeDeposit() {
         const transaction = new Transaction();
         transaction.add(transferIx);
         
-        // Получаем blockhash через Phantom RPC (он использует свой node)
+        // Получаем blockhash через рабочий публичный RPC
+        btn.textContent = '⏳ Подготовка транзакции...';
+        
+        let blockhash = null;
+        const rpcEndpoints = [
+            'https://rpc.ankr.com/solana',
+            'https://solana-mainnet.g.alchemy.com/v2/demo',
+            'https://solana.public-rpc.com',
+        ];
+        
+        for (const rpc of rpcEndpoints) {
+            try {
+                const bhResp = await fetch(rpc, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0', id: 1,
+                        method: 'getLatestBlockhash',
+                        params: [{ commitment: 'finalized' }]
+                    })
+                });
+                const bhData = await bhResp.json();
+                if (bhData.result?.value?.blockhash) {
+                    blockhash = bhData.result.value.blockhash;
+                    console.log('✅ Blockhash from', rpc);
+                    break;
+                }
+            } catch (e) {
+                console.warn('⚠️ RPC failed:', rpc, e.message);
+            }
+        }
+        
+        if (!blockhash) {
+            throw new Error('Не удалось получить blockhash. Попробуйте позже.');
+        }
+        
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = senderPubkey;
+        
         btn.textContent = '⏳ Подтвердите в Phantom...';
         
         // signAndSendTransaction — Phantom сам получит blockhash, подпишет и отправит
