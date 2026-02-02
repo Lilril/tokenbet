@@ -471,13 +471,14 @@ export default async function handler(req, res) {
                     LIMIT 1
                 `;
                 if (hasActiveOrders.rows.length === 0) {
-                    const bal = await sql`SELECT locked FROM user_balances WHERE user_id = ${userId}`;
-                    if (bal.rows.length > 0 && parseFloat(bal.rows[0].locked) > 0) {
-                        await sql`
-                            UPDATE user_balances 
-                            SET available = available + locked, locked = 0, updated_at = NOW()
-                            WHERE user_id = ${userId} AND locked > 0
-                        `;
+                    // Атомарно: locked=0 только если ещё > 0
+                    const fixed = await sql`
+                        UPDATE user_balances 
+                        SET available = available + locked, locked = 0, updated_at = NOW()
+                        WHERE user_id = ${userId} AND locked > 0
+                        RETURNING available
+                    `;
+                    if (fixed.rows.length > 0) {
                         console.log('Balance API: fixed orphaned lock for user ' + userId);
                     }
                 }
