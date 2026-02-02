@@ -17,12 +17,10 @@ import {
     PublicKey,
     Keypair,
     Transaction,
+    TransactionInstruction,
     sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import {
-    getAssociatedTokenAddress,
-    createTransferInstruction,
-    createAssociatedTokenAccountInstruction,
     TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import bs58 from 'bs58';
@@ -341,24 +339,29 @@ async function processWithdrawal(userId, walletAddress, amount) {
         const recipientPubkey = new PublicKey(walletAddress);
         const mintPubkey = getMintPublicKey();
         
-        // Определяем token program
-        let tokenProgramId = TOKEN_PROGRAM_ID;
+        // Определяем token program (SPL Token vs Token-2022)
+        let tokenProgramPubkey = TOKEN_PROGRAM_ID;
         try {
             const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
             if (mintInfo.value?.owner) {
-                tokenProgramId = mintInfo.value.owner;
+                tokenProgramPubkey = mintInfo.value.owner;
             }
-        } catch (e) { /* fallback to default */ }
+        } catch (e) {
+            console.error('⚠️ Failed to detect token program for withdrawal, using default');
+        }
+        
+        console.log(`💸 Withdrawal: tokenProgram=${tokenProgramPubkey.toBase58()}`);
         
         const ATA_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+        const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
         
         // Вычисляем ATA с правильной token program
         const [platformAtaAddr] = PublicKey.findProgramAddressSync(
-            [platformKeypair.publicKey.toBuffer(), tokenProgramId.toBuffer(), mintPubkey.toBuffer()],
+            [platformKeypair.publicKey.toBuffer(), tokenProgramPubkey.toBuffer(), mintPubkey.toBuffer()],
             ATA_PROGRAM_ID
         );
         const [recipientAtaAddr] = PublicKey.findProgramAddressSync(
-            [recipientPubkey.toBuffer(), tokenProgramId.toBuffer(), mintPubkey.toBuffer()],
+            [recipientPubkey.toBuffer(), tokenProgramPubkey.toBuffer(), mintPubkey.toBuffer()],
             ATA_PROGRAM_ID
         );
 
@@ -366,22 +369,38 @@ async function processWithdrawal(userId, walletAddress, amount) {
 
         const transaction = new Transaction();
 
-        // Создаём ATA получателя если не существует
+        // Создаём ATA получателя если не существует (ручная инструкция)
         if (!recipientAtaInfo) {
-            transaction.add(
-                createAssociatedTokenAccountInstruction(
-                    platformKeypair.publicKey, recipientAtaAddr, recipientPubkey, mintPubkey,
-                    tokenProgramId
-                )
-            );
+            const createAtaIx = new TransactionInstruction({
+                keys: [
+                    { pubkey: platformKeypair.publicKey, isSigner: true, isWritable: true },  // payer
+                    { pubkey: recipientAtaAddr, isSigner: false, isWritable: true },           // ata
+                    { pubkey: recipientPubkey, isSigner: false, isWritable: false },            // owner
+                    { pubkey: mintPubkey, isSigner: false, isWritable: false },                 // mint
+                    { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },          // system
+                    { pubkey: tokenProgramPubkey, isSigner: false, isWritable: false },          // token program
+                ],
+                programId: ATA_PROGRAM_ID,
+                data: Buffer.alloc(0),
+            });
+            transaction.add(createAtaIx);
         }
 
-        transaction.add(
-            createTransferInstruction(
-                platformAtaAddr, recipientAtaAddr, platformKeypair.publicKey, toRawAmount(netAmount),
-                tokenProgramId
-            )
-        );
+        // Transfer инструкция вручную (поддерживает любую token program)
+        const transferData = Buffer.alloc(9);
+        transferData.writeUInt8(3, 0); // Transfer instruction index
+        transferData.writeBigUInt64LE(BigInt(toRawAmount(netAmount)), 1);
+        
+        const transferIx = new TransactionInstruction({
+            keys: [
+                { pubkey: platformAtaAddr, isSigner: false, isWritable: true },     // source
+                { pubkey: recipientAtaAddr, isSigner: false, isWritable: true },    // destination
+                { pubkey: platformKeypair.publicKey, isSigner: true, isWritable: false }, // owner
+            ],
+            programId: tokenProgramPubkey,
+            data: transferData,
+        });
+        transaction.add(transferIx);
 
         const txSignature = await sendAndConfirmTransaction(
             connection, transaction, [platformKeypair], { commitment: 'confirmed' }
