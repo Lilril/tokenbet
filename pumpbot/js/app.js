@@ -357,9 +357,15 @@ function setMaxDeposit() {
 
 async function executeDeposit() {
     const amount = parseFloat(document.getElementById('depositAmount').value);
+    const minDeposit = platformDepositInfo?.minDeposit || 1000;
     
     if (!amount || amount <= 0) {
         alert('Введите сумму!');
+        return;
+    }
+    
+    if (amount < minDeposit) {
+        alert(`Минимальный депозит: ${minDeposit} токенов`);
         return;
     }
     
@@ -806,16 +812,19 @@ async function fetchAllRounds() {
 // ============================================
 // ORDER BOOK & TRADING
 // ============================================
+let userOrderPrices = { higher: [], lower: [] };
+
 async function fetchOrderBook() {
     try {
         const intervalMinutes = getCurrentInterval();
-        const response = await fetch(`${API_BASE}/api/orders?action=orderbook&intervalMinutes=${intervalMinutes}`);
-        //                            ↑ ДОБАВИЛ (
+        const walletParam = wallet ? `&wallet=${wallet}` : '';
+        const response = await fetch(`${API_BASE}/api/orders?action=orderbook&intervalMinutes=${intervalMinutes}${walletParam}`);
         const data = await response.json();
         
         if (data.success) {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
+            userOrderPrices = data.userOrderPrices || { higher: [], lower: [] };
             
             // ✅ ДОБАВЬ ЭТО: Установи targetMarketCap ОДИН РАЗ из данных раунда
             if (data.startMarketCap && parseFloat(data.startMarketCap) > 0) {
@@ -862,29 +871,35 @@ function renderOrderBook() {
     const higherEl = document.getElementById('orderBookHigher');
     const lowerEl = document.getElementById('orderBookLower');
     
-    // Determine which side is "asks" and which is "bids" based on currentTradeSide
-    // When trading HIGHER: higher orders are asks (sell side), lower are bids (buy side)  
-    // When trading LOWER: lower orders are asks, higher are bids — FLIP the book
     const side = (typeof currentTradeSide !== 'undefined') ? currentTradeSide : 'higher';
     
     let asksData, bidsData, asksColor, bidsColor, asksBarColor, bidsBarColor;
+    let asksSide, bidsSide; // track which side for user highlight
     
     if (side === 'higher') {
-        // Normal: higher = asks (top, green), lower = bids (bottom, red)
         asksData = orderBookData.higher;
         bidsData = orderBookData.lower;
         asksColor = 'text-green';
         bidsColor = 'text-red';
         asksBarColor = 'rgba(0, 255, 159, 0.2)';
         bidsBarColor = 'rgba(255, 71, 87, 0.2)';
+        asksSide = 'higher';
+        bidsSide = 'lower';
     } else {
-        // Flipped: lower = asks (top, red), higher = bids (bottom, green)
         asksData = orderBookData.lower;
         bidsData = orderBookData.higher;
         asksColor = 'text-red';
         bidsColor = 'text-green';
         asksBarColor = 'rgba(255, 71, 87, 0.2)';
         bidsBarColor = 'rgba(0, 255, 159, 0.2)';
+        asksSide = 'lower';
+        bidsSide = 'higher';
+    }
+    
+    // Helper: check if this price level has user's order
+    function isUserOrder(orderSide, price) {
+        const prices = userOrderPrices[orderSide] || [];
+        return prices.some(p => Math.abs(p - price) < 0.00001);
     }
     
     // Render ASKS (top section)
@@ -894,11 +909,14 @@ function renderOrderBook() {
         const maxAmount = Math.max(...asksData.map(o => o.amount));
         higherEl.innerHTML = asksData.map(order => {
             const pct = (order.amount / maxAmount) * 100;
+            const isUser = isUserOrder(asksSide, order.price);
+            const userStyle = isUser ? 'border-left: 3px solid var(--accent-yellow); background: rgba(255, 204, 0, 0.08);' : '';
+            const userMarker = isUser ? '<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 4px;" title="Ваш ордер">★</span>' : '';
             return `
-                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer;" title="Нажмите чтобы подставить">
+                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Ваш ордер — ' : ''}Нажмите чтобы подставить">
                     <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, ${asksBarColor});"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="${asksColor}">${order.price.toFixed(4)}</span>
+                        <span class="${asksColor}">${order.price.toFixed(4)}${userMarker}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
@@ -913,11 +931,14 @@ function renderOrderBook() {
         const maxAmount = Math.max(...bidsData.map(o => o.amount));
         lowerEl.innerHTML = bidsData.map(order => {
             const pct = (order.amount / maxAmount) * 100;
+            const isUser = isUserOrder(bidsSide, order.price);
+            const userStyle = isUser ? 'border-left: 3px solid var(--accent-yellow); background: rgba(255, 204, 0, 0.08);' : '';
+            const userMarker = isUser ? '<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 4px;" title="Ваш ордер">★</span>' : '';
             return `
-                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer;" title="Нажмите чтобы подставить">
+                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Ваш ордер — ' : ''}Нажмите чтобы подставить">
                     <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, ${bidsBarColor});"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="${bidsColor}">${order.price.toFixed(4)}</span>
+                        <span class="${bidsColor}">${order.price.toFixed(4)}${userMarker}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
