@@ -633,6 +633,31 @@ async function inlineSettleRound(roundId) {
         if (rr.rows.length === 0) return;
         const round = rr.rows[0];
         
+        // ✅ СНАЧАЛА: Отменяем все незаполненные лимитки и возвращаем locked баланс
+        const unfilledOrders = await sql`
+            SELECT id, user_id, side, amount, filled, price 
+            FROM limit_orders 
+            WHERE round_id = ${roundId} AND status = 'active' AND amount > filled
+        `;
+        
+        for (const order of unfilledOrders.rows) {
+            const unfilledAmount = parseFloat(order.amount) - parseFloat(order.filled);
+            const unfilledCost = unfilledAmount * parseFloat(order.price);
+            
+            // Отменяем ордер
+            await sql`UPDATE limit_orders SET status = 'cancelled', cancelled_at = NOW() WHERE id = ${order.id}`;
+            
+            // Возвращаем locked средства
+            if (unfilledCost > 0) {
+                await unlockBalance(order.user_id, unfilledCost);
+                console.log(`🔓 Refund unfilled order #${order.id}: ${unfilledCost.toFixed(2)} → user ${order.user_id}`);
+            }
+        }
+        
+        if (unfilledOrders.rows.length > 0) {
+            console.log(`📋 Cancelled ${unfilledOrders.rows.length} unfilled orders in round ${roundId}`);
+        }
+        
         // Final market cap
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
@@ -679,6 +704,20 @@ async function inlineSettleRound(roundId) {
         }
         
         // Нормальный settlement
+        // Если цена не изменилась — ничья, возврат всем
+        if (finalMC === startMC) {
+            for (const pos of positions.rows) {
+                const tc = parseFloat(pos.total_cost);
+                await creditBalance(pos.user_id, tc, `Tie round #${roundId} (price unchanged), refund ${tc.toFixed(2)}`);
+                await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
+                    VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
+                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
+            }
+            await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
+            console.log(`✅ Settled round ${roundId}: TIE (${startMC}=${finalMC}), refund all`);
+            return;
+        }
+        
         const winningSide = finalMC > startMC ? 'higher' : 'lower';
         let totalWinAmt = 0, totalLoseCost = 0;
         for (const p of positions.rows) {
@@ -801,10 +840,35 @@ if (action === 'orderbook') {
         lower: parseFloat(poolSnapshot.higher_reserve) / parseFloat(poolSnapshot.lower_reserve)
     } : { higher: 0.5, lower: 0.5 };
     
+    // Получаем ордера текущего пользователя для подсветки в стакане
+    let userOrderPrices = { higher: [], lower: [] };
+    const reqWallet = req.query.wallet;
+    if (reqWallet) {
+        try {
+            const userResult = await sql`SELECT id FROM users WHERE wallet_address = ${reqWallet}`;
+            if (userResult.rows.length > 0) {
+                const userId = userResult.rows[0].id;
+                const userOrders = await sql`
+                    SELECT side, price, (amount - filled) as remaining
+                    FROM limit_orders
+                    WHERE round_id = ${round.id} AND user_id = ${userId} AND status = 'active' AND amount > filled
+                `;
+                for (const o of userOrders.rows) {
+                    const side = o.side;
+                    const price = parseFloat(o.price);
+                    if (!userOrderPrices[side].includes(price)) {
+                        userOrderPrices[side].push(price);
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+    }
+    
     return res.status(200).json({
         success: true,
         orderBook,
         ammPrice,
+        userOrderPrices,
         pool: poolSnapshot ? {
             higher: parseFloat(poolSnapshot.higher_reserve),
             lower: parseFloat(poolSnapshot.lower_reserve),
