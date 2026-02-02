@@ -398,22 +398,39 @@ export default async function handler(req, res) {
                 }
 
                 const platformAddress = getPlatformPublicKey().toBase58();
-                const platformAta = await getAssociatedTokenAddress(getMintPublicKey(), getPlatformPublicKey());
+                
+                // Определяем token program (SPL vs Token-2022)
+                const connection = getConnection();
+                let tokenProgramId = TOKEN_PROGRAM_ID.toBase58();
+                
+                try {
+                    const mintInfo = await connection.getParsedAccountInfo(getMintPublicKey());
+                    if (mintInfo.value?.owner) {
+                        tokenProgramId = mintInfo.value.owner.toBase58();
+                        console.log(`✅ Token program: ${tokenProgramId}`);
+                    }
+                } catch (e) {
+                    console.error('⚠️ Failed to detect token program:', e.message);
+                }
+                
+                // Вычисляем ATA платформы с правильной программой
+                const tokenProgramPubkey = new PublicKey(tokenProgramId);
+                const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+                
+                const [platformAta] = PublicKey.findProgramAddressSync(
+                    [getPlatformPublicKey().toBuffer(), tokenProgramPubkey.toBuffer(), getMintPublicKey().toBuffer()],
+                    ATA_PROGRAM
+                );
 
-                // Получаем blockhash через серверный Helius RPC
+                // Получаем blockhash
                 let blockhash = null;
                 let rpcDebug = null;
                 try {
-                    const connection = getConnection();
                     const bh = await connection.getLatestBlockhash('finalized');
                     blockhash = bh.blockhash;
                 } catch (e) {
                     console.error('⚠️ Failed to get blockhash:', e.message);
-                    rpcDebug = {
-                        error: e.message,
-                        rpcUrl: RPC_URL ? RPC_URL.replace(/api-key=.*/, 'api-key=***') : 'not set',
-                        heliusKeySet: !!HELIUS_API_KEY,
-                    };
+                    rpcDebug = { error: e.message };
                 }
 
                 return res.status(200).json({
@@ -421,6 +438,7 @@ export default async function handler(req, res) {
                     depositAddress: platformAddress,
                     depositAta: platformAta.toBase58(),
                     tokenMint: MINT_ADDRESS,
+                    tokenProgramId: tokenProgramId,
                     minDeposit: MIN_DEPOSIT,
                     decimals: TOKEN_DECIMALS,
                     blockhash: blockhash,
