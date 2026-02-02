@@ -461,6 +461,28 @@ export default async function handler(req, res) {
             }
 
             const userId = userResult.rows[0].id;
+            
+            // Quick fix: если у пользователя locked > 0, но нет active ордеров в active раундах — вернуть
+            try {
+                const hasActiveOrders = await sql`
+                    SELECT 1 FROM limit_orders lo
+                    INNER JOIN rounds r ON r.id = lo.round_id
+                    WHERE lo.user_id = ${userId} AND lo.status = 'active' AND r.status = 'active'
+                    LIMIT 1
+                `;
+                if (hasActiveOrders.rows.length === 0) {
+                    const bal = await sql`SELECT locked FROM user_balances WHERE user_id = ${userId}`;
+                    if (bal.rows.length > 0 && parseFloat(bal.rows[0].locked) > 0) {
+                        await sql`
+                            UPDATE user_balances 
+                            SET available = available + locked, locked = 0, updated_at = NOW()
+                            WHERE user_id = ${userId} AND locked > 0
+                        `;
+                        console.log('Balance API: fixed orphaned lock for user ' + userId);
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            
             const balance = await getOrCreateBalance(userId);
 
             return res.status(200).json({
