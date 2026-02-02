@@ -585,20 +585,23 @@ async function creditBalance(userId, amount, description) {
 }
 
 // ============================================
-// INLINE SETTLEMENT — мгновенный расчёт при запросе пользователя
+// INLINE SETTLEMENT
 // ============================================
 let lastSettlementCheck = 0;
 
 async function inlineSettlementCheck() {
     const now = Date.now();
-    if (now - lastSettlementCheck < 15000) return; // Не чаще 15 сек
+    if (now - lastSettlementCheck < 15000) return;
     lastSettlementCheck = now;
     
     try {
         // 1. Закрыть истекшие раунды
         await sql`UPDATE rounds SET status = 'closed' WHERE status = 'active' AND end_time < NOW()`;
         
-        // 2. Найти раунды с позициями для settlement
+        // 2. КРИТИЧНО: Отменить ВСЕ ордера в закрытых раундах, вернуть locked
+        await cancelExpiredOrders();
+        
+        // 3. Найти раунды с позициями для settlement
         const toSettle = await sql`
             SELECT r.id FROM rounds r
             WHERE r.status = 'closed'
@@ -609,21 +612,89 @@ async function inlineSettlementCheck() {
         `;
         
         if (toSettle.rows.length === 0) {
-            // Пометить пустые раунды settled
             await sql`
                 UPDATE rounds SET settlement_status = 'settled', settled_at = NOW()
                 WHERE status = 'closed'
                 AND (settlement_status IS NULL OR settlement_status = 'pending')
                 AND end_time < NOW()
                 AND NOT EXISTS (SELECT 1 FROM user_positions WHERE round_id = rounds.id)
+                AND NOT EXISTS (SELECT 1 FROM limit_orders WHERE round_id = rounds.id AND status = 'active')
                 AND id IN (SELECT id FROM rounds WHERE status = 'closed' AND (settlement_status IS NULL OR settlement_status = 'pending') AND end_time < NOW() LIMIT 50)
             `;
-            return;
+        } else {
+            for (const r of toSettle.rows) await inlineSettleRound(r.id);
         }
         
-        for (const r of toSettle.rows) await inlineSettleRound(r.id);
+        // 4. Safety net: если locked > 0 но нет живых ордеров — вернуть
+        await fixOrphanedLocks();
     } catch (e) {
-        console.error('⚠️ Inline settlement:', e.message);
+        console.error('Settlement error:', e.message);
+    }
+}
+
+// Отменяет все ордера в закрытых раундах и возвращает locked средства
+async function cancelExpiredOrders() {
+    try {
+        const expired = await sql`
+            SELECT lo.id, lo.user_id, lo.amount, lo.filled, lo.price
+            FROM limit_orders lo
+            INNER JOIN rounds r ON r.id = lo.round_id
+            WHERE lo.status = 'active'
+            AND r.status = 'closed'
+            LIMIT 100
+        `;
+        
+        if (expired.rows.length === 0) return;
+        console.log('Expiring ' + expired.rows.length + ' orders from closed rounds');
+        
+        for (const order of expired.rows) {
+            await sql`
+                UPDATE limit_orders SET status = 'expired', cancelled_at = NOW() 
+                WHERE id = ${order.id} AND status = 'active'
+            `;
+            
+            const unfilled = parseFloat(order.amount) - parseFloat(order.filled);
+            const cost = unfilled * parseFloat(order.price);
+            
+            if (cost > 0.001) {
+                await unlockBalance(order.user_id, cost);
+                console.log('  Refund order #' + order.id + ': ' + cost.toFixed(2) + ' to user ' + order.user_id);
+            }
+        }
+    } catch (e) {
+        console.error('cancelExpiredOrders error:', e.message);
+    }
+}
+
+// Safety net: если у пользователя locked > 0, но нет active ордеров в active раундах
+async function fixOrphanedLocks() {
+    try {
+        const orphaned = await sql`
+            SELECT ub.user_id, ub.locked
+            FROM user_balances ub
+            WHERE ub.locked > 0
+            AND NOT EXISTS (
+                SELECT 1 FROM limit_orders lo
+                INNER JOIN rounds r ON r.id = lo.round_id
+                WHERE lo.user_id = ub.user_id 
+                AND lo.status = 'active'
+                AND r.status = 'active'
+            )
+        `;
+        
+        for (const row of orphaned.rows) {
+            const amt = parseFloat(row.locked);
+            if (amt > 0.001) {
+                await sql`
+                    UPDATE user_balances 
+                    SET available = available + locked, locked = 0, updated_at = NOW()
+                    WHERE user_id = ${row.user_id} AND locked > 0
+                `;
+                console.log('Orphan fix: +' + amt.toFixed(2) + ' to user ' + row.user_id);
+            }
+        }
+    } catch (e) {
+        console.error('fixOrphanedLocks error:', e.message);
     }
 }
 
