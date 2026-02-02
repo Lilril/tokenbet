@@ -384,9 +384,10 @@ async function executeDeposit() {
         const mintPubkey = new PublicKey(platformDepositInfo.tokenMint);
         const senderPubkey = new PublicKey(wallet);
         const recipientAta = new PublicKey(platformDepositInfo.depositAta);
+        const tokenProgramId = platformDepositInfo.tokenProgramId || 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
         
-        // Получаем ATA отправителя
-        const senderAta = await getAssociatedTokenAddressJS(mintPubkey, senderPubkey);
+        // Получаем ATA отправителя (с правильной token program)
+        const senderAta = await getAssociatedTokenAddressJS(mintPubkey, senderPubkey, tokenProgramId);
         
         // Формируем SPL transfer instruction
         const rawAmount = Math.floor(amount * Math.pow(10, platformDepositInfo.decimals || 6));
@@ -395,7 +396,8 @@ async function executeDeposit() {
             senderAta,       // source ATA
             recipientAta,    // destination ATA (платформа)
             senderPubkey,    // owner (подписант)
-            rawAmount
+            rawAmount,
+            tokenProgramId   // token program (SPL или Token-2022)
         );
         
         const transaction = new Transaction();
@@ -545,23 +547,25 @@ async function executeDeposit() {
 // SPL HELPERS (чистый JS, без импорта @solana/spl-token)
 // ============================================
 
-// Вычисляет Associated Token Address
-async function getAssociatedTokenAddressJS(mint, owner) {
+// Вычисляет Associated Token Address (поддерживает и SPL Token, и Token-2022)
+async function getAssociatedTokenAddressJS(mint, owner, tokenProgramId) {
     const { PublicKey } = solanaWeb3;
-    const SPL_TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    const SPL_TOKEN_DEFAULT = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    const tokenProgram = new PublicKey(tokenProgramId || SPL_TOKEN_DEFAULT);
     const SPL_ATA = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
     
     const [address] = await PublicKey.findProgramAddress(
-        [owner.toBuffer(), SPL_TOKEN.toBuffer(), mint.toBuffer()],
+        [owner.toBuffer(), tokenProgram.toBuffer(), mint.toBuffer()],
         SPL_ATA
     );
     return address;
 }
 
-// Создаёт SPL Transfer Instruction
-function createTransferInstructionJS(source, destination, owner, amount) {
+// Создаёт SPL Transfer Instruction (поддерживает и SPL Token, и Token-2022)
+function createTransferInstructionJS(source, destination, owner, amount, tokenProgramId) {
     const { PublicKey, TransactionInstruction } = solanaWeb3;
-    const SPL_TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    const SPL_TOKEN_DEFAULT = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    const tokenProgram = new PublicKey(tokenProgramId || SPL_TOKEN_DEFAULT);
     
     // SPL Token Transfer instruction layout:
     // byte 0: instruction index (3 = Transfer)
@@ -582,7 +586,7 @@ function createTransferInstructionJS(source, destination, owner, amount) {
             { pubkey: destination, isSigner: false, isWritable: true },
             { pubkey: owner, isSigner: true, isWritable: false },
         ],
-        programId: SPL_TOKEN,
+        programId: tokenProgram,
         data,
     });
 }
