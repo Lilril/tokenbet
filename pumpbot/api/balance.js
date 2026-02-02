@@ -152,7 +152,6 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     const connection = getConnection();
     let txInfo;
 
-    // Пробуем несколько раз (транзакция может еще не индексироваться)
     for (let attempt = 0; attempt < 3; attempt++) {
         try {
             txInfo = await connection.getParsedTransaction(txSignature, {
@@ -163,7 +162,6 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         } catch (err) {
             console.error(`❌ Attempt ${attempt + 1} fetch tx:`, err.message);
         }
-        // Подождать 2 сек между попытками
         if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
     }
 
@@ -175,9 +173,27 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         return { success: false, error: 'Транзакция завершилась с ошибкой on-chain' };
     }
 
-    // 3. Ищем SPL-transfer нашего токена на кошелёк платформы
-    const platformAta = await getAssociatedTokenAddress(getMintPublicKey(), getPlatformPublicKey());
+    // 3. Определяем token program и вычисляем правильный ATA платформы
+    let tokenProgramId;
+    try {
+        const mintInfo = await connection.getParsedAccountInfo(getMintPublicKey());
+        tokenProgramId = mintInfo.value?.owner?.toBase58() || TOKEN_PROGRAM_ID.toBase58();
+    } catch (e) {
+        tokenProgramId = TOKEN_PROGRAM_ID.toBase58();
+    }
+    
+    const TOKEN_2022_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+    const tokenProgramPubkey = new PublicKey(tokenProgramId);
+    const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+    
+    // Вычисляем ATA платформы с правильной token program
+    const [platformAta] = PublicKey.findProgramAddressSync(
+        [getPlatformPublicKey().toBuffer(), tokenProgramPubkey.toBuffer(), getMintPublicKey().toBuffer()],
+        ATA_PROGRAM
+    );
     const platformAtaStr = platformAta.toBase58();
+    
+    console.log(`🔍 Verify deposit: tokenProgram=${tokenProgramId}, platformAta=${platformAtaStr}`);
 
     let depositAmount = 0;
     let senderAuthority = null;
@@ -191,8 +207,10 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     for (const ix of allInstructions) {
         const parsed = ix.parsed;
         if (!parsed) continue;
+        
+        const programId = ix.programId?.toBase58?.() || ix.programId || '';
 
-        // transferChecked (стандартный SPL transfer с проверкой mint)
+        // transferChecked (с проверкой mint) — работает и для SPL и Token-2022
         if (parsed.type === 'transferChecked' && parsed.info?.mint === MINT_ADDRESS) {
             if (parsed.info.destination === platformAtaStr) {
                 depositAmount = parseFloat(parsed.info.tokenAmount?.uiAmount || 0);
@@ -201,16 +219,48 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
             }
         }
 
-        // Обычный transfer (без checked) — проверяем программу
-        if (parsed.type === 'transfer') {
-            const programId = ix.programId?.toBase58?.() || ix.programId;
-            if (programId === TOKEN_PROGRAM_ID.toBase58()) {
-                if (parsed.info.destination === platformAtaStr) {
-                    const rawAmount = parseInt(parsed.info.amount || 0);
-                    depositAmount = fromRawAmount(rawAmount);
-                    senderAuthority = parsed.info.authority || parsed.info.source;
-                    break;
+        // Обычный transfer — проверяем что программа = наш tokenProgram
+        if (parsed.type === 'transfer' && 
+            (programId === TOKEN_PROGRAM_ID.toBase58() || programId === TOKEN_2022_ID)) {
+            if (parsed.info.destination === platformAtaStr) {
+                const rawAmount = parseInt(parsed.info.amount || 0);
+                depositAmount = fromRawAmount(rawAmount);
+                senderAuthority = parsed.info.authority || parsed.info.source;
+                break;
+            }
+        }
+    }
+    
+    // Fallback: проверяем pre/post token balances
+    if (depositAmount <= 0 && txInfo.meta) {
+        const preBalances = txInfo.meta.preTokenBalances || [];
+        const postBalances = txInfo.meta.postTokenBalances || [];
+        
+        // Ищем аккаунт платформы в post balances
+        for (const post of postBalances) {
+            if (post.mint !== MINT_ADDRESS) continue;
+            if (post.owner !== getPlatformPublicKey().toBase58()) continue;
+            
+            const pre = preBalances.find(p => p.accountIndex === post.accountIndex);
+            const preAmount = parseFloat(pre?.uiTokenAmount?.uiAmount || 0);
+            const postAmount = parseFloat(post.uiTokenAmount?.uiAmount || 0);
+            
+            if (postAmount > preAmount) {
+                depositAmount = postAmount - preAmount;
+                
+                // Ищем отправителя — кто уменьшил баланс
+                for (const preBal of preBalances) {
+                    if (preBal.mint !== MINT_ADDRESS) continue;
+                    if (preBal.owner === getPlatformPublicKey().toBase58()) continue;
+                    const postBal = postBalances.find(p => p.accountIndex === preBal.accountIndex);
+                    const preAmt = parseFloat(preBal.uiTokenAmount?.uiAmount || 0);
+                    const postAmt = parseFloat(postBal?.uiTokenAmount?.uiAmount || 0);
+                    if (preAmt > postAmt) {
+                        senderAuthority = preBal.owner;
+                        break;
+                    }
                 }
+                break;
             }
         }
     }
@@ -220,7 +270,6 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     }
 
     // 4. ✅ ГЛАВНАЯ ЗАЩИТА: отправитель = заявленный кошелёк
-    // senderAuthority — это owner ATA отправителя (т.е. публичный ключ кошелька)
     if (senderAuthority !== walletAddress) {
         console.error(`🚫 Sender mismatch! Authority: ${senderAuthority}, Claimed: ${walletAddress}`);
         return { success: false, error: 'Отправитель транзакции не совпадает с вашим кошельком' };
@@ -291,9 +340,27 @@ async function processWithdrawal(userId, walletAddress, amount) {
         const platformKeypair = getPlatformKeypair();
         const recipientPubkey = new PublicKey(walletAddress);
         const mintPubkey = getMintPublicKey();
-
-        const platformAtaAddr = await getAssociatedTokenAddress(mintPubkey, platformKeypair.publicKey);
-        const recipientAtaAddr = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+        
+        // Определяем token program
+        let tokenProgramId = TOKEN_PROGRAM_ID;
+        try {
+            const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
+            if (mintInfo.value?.owner) {
+                tokenProgramId = mintInfo.value.owner;
+            }
+        } catch (e) { /* fallback to default */ }
+        
+        const ATA_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+        
+        // Вычисляем ATA с правильной token program
+        const [platformAtaAddr] = PublicKey.findProgramAddressSync(
+            [platformKeypair.publicKey.toBuffer(), tokenProgramId.toBuffer(), mintPubkey.toBuffer()],
+            ATA_PROGRAM_ID
+        );
+        const [recipientAtaAddr] = PublicKey.findProgramAddressSync(
+            [recipientPubkey.toBuffer(), tokenProgramId.toBuffer(), mintPubkey.toBuffer()],
+            ATA_PROGRAM_ID
+        );
 
         const recipientAtaInfo = await connection.getAccountInfo(recipientAtaAddr);
 
@@ -303,14 +370,16 @@ async function processWithdrawal(userId, walletAddress, amount) {
         if (!recipientAtaInfo) {
             transaction.add(
                 createAssociatedTokenAccountInstruction(
-                    platformKeypair.publicKey, recipientAtaAddr, recipientPubkey, mintPubkey
+                    platformKeypair.publicKey, recipientAtaAddr, recipientPubkey, mintPubkey,
+                    tokenProgramId
                 )
             );
         }
 
         transaction.add(
             createTransferInstruction(
-                platformAtaAddr, recipientAtaAddr, platformKeypair.publicKey, toRawAmount(netAmount)
+                platformAtaAddr, recipientAtaAddr, platformKeypair.publicKey, toRawAmount(netAmount),
+                tokenProgramId
             )
         );
 
