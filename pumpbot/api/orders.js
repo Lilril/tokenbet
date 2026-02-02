@@ -635,24 +635,21 @@ async function inlineSettlementCheck() {
 // Отменяет все ордера в закрытых раундах и возвращает locked средства
 async function cancelExpiredOrders() {
     try {
+        // Атомарно: помечаем expired и получаем только те что РЕАЛЬНО обновились
         const expired = await sql`
-            SELECT lo.id, lo.user_id, lo.amount, lo.filled, lo.price
-            FROM limit_orders lo
-            INNER JOIN rounds r ON r.id = lo.round_id
-            WHERE lo.status = 'active'
+            UPDATE limit_orders lo
+            SET status = 'expired', cancelled_at = NOW()
+            FROM rounds r
+            WHERE lo.round_id = r.id
+            AND lo.status = 'active'
             AND r.status = 'closed'
-            LIMIT 100
+            RETURNING lo.id, lo.user_id, lo.amount, lo.filled, lo.price
         `;
         
         if (expired.rows.length === 0) return;
-        console.log('Expiring ' + expired.rows.length + ' orders from closed rounds');
+        console.log('Expired ' + expired.rows.length + ' orders from closed rounds');
         
         for (const order of expired.rows) {
-            await sql`
-                UPDATE limit_orders SET status = 'expired', cancelled_at = NOW() 
-                WHERE id = ${order.id} AND status = 'active'
-            `;
-            
             const unfilled = parseFloat(order.amount) - parseFloat(order.filled);
             const cost = unfilled * parseFloat(order.price);
             
@@ -666,9 +663,11 @@ async function cancelExpiredOrders() {
     }
 }
 
-// Safety net: если у пользователя locked > 0, но нет active ордеров в active раундах
+// Safety net: ТОЛЬКО логирует, не дублирует unlock
+// (unlock уже делает cancelExpiredOrders)
 async function fixOrphanedLocks() {
     try {
+        // Проверяем: есть ли locked > 0 без живых ордеров?
         const orphaned = await sql`
             SELECT ub.user_id, ub.locked
             FROM user_balances ub
@@ -682,15 +681,22 @@ async function fixOrphanedLocks() {
             )
         `;
         
+        if (orphaned.rows.length === 0) return;
+        
+        // Есть orphaned locks — значит cancelExpiredOrders пропустил. Фиксим.
         for (const row of orphaned.rows) {
             const amt = parseFloat(row.locked);
             if (amt > 0.001) {
-                await sql`
+                // Атомарно: SET locked=0 только если locked > 0 (предотвращает двойной unlock)
+                const result = await sql`
                     UPDATE user_balances 
                     SET available = available + locked, locked = 0, updated_at = NOW()
                     WHERE user_id = ${row.user_id} AND locked > 0
+                    RETURNING user_id, available
                 `;
-                console.log('Orphan fix: +' + amt.toFixed(2) + ' to user ' + row.user_id);
+                if (result.rows.length > 0) {
+                    console.log('Orphan fix: +' + amt.toFixed(2) + ' to user ' + row.user_id);
+                }
             }
         }
     } catch (e) {
@@ -704,30 +710,8 @@ async function inlineSettleRound(roundId) {
         if (rr.rows.length === 0) return;
         const round = rr.rows[0];
         
-        // ✅ СНАЧАЛА: Отменяем все незаполненные лимитки и возвращаем locked баланс
-        const unfilledOrders = await sql`
-            SELECT id, user_id, side, amount, filled, price 
-            FROM limit_orders 
-            WHERE round_id = ${roundId} AND status = 'active' AND amount > filled
-        `;
-        
-        for (const order of unfilledOrders.rows) {
-            const unfilledAmount = parseFloat(order.amount) - parseFloat(order.filled);
-            const unfilledCost = unfilledAmount * parseFloat(order.price);
-            
-            // Отменяем ордер
-            await sql`UPDATE limit_orders SET status = 'cancelled', cancelled_at = NOW() WHERE id = ${order.id}`;
-            
-            // Возвращаем locked средства
-            if (unfilledCost > 0) {
-                await unlockBalance(order.user_id, unfilledCost);
-                console.log(`🔓 Refund unfilled order #${order.id}: ${unfilledCost.toFixed(2)} → user ${order.user_id}`);
-            }
-        }
-        
-        if (unfilledOrders.rows.length > 0) {
-            console.log(`📋 Cancelled ${unfilledOrders.rows.length} unfilled orders in round ${roundId}`);
-        }
+        // Незафиленные ордера уже отменены в cancelExpiredOrders()
+        // Здесь только settlement позиций
         
         // Final market cap
         let finalMC = parseFloat(round.final_market_cap) || 0;
