@@ -23,45 +23,20 @@ async function settleRound(roundId) {
         }
         
         const round = roundResult.rows[0];
-        
-        // 2. Получаем финальную рыночную капитализацию
-        let finalMarketCap = parseFloat(round.final_market_cap);
-        
-        // Если final_market_cap уже установлен в БД, используем его
-        if (!finalMarketCap || finalMarketCap <= 0) {
-            // Иначе пытаемся получить из API
-            console.log(`📡 Fetching market cap from external API for round ${roundId}...`);
-            finalMarketCap = await fetchFinalMarketCap(round);
-            
-            if (!finalMarketCap) {
-                console.error(`❌ Could not fetch final market cap for round ${roundId}`);
-                return { success: false, error: 'Market cap data unavailable' };
-            }
-            
-            // Сохраняем финальную капитализацию
-            await sql`
-                UPDATE rounds 
-                SET final_market_cap = ${finalMarketCap}
-                WHERE id = ${roundId}
-            `;
-        } else {
-            console.log(`✅ Using existing final_market_cap from DB: ${finalMarketCap}`);
-        }
-        
         const initialMarketCap = parseFloat(round.start_market_cap) || 0;
         
-        // Если start_market_cap = 0, мы не можем определить победителя — возвращаем ставки
+        // ============================================
+        // CASE 1: start_market_cap = 0 → рефанд (НЕ НУЖЕН finalMC!)
+        // ============================================
         if (initialMarketCap <= 0) {
             console.log(`⚠️ Round ${roundId}: start_market_cap is 0, refunding all positions`);
             
-            // Получаем все позиции
             const positions = await sql`
                 SELECT user_id, side, amount, avg_price, total_cost
                 FROM user_positions
                 WHERE round_id = ${roundId}
             `;
             
-            // Возвращаем всем их ставки (refund)
             for (const pos of positions.rows) {
                 const totalCost = parseFloat(pos.total_cost);
                 await sql`
@@ -86,7 +61,32 @@ async function settleRound(roundId) {
             return { success: true, roundId, winningSide: 'tie (refund)', settlementsCreated: positions.rows.length };
         }
         
-        // Если цена не изменилась — ничья, возврат всем
+        // ============================================
+        // 2. Получаем finalMC (нужен только если startMC > 0)
+        // ============================================
+        let finalMarketCap = parseFloat(round.final_market_cap);
+        
+        if (!finalMarketCap || finalMarketCap <= 0) {
+            console.log(`📡 Fetching market cap from external API for round ${roundId}...`);
+            finalMarketCap = await fetchFinalMarketCap(round);
+            
+            if (!finalMarketCap) {
+                console.error(`❌ Could not fetch final market cap for round ${roundId}`);
+                return { success: false, error: 'Market cap data unavailable' };
+            }
+            
+            await sql`
+                UPDATE rounds 
+                SET final_market_cap = ${finalMarketCap}
+                WHERE id = ${roundId}
+            `;
+        } else {
+            console.log(`✅ Using existing final_market_cap from DB: ${finalMarketCap}`);
+        }
+        
+        // ============================================
+        // CASE 2: Ничья — капа не изменилась → рефанд
+        // ============================================
         if (finalMarketCap === initialMarketCap) {
             console.log(`⚠️ Round ${roundId}: price unchanged (${initialMarketCap} === ${finalMarketCap}), refunding all`);
             
