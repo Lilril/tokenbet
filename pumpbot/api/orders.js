@@ -85,13 +85,27 @@ async function getOrCreateCurrentRound(intervalMinutes) {
             if (dexResponse.ok) {
                 const dexData = await dexResponse.json();
                 if (dexData.pairs && dexData.pairs.length > 0) {
-                    const bestPair = dexData.pairs.sort((a, b) => 
+                    console.log(`📊 DexScreener returned ${dexData.pairs.length} pairs`);
+                    
+                    // Фильтруем только Solana pairs
+                    const solanaPairs = dexData.pairs.filter(p => p.chainId === 'solana');
+                    console.log(`📊 Solana pairs: ${solanaPairs.length}`);
+                    
+                    const pairsToUse = solanaPairs.length > 0 ? solanaPairs : dexData.pairs;
+                    
+                    // Логируем топ-3 пары
+                    const sorted = pairsToUse.sort((a, b) => 
                         (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
-                    )[0];
+                    );
+                    sorted.slice(0, 3).forEach((p, i) => {
+                        console.log(`  #${i+1}: ${p.pairAddress?.substring(0, 10)}... price=$${p.priceUsd} liq=$${p.liquidity?.usd || 0}`);
+                    });
+                    
+                    const bestPair = sorted[0];
                     const price = parseFloat(bestPair.priceUsd);
                     if (price > 0 && !isNaN(price)) {
                         startMarketCap = price * TOTAL_SUPPLY;
-                        console.log(`✅ Got start market cap from DexScreener: $${startMarketCap.toFixed(2)}`);
+                        console.log(`✅ Got start market cap from DexScreener: $${startMarketCap.toFixed(2)} (pair: ${bestPair.pairAddress})`);
                     }
                 }
             }
@@ -727,7 +741,11 @@ async function inlineSettleRound(roundId) {
                 if (resp.ok) {
                     const d = await resp.json();
                     if (d.pairs?.length > 0) {
-                        const best = d.pairs.sort((a,b) => (b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0];
+                        // Фильтруем только Solana pairs
+                        const solanaPairs = d.pairs.filter(p => p.chainId === 'solana');
+                        const pairsToUse = solanaPairs.length > 0 ? solanaPairs : d.pairs;
+                        
+                        const best = pairsToUse.sort((a,b) => (b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0];
                         const p = parseFloat(best.priceUsd);
                         if (p > 0) finalMC = p * 1000000000;
                     }
