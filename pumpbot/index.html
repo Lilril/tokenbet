@@ -361,9 +361,9 @@
                         <div class="balance-label">Мои сделки</div>
                         <div class="balance-value text-green" id="openPositionsCount">1</div>
                     </div>
-                    <div class="balance-item" id="settlementsAlert" onclick="openSettlementsModal()" style="display: none; cursor: pointer; transition: all 0.2s; border-color: var(--accent-yellow);" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                        <div class="balance-label" style="color: var(--accent-yellow);">🎁 Выигрыши</div>
-                        <div class="balance-value" style="color: var(--accent-yellow);" id="settlementsCount">0</div>
+                    <div class="balance-item" id="settlementsAlert" onclick="openSettlementsModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        <div class="balance-label">📊 История</div>
+                        <div class="balance-value" id="settlementsCount" style="font-size: 0.85em; color: var(--text-dim);">→</div>
                     </div>
                 </div>
             </div>
@@ -608,19 +608,22 @@
             </div>
         </div>
 
-        <!-- SETTLEMENTS MODAL -->
+        <!-- HISTORY MODAL -->
         <div class="modal" id="settlementsModal">
             <div class="modal-content" style="max-width: 1000px;">
                 <span class="close-modal" onclick="closeSettlementsModal()">×</span>
-                <div class="modal-header">💰 ЗАВЕРШЕННЫЕ РАУНДЫ</div>
+                <div class="modal-header">📊 ИСТОРИЯ</div>
                 
                 <!-- Tabs -->
                 <div class="settlements-tabs">
                     <button class="settlement-tab active" onclick="switchSettlementTab('unclaimed')" id="tab-unclaimed">
-                        Незабранные (<span id="unclaimedCount">0</span>)
+                        🎁 Забрать (<span id="unclaimedCount">0</span>)
                     </button>
                     <button class="settlement-tab" onclick="switchSettlementTab('history')" id="tab-history">
-                        История
+                        Раунды
+                    </button>
+                    <button class="settlement-tab" onclick="switchSettlementTab('transactions')" id="tab-transactions">
+                        Транзакции
                     </button>
                 </div>
                 
@@ -631,8 +634,15 @@
                     </div>
                 </div>
                 
-                <!-- History -->
+                <!-- Round History -->
                 <div id="settlementsHistory" class="settlements-list" style="display: none;">
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Загрузка...
+                    </div>
+                </div>
+                
+                <!-- Transactions -->
+                <div id="settlementsTransactions" class="settlements-list" style="display: none;">
                     <div style="padding: 20px; text-align: center; color: var(--text-dim);">
                         Загрузка...
                     </div>
@@ -642,7 +652,7 @@
     </div>
 
     <script src="https://unpkg.com/@solana/web3.js@1.95.0/lib/index.iife.min.js"></script>
-    <script src="js/app.js?v=20260206v2"></script>
+    <script src="js/app.js?v=20260207v1"></script>
     <script>
         // Global variable for current round
         window.currentRoundId = 1; // Default to 15m round
