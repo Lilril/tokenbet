@@ -1304,6 +1304,10 @@ if (action === 'orderbook') {
                     await db.upsertUserPosition(user.id, round.id, side, matchAmount, matchPrice, matchAmount * matchPrice);
                     await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, matchPrice, matchAmount * matchPrice);
                     
+                    // ✅ ФИКС: Списываем locked у владельца лимитки (seller)
+                    const sellerCost = matchAmount * matchPrice;
+                    await deductLocked(oppositeOrder.user_id, sellerCost);
+                    
                     totalMatched += matchAmount;
                 }
                 
@@ -1439,6 +1443,10 @@ if (action === 'orderbook') {
                     
                     await db.upsertUserPosition(user.id, round.id, side, matchAmount, matchPrice, matchAmount * matchPrice);
                     await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, matchPrice, matchAmount * matchPrice);
+                    
+                    // ✅ ФИКС: Списываем locked у владельца противоположной лимитки
+                    const oppositeCost = matchAmount * parseFloat(oppositeOrder.price);
+                    await deductLocked(oppositeOrder.user_id, oppositeCost);
                     
                     totalMatched += matchAmount;
                 }
