@@ -605,7 +605,7 @@ let lastSettlementCheck = 0;
 
 async function inlineSettlementCheck() {
     const now = Date.now();
-    if (now - lastSettlementCheck < 15000) return;
+    if (now - lastSettlementCheck < 30000) return;
     lastSettlementCheck = now;
     
     try {
@@ -622,7 +622,7 @@ async function inlineSettlementCheck() {
             AND (r.settlement_status IS NULL OR r.settlement_status = 'pending')
             AND r.end_time < NOW()
             AND EXISTS (SELECT 1 FROM user_positions WHERE round_id = r.id)
-            ORDER BY r.end_time ASC LIMIT 3
+            ORDER BY r.end_time ASC LIMIT 1
         `;
         
         if (toSettle.rows.length === 0) {
@@ -724,9 +724,6 @@ async function inlineSettleRound(roundId) {
         if (rr.rows.length === 0) return;
         const round = rr.rows[0];
         
-        // Незафиленные ордера уже отменены в cancelExpiredOrders()
-        // Здесь только settlement позиций
-        
         // Final market cap
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
@@ -741,10 +738,8 @@ async function inlineSettleRound(roundId) {
                 if (resp.ok) {
                     const d = await resp.json();
                     if (d.pairs?.length > 0) {
-                        // Фильтруем только Solana pairs
                         const solanaPairs = d.pairs.filter(p => p.chainId === 'solana');
                         const pairsToUse = solanaPairs.length > 0 ? solanaPairs : d.pairs;
-                        
                         const best = pairsToUse.sort((a,b) => (b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0];
                         const p = parseFloat(best.priceUsd);
                         if (p > 0) finalMC = p * 1000000000;
@@ -762,26 +757,27 @@ async function inlineSettleRound(roundId) {
             return;
         }
         
-        // Refund если start_market_cap = 0
+        // ============================================
+        // CASE 1: start_market_cap = 0 → рефанд всем
+        // ============================================
         if (startMC <= 0) {
             for (const pos of positions.rows) {
                 const tc = parseFloat(pos.total_cost);
-                await creditBalance(pos.user_id, tc, `Refund round #${roundId} (no start cap)`);
                 await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
                     VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
                     ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
             }
             await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
-            console.log(`✅ Settled round ${roundId}: refund`);
+            console.log(`✅ Settled round ${roundId}: refund (no start cap)`);
             return;
         }
         
-        // Нормальный settlement
-        // Если цена не изменилась — ничья, возврат всем
+        // ============================================
+        // CASE 2: Ничья — капа не изменилась → рефанд всем
+        // ============================================
         if (finalMC === startMC) {
             for (const pos of positions.rows) {
                 const tc = parseFloat(pos.total_cost);
-                await creditBalance(pos.user_id, tc, `Tie round #${roundId} (price unchanged), refund ${tc.toFixed(2)}`);
                 await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
                     VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
                     ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
@@ -791,6 +787,9 @@ async function inlineSettleRound(roundId) {
             return;
         }
         
+        // ============================================
+        // CASE 3: Нормальный settlement — есть победитель
+        // ============================================
         const winningSide = finalMC > startMC ? 'higher' : 'lower';
         let totalWinAmt = 0, totalLoseCost = 0;
         for (const p of positions.rows) {
@@ -805,11 +804,10 @@ async function inlineSettleRound(roundId) {
             if (won && totalWinAmt > 0) {
                 payout = tc + totalLoseCost * (amt / totalWinAmt);
                 pl = payout - tc;
-                // ✅ Зачисляем выигрыш на баланс
-                await creditBalance(pos.user_id, payout, `Won round #${roundId}: ${winningSide}, payout ${payout.toFixed(2)}`);
+                // НЕ кредитим баланс здесь! Кредит только при claim
             } else if (!won) {
+                payout = 0;
                 pl = -tc;
-                // Проигравшие — деньги уже были списаны при размещении ордера, ничего не делаем
             }
             
             await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
