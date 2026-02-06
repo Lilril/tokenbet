@@ -2246,6 +2246,47 @@ window.addEventListener('load', async () => {
     }
 }
 
+    function buildTransactionRow(t) {
+        const typeMap = {
+            'deposit': { label: '📥 Депозит', color: 'var(--accent-green)' },
+            'withdrawal': { label: '📤 Вывод', color: 'var(--accent-red)' },
+            'trade_credit': { label: '💰 Выплата', color: 'var(--accent-green)' },
+            'trade_debit': { label: '🎯 Ставка', color: 'var(--accent-red)' },
+            'order_lock': { label: '🔒 Блокировка', color: 'var(--text-dim)' },
+            'order_unlock': { label: '🔓 Разблокировка', color: 'var(--text-dim)' },
+            'refund': { label: '🔄 Возврат', color: 'var(--accent-yellow)' }
+        };
+        const info = typeMap[t.type] || { label: t.type, color: 'var(--text-dim)' };
+        const isPositive = t.amount > 0 && (t.type === 'deposit' || t.type === 'trade_credit' || t.type === 'refund' || t.type === 'order_unlock');
+        const amtColor = isPositive ? 'var(--accent-green)' : 'var(--accent-red)';
+        const sign = isPositive ? '+' : (t.type === 'withdrawal' || t.type === 'trade_debit' || t.type === 'order_lock') ? '-' : '';
+        const date = new Date(t.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const amt = Math.abs(t.amount).toFixed(2);
+        const bal = t.balanceAfter.toFixed(2);
+        
+        return '<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">' +
+            '<td style="padding: 10px; color: var(--text-dim);">' + date + '</td>' +
+            '<td style="padding: 10px; color: ' + info.color + ';">' + info.label + '</td>' +
+            '<td style="padding: 10px; text-align: right; color: ' + amtColor + '; font-weight: 600;">' + sign + amt + '</td>' +
+            '<td style="padding: 10px; text-align: right; color: var(--text-primary);">' + bal + '</td>' +
+            '</tr>';
+    }
+
+    function buildTransactionsTable(transactions) {
+        const header = '<div style="max-height: 500px; overflow-y: auto;">' +
+            '<table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">' +
+            '<thead><tr style="border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 0.85em;">' +
+            '<th style="padding: 10px; text-align: left;">Дата</th>' +
+            '<th style="padding: 10px; text-align: left;">Тип</th>' +
+            '<th style="padding: 10px; text-align: right;">Сумма</th>' +
+            '<th style="padding: 10px; text-align: right;">Баланс</th>' +
+            '</tr></thead><tbody>';
+        
+        const rows = transactions.map(t => buildTransactionRow(t)).join('');
+        
+        return header + rows + '</tbody></table></div>';
+    }
+
     async function renderTransactions() {
         const container = document.getElementById('settlementsTransactions');
         if (!container) return;
@@ -2279,47 +2320,7 @@ window.addEventListener('load', async () => {
                 return;
             }
             
-            container.innerHTML = `
-                <div style="max-height: 500px; overflow-y: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
-                        <thead>
-                            <tr style="border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 0.85em;">
-                                <th style="padding: 10px; text-align: left;">Дата</th>
-                                <th style="padding: 10px; text-align: left;">Тип</th>
-                                <th style="padding: 10px; text-align: right;">Сумма</th>
-                                <th style="padding: 10px; text-align: right;">Баланс</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.transactions.map(t => {
-                                const typeMap = {
-                                    'deposit': { label: '📥 Депозит', color: 'var(--accent-green)' },
-                                    'withdrawal': { label: '📤 Вывод', color: 'var(--accent-red)' },
-                                    'trade_credit': { label: '💰 Выплата', color: 'var(--accent-green)' },
-                                    'trade_debit': { label: '🎯 Ставка', color: 'var(--accent-red)' },
-                                    'order_lock': { label: '🔒 Блокировка', color: 'var(--text-dim)' },
-                                    'order_unlock': { label: '🔓 Разблокировка', color: 'var(--text-dim)' },
-                                    'refund': { label: '🔄 Возврат', color: 'var(--accent-yellow)' }
-                                };
-                                const info = typeMap[t.type] || { label: t.type, color: 'var(--text-dim)' };
-                                const isPositive = t.amount > 0 && (t.type === 'deposit' || t.type === 'trade_credit' || t.type === 'refund' || t.type === 'order_unlock');
-                                const amtColor = isPositive ? 'var(--accent-green)' : 'var(--accent-red)';
-                                const sign = isPositive ? '+' : (t.type === 'withdrawal' || t.type === 'trade_debit' || t.type === 'order_lock') ? '-' : '';
-                                const date = new Date(t.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-                                
-                                return \`
-                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                                        <td style="padding: 10px; color: var(--text-dim);">\${date}</td>
-                                        <td style="padding: 10px; color: \${info.color};">\${info.label}</td>
-                                        <td style="padding: 10px; text-align: right; color: \${amtColor}; font-weight: 600;">\${sign}\${Math.abs(t.amount).toFixed(2)}</td>
-                                        <td style="padding: 10px; text-align: right; color: var(--text-primary);">\${t.balanceAfter.toFixed(2)}</td>
-                                    </tr>
-                                \`;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
+            container.innerHTML = buildTransactionsTable(data.transactions);
         } catch (error) {
             console.error('❌ Error loading transactions:', error);
             container.innerHTML = `
