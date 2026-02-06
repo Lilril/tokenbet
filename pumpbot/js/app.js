@@ -2153,6 +2153,25 @@ window.addEventListener('load', async () => {
             return;
         }
         
+        // Если данных нет — попробуем загрузить
+        if (userSettlements.length === 0) {
+            container.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                    Загрузка...
+                </div>
+            `;
+            try {
+                const response = await fetch(`${API_BASE}/api/settlement?action=unclaimed&wallet=${wallet}`);
+                const data = await response.json();
+                if (data.success) {
+                    userSettlements = data.settlements || [];
+                    updateSettlementsAlert();
+                }
+            } catch(e) {
+                console.error('Fetch unclaimed error:', e);
+            }
+        }
+        
         if (userSettlements.length === 0) {
             container.innerHTML = `
                 <div style="padding: 40px; text-align: center; color: var(--text-dim);">
@@ -2164,7 +2183,16 @@ window.addEventListener('load', async () => {
             return;
         }
         
-        container.innerHTML = userSettlements.map(s => renderSettlementCard(s, false)).join('');
+        try {
+            container.innerHTML = userSettlements.map(s => renderSettlementCard(s, false)).join('');
+        } catch(e) {
+            console.error('Render settlement cards error:', e);
+            container.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: var(--accent-red);">
+                    Ошибка отображения: ${e.message}
+                </div>
+            `;
+        }
     }
 
     async function renderSettlementHistory() {
