@@ -469,6 +469,30 @@ export default async function handler(req, res) {
                 });
             }
             
+            // GET BALANCE TRANSACTIONS (deposits, withdrawals, claims)
+            if (action === 'transactions') {
+                const txns = await sql`
+                    SELECT id, type, amount, balance_before, balance_after, description, created_at
+                    FROM balance_transactions
+                    WHERE user_id = ${user.id}
+                    ORDER BY created_at DESC
+                    LIMIT 100
+                `;
+                
+                return res.status(200).json({
+                    success: true,
+                    transactions: txns.rows.map(t => ({
+                        id: t.id,
+                        type: t.type,
+                        amount: parseFloat(t.amount),
+                        balanceBefore: parseFloat(t.balance_before),
+                        balanceAfter: parseFloat(t.balance_after),
+                        description: t.description,
+                        createdAt: t.created_at
+                    }))
+                });
+            }
+            
             return res.status(400).json({
                 success: false,
                 error: 'Invalid action'
