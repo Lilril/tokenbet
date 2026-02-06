@@ -2219,11 +2219,14 @@ window.addEventListener('load', async () => {
         const sideName = side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ';
         const sideColor = side === 'higher' ? 'text-green' : 'text-red';
         
-        const statusClass = won ? 'won' : 'lost';
-        const statusText = won ? '🎉 ВЫИГРЫШ' : '😔 ПРОИГРЫШ';
+        const isTie = Math.abs(profitLoss) < 0.01 && won && payout > 0;
+        const statusClass = isTie ? 'refund' : (won ? 'won' : 'lost');
+        const statusText = isTie ? '🔄 НИЧЬЯ' : (won ? '🎉 ВЫИГРЫШ' : '😔 ПРОИГРЫШ');
         
-        const capChange = ((finalMarketCap - startMarketCap) / startMarketCap * 100).toFixed(2);
-        const capArrow = finalMarketCap > startMarketCap ? '📈' : '📉';
+        const capChange = startMarketCap > 0 
+            ? ((finalMarketCap - startMarketCap) / startMarketCap * 100).toFixed(2)
+            : '0.00';
+        const capArrow = finalMarketCap > startMarketCap ? '📈' : (finalMarketCap < startMarketCap ? '📉' : '➡️');
         
         return `
             <div class="settlement-card ${statusClass}">
