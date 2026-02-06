@@ -106,6 +106,21 @@ const WALLETS = {
             return null;
         }
     },
+    jupiter: {
+        name: 'Jupiter',
+        icon: '🪐',
+        color: '#C7F284',
+        get: () => {
+            if (window.jupiter?.solana) {
+                return window.jupiter.solana;
+            }
+            // Jupiter может регистрироваться как window.solana
+            if (window.solana && !window.solana.isPhantom && !window.solana.isSolflare && !window.solana.isCoinbaseWallet) {
+                return window.solana;
+            }
+            return null;
+        }
+    },
     solflare: {
         name: 'Solflare',
         icon: '🔥',
@@ -119,6 +134,23 @@ const WALLETS = {
         get: () => window.coinbaseSolana || (window.solana?.isCoinbaseWallet ? window.solana : null)
     }
 };
+
+// Активный провайдер — устанавливается при connectWallet
+let activeProvider = null;
+
+// Получить текущий подключённый провайдер
+function getActiveProvider() {
+    if (activeProvider?.isConnected) return activeProvider;
+    // Fallback — найти любой подключённый
+    for (const info of Object.values(WALLETS)) {
+        const p = info.get();
+        if (p?.isConnected) {
+            activeProvider = p;
+            return p;
+        }
+    }
+    return null;
+}
 
 function renderWallets() {
     const container = document.getElementById('walletsList');
@@ -148,8 +180,9 @@ async function connectWallet(walletType) {
         
         const response = await provider.connect();
         wallet = response.publicKey.toString();
+        activeProvider = provider;
         
-        console.log('✅ Подключен:', wallet);
+        console.log('✅ Подключен:', wallet, 'через', walletInfo.name);
         
         closeModal();
         updateUI(true);
@@ -179,6 +212,7 @@ async function disconnect() {
     }
     
     wallet = null;
+    activeProvider = null;
     updateUI(false);
 }
 
@@ -302,10 +336,10 @@ async function fetchOnChainTokenBalance() {
     if (!wallet || !platformDepositInfo) return;
     
     try {
-        const provider = window.phantom?.solana || window.solana;
+        const provider = getActiveProvider();
         if (!provider) { walletOnChainBalance = 0; return; }
         
-        // Используем Phantom для RPC запроса через его встроенное соединение
+        // Используем подключённый провайдер для RPC запроса
         const { PublicKey } = solanaWeb3;
         const tokenMint = platformDepositInfo.tokenMint || TOKEN_ADDRESS;
         
@@ -379,10 +413,10 @@ async function executeDeposit() {
     btn.textContent = '⏳ Подготовка...';
     
     try {
-        // Получаем провайдер Phantom
-        const provider = window.phantom?.solana || window.solana;
-        if (!provider?.isPhantom) {
-            throw new Error('Phantom не найден');
+        // Получаем активный провайдер
+        const provider = getActiveProvider();
+        if (!provider) {
+            throw new Error('Кошелек не подключен');
         }
         
         const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
@@ -440,7 +474,7 @@ async function executeDeposit() {
         transaction.recentBlockhash = blockhash;
         transaction.feePayer = senderPubkey;
         
-        btn.textContent = '⏳ Подтвердите в Phantom...';
+        btn.textContent = '⏳ Подтвердите в кошельке...';
         
         // signAndSendTransaction — Phantom сам получит blockhash, подпишет и отправит
         const { signature } = await provider.signAndSendTransaction(transaction);
@@ -1917,7 +1951,7 @@ document.getElementById('walletModal').onclick = (e) => {
 async function waitForWallets(maxWait = 3000) {
     const start = Date.now();
     while (Date.now() - start < maxWait) {
-        if (window.phantom || window.solflare || window.coinbaseSolana || window.solana) {
+        if (window.phantom || window.jupiter || window.solflare || window.coinbaseSolana || window.solana) {
             return true;
         }
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -1930,10 +1964,20 @@ window.addEventListener('load', async () => {
     
     await waitForWallets(3000);
     
-    const phantom = window.phantom?.solana || window.solana;
-    if (phantom?.isConnected && phantom?.publicKey) {
-        wallet = phantom.publicKey.toString();
-        console.log('✅ Кошелек автоматически подключен');
+    // Попробовать автоподключение любого кошелька
+    let autoConnected = false;
+    for (const [key, info] of Object.entries(WALLETS)) {
+        const provider = info.get();
+        if (provider?.isConnected && provider?.publicKey) {
+            wallet = provider.publicKey.toString();
+            activeProvider = provider;
+            console.log('✅ Кошелек автоматически подключен через', info.name);
+            autoConnected = true;
+            break;
+        }
+    }
+    
+    if (autoConnected) {
         updateUI(true);
         await fetchTokenBalance();
     } else {
