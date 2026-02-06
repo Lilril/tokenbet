@@ -2242,9 +2242,11 @@ window.addEventListener('load', async () => {
     function renderSettlementCard(settlement, showClaimed) {
         const {
             roundId, roundSlug, intervalMinutes, side, amount, totalCost,
-            won, payout, profitLoss, claimed, claimedAt, claimTxHash,
-            startMarketCap, finalMarketCap
+            won, payout, profitLoss, claimed, claimedAt, claimTxHash
         } = settlement;
+        
+        const startMarketCap = parseFloat(settlement.startMarketCap) || 0;
+        const finalMarketCap = parseFloat(settlement.finalMarketCap) || 0;
         
         const intervalName = intervalMinutes === 15 ? '15m' : 
                             intervalMinutes === 60 ? '1h' : '4h';
