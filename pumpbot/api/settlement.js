@@ -436,8 +436,8 @@ export default async function handler(req, res) {
                         payout: parseFloat(s.payout),
                         profitLoss: parseFloat(s.profit_loss),
                         endTime: s.end_time,
-                        startMarketCap: parseFloat(s.start_market_cap),
-                        finalMarketCap: parseFloat(s.final_market_cap)
+                        startMarketCap: parseFloat(s.start_market_cap) || 0,
+                        finalMarketCap: parseFloat(s.final_market_cap) || 0
                     }))
                 });
             }
@@ -463,8 +463,8 @@ export default async function handler(req, res) {
                         claimedAt: s.claimed_at,
                         claimTxHash: s.claim_tx_hash,
                         endTime: s.end_time,
-                        startMarketCap: parseFloat(s.start_market_cap),
-                        finalMarketCap: parseFloat(s.final_market_cap)
+                        startMarketCap: parseFloat(s.start_market_cap) || 0,
+                        finalMarketCap: parseFloat(s.final_market_cap) || 0
                     }))
                 });
             }
