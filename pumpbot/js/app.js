@@ -106,21 +106,6 @@ const WALLETS = {
             return null;
         }
     },
-    jupiter: {
-        name: 'Jupiter',
-        icon: '🪐',
-        color: '#C7F284',
-        get: () => {
-            if (window.jupiter?.solana) {
-                return window.jupiter.solana;
-            }
-            // Jupiter может регистрироваться как window.solana
-            if (window.solana && !window.solana.isPhantom && !window.solana.isSolflare && !window.solana.isCoinbaseWallet) {
-                return window.solana;
-            }
-            return null;
-        }
-    },
     solflare: {
         name: 'Solflare',
         icon: '🔥',
@@ -135,8 +120,37 @@ const WALLETS = {
     }
 };
 
+// Wallet Standard кошельки (Jupiter и другие)
+let walletStandardWallets = [];
+
+function discoverWalletStandard() {
+    try {
+        // Wallet Standard API
+        const walletsApi = window.navigator?.wallets || window._dependencies?.get?.('wallet-standard:app-ready');
+        if (walletsApi?.get) {
+            const wallets = walletsApi.get();
+            walletStandardWallets = wallets.filter(w => 
+                w.chains?.some(c => c.startsWith('solana'))
+            );
+        }
+    } catch(e) {}
+    
+    // Also listen for register events
+    try {
+        if (window.addEventListener) {
+            window.addEventListener('wallet-standard:register-wallet', (e) => {
+                if (e.detail?.wallet?.chains?.some(c => c.startsWith('solana'))) {
+                    const exists = walletStandardWallets.find(w => w.name === e.detail.wallet.name);
+                    if (!exists) walletStandardWallets.push(e.detail.wallet);
+                }
+            });
+        }
+    } catch(e) {}
+}
+
 // Активный провайдер — устанавливается при connectWallet
 let activeProvider = null;
+let activeWalletType = null;
 
 // Получить текущий подключённый провайдер
 function getActiveProvider() {
@@ -152,20 +166,54 @@ function getActiveProvider() {
     return null;
 }
 
+// Сохранить/загрузить выбранный кошелёк
+function saveWalletChoice(walletType) {
+    try { localStorage.setItem('tokenbet_wallet', walletType); } catch(e) {}
+}
+function getSavedWalletChoice() {
+    try { return localStorage.getItem('tokenbet_wallet'); } catch(e) { return null; }
+}
+function clearWalletChoice() {
+    try { localStorage.removeItem('tokenbet_wallet'); } catch(e) {}
+}
+
 function renderWallets() {
     const container = document.getElementById('walletsList');
     
-    container.innerHTML = Object.entries(WALLETS).map(([key, info]) => `
-        <div class="wallet-option" onclick="connectWallet('${key}')" style="border-left: 3px solid ${info.color}">
-            <span style="font-size: 2em; margin-right: 15px;">${info.icon}</span>
-            <div>
-                <div style="font-weight: 600; font-size: 1.1em;">${info.name}</div>
-                <div style="font-size: 0.85em; color: var(--text-dim);">
-                    ${info.get() ? 'Обнаружен' : 'Не установлен'}
-                </div>
-            </div>
-        </div>
-    `).join('');
+    // Standard wallets (Phantom, Solflare, Coinbase)
+    let html = Object.entries(WALLETS).map(([key, info]) => {
+        const detected = info.get();
+        return '<div class="wallet-option" onclick="connectWallet(\'' + key + '\')" style="border-left: 3px solid ' + info.color + '">' +
+            '<span style="font-size: 2em; margin-right: 15px;">' + info.icon + '</span>' +
+            '<div>' +
+                '<div style="font-weight: 600; font-size: 1.1em;">' + info.name + '</div>' +
+                '<div style="font-size: 0.85em; color: var(--text-dim);">' + (detected ? 'Обнаружен' : 'Не установлен') + '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+    
+    // Wallet Standard wallets (Jupiter, etc.)
+    discoverWalletStandard();
+    for (let i = 0; i < walletStandardWallets.length; i++) {
+        const w = walletStandardWallets[i];
+        // Skip if already in standard list
+        const name = w.name || 'Unknown';
+        const nameLower = name.toLowerCase();
+        if (nameLower.includes('phantom') || nameLower.includes('solflare') || nameLower.includes('coinbase')) continue;
+        
+        const icon = w.icon || '🔗';
+        const iconHtml = icon.startsWith('data:') ? '<img src="' + icon + '" style="width:32px;height:32px;margin-right:15px;border-radius:6px;">' : '<span style="font-size:2em;margin-right:15px;">' + icon + '</span>';
+        
+        html += '<div class="wallet-option" onclick="connectWalletStandard(' + i + ')" style="border-left: 3px solid #C7F284">' +
+            iconHtml +
+            '<div>' +
+                '<div style="font-weight: 600; font-size: 1.1em;">' + name + '</div>' +
+                '<div style="font-size: 0.85em; color: var(--text-dim);">Обнаружен</div>' +
+            '</div>' +
+        '</div>';
+    }
+    
+    container.innerHTML = html;
 }
 
 async function connectWallet(walletType) {
@@ -174,13 +222,15 @@ async function connectWallet(walletType) {
         const provider = walletInfo.get();
         
         if (!provider) {
-            alert(`${walletInfo.name} не установлен!\n\nУстанови расширение браузера или приложение.`);
+            showNotification(walletInfo.name + ' не установлен. Установите расширение браузера.', 'error');
             return;
         }
         
         const response = await provider.connect();
         wallet = response.publicKey.toString();
         activeProvider = provider;
+        activeWalletType = walletType;
+        saveWalletChoice(walletType);
         
         console.log('✅ Подключен:', wallet, 'через', walletInfo.name);
         
@@ -195,8 +245,64 @@ async function connectWallet(walletType) {
         
     } catch (error) {
         console.error('❌ Ошибка подключения:', error);
-        alert('Ошибка подключения кошелька');
+        showNotification('Ошибка подключения кошелька', 'error');
     }
+}
+
+async function connectWalletStandard(index) {
+    try {
+        const w = walletStandardWallets[index];
+        if (!w) {
+            showNotification('Кошелёк не найден', 'error');
+            return;
+        }
+        
+        // Wallet Standard connect
+        const connectFeature = w.features?.['standard:connect'];
+        if (!connectFeature?.connect) {
+            showNotification('Кошелёк не поддерживает подключение', 'error');
+            return;
+        }
+        
+        const result = await connectFeature.connect();
+        const account = result.accounts?.[0];
+        if (!account) {
+            showNotification('Не удалось получить аккаунт', 'error');
+            return;
+        }
+        
+        wallet = account.address;
+        activeWalletType = 'ws:' + index;
+        // Wallet Standard кошельки также могут инжектить window.solana
+        // Пробуем найти совместимый провайдер
+        activeProvider = window.solana || null;
+        saveWalletChoice('ws:' + w.name);
+        
+        console.log('✅ Подключен через Wallet Standard:', wallet, w.name);
+        
+        closeModal();
+        updateUI(true);
+        await fetchTokenBalance();
+        
+    } catch (error) {
+        console.error('❌ Ошибка подключения WS:', error);
+        showNotification('Ошибка подключения кошелька', 'error');
+    }
+}
+
+// Уведомление вместо alert
+function showNotification(message, type) {
+    const existing = document.getElementById('app-notification');
+    if (existing) existing.remove();
+    
+    const div = document.createElement('div');
+    div.id = 'app-notification';
+    div.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;padding:12px 24px;border-radius:8px;font-family:inherit;font-size:0.95em;font-weight:600;animation:fadeIn 0.3s;max-width:90vw;text-align:center;';
+    div.style.background = type === 'error' ? '#FF4444' : type === 'success' ? '#00C851' : '#333';
+    div.style.color = '#fff';
+    div.textContent = message;
+    document.body.appendChild(div);
+    setTimeout(() => { div.style.opacity = '0'; div.style.transition = 'opacity 0.5s'; setTimeout(() => div.remove(), 500); }, 3000);
 }
 
 async function disconnect() {
@@ -213,6 +319,8 @@ async function disconnect() {
     
     wallet = null;
     activeProvider = null;
+    activeWalletType = null;
+    clearWalletChoice();
     updateUI(false);
 }
 
@@ -290,7 +398,7 @@ let walletOnChainBalance = 0;   // On-chain баланс для MAX кнопки
 
 function openDepositModal() {
     if (!wallet) {
-        alert('Сначала подключите кошелёк!');
+        showNotification('Сначала подключите кошелёк!', 'error');
         return;
     }
     
@@ -394,17 +502,17 @@ async function executeDeposit() {
     const minDeposit = platformDepositInfo?.minDeposit || 1000;
     
     if (!amount || amount <= 0) {
-        alert('Введите сумму!');
+        showNotification('Введите сумму!', 'error');
         return;
     }
     
     if (amount < minDeposit) {
-        alert(`Минимальный депозит: ${minDeposit} токенов`);
+        showNotification(`Минимальный депозит: ${minDeposit} токенов`, 'error');
         return;
     }
     
     if (!platformDepositInfo) {
-        alert('Ошибка: не удалось загрузить информацию о депозите. Попробуйте закрыть и открыть окно.');
+        showNotification('Ошибка: не удалось загрузить информацию о депозите. Попробуйте закрыть и открыть окно.', 'error');
         return;
     }
     
@@ -637,7 +745,7 @@ function createTransferInstructionJS(source, destination, owner, amount, tokenPr
 
 function openWithdrawModal() {
     if (!wallet) {
-        alert('Сначала подключите кошелёк!');
+        showNotification('Сначала подключите кошелёк!', 'error');
         return;
     }
     
@@ -660,12 +768,12 @@ async function processWithdraw() {
     const amount = parseFloat(document.getElementById('withdrawAmount').value);
     
     if (!amount || amount <= 0) {
-        alert('Введите сумму!');
+        showNotification('Введите сумму!', 'error');
         return;
     }
     
     if (amount > balanceAvailable) {
-        alert(`Недостаточно средств! Доступно: ${balanceAvailable}`);
+        showNotification(`Недостаточно средств! Доступно: ${balanceAvailable}`, 'error');
         return;
     }
     
@@ -727,7 +835,7 @@ async function processWithdraw() {
         }
     } catch (error) {
         console.error('❌ Withdraw error:', error);
-        alert('Ошибка сети. Попробуйте ещё раз.');
+        showNotification('Ошибка сети. Попробуйте ещё раз.', 'error');
     } finally {
         btn.disabled = false;
         btn.textContent = '📤 ВЫВЕСТИ';
@@ -1134,7 +1242,7 @@ function updatePositionsDisplay() {
 
 async function cancelOrder(orderId) {
     if (!wallet) {
-        alert('Подключите кошелек');
+        showNotification('Подключите кошелек', 'error');
         return;
     }
     
@@ -1150,7 +1258,7 @@ async function cancelOrder(orderId) {
         const result = await response.json();
         
         if (result.success) {
-            alert('✅ Ордер отменен!');
+            showNotification('✅ Ордер отменен!', 'success');
             
             // Refresh data
             await Promise.all([
@@ -1159,11 +1267,11 @@ async function cancelOrder(orderId) {
                 fetchTokenBalance()
             ]);
         } else {
-            alert(`Ошибка: ${result.error}`);
+            showNotification(`Ошибка: ${result.error}`, 'error');
         }
     } catch (error) {
         console.error('❌ Failed to cancel order:', error);
-        alert('Ошибка при отмене ордера');
+        showNotification('Ошибка при отмене ордера', 'error');
     }
 }
 
@@ -1494,12 +1602,12 @@ async function executeTrade(side) {
     const amount = parseFloat(amountInput.value) || 0;
     
     if (amount <= 0) {
-        alert('Введите корректную сумму');
+        showNotification('Введите корректную сумму', 'error');
         return;
     }
     
     if (amount > tokenBalance) {
-        alert('Недостаточно токенов');
+        showNotification('Недостаточно токенов', 'error');
         return;
     }
     
@@ -1507,7 +1615,7 @@ async function executeTrade(side) {
     // if (selectedOrderType === 'market') {
     //     const hasOrders = orderBookData.higher.length > 0 || orderBookData.lower.length > 0;
     //     if (!hasOrders) {
-    //         alert('Невозможно разместить маркет ордер - стакан пуст. Используйте лимитный ордер.');
+    //         showNotification('Невозможно разместить маркет ордер - стакан пуст. Используйте лимитный ордер.', 'error');
     //         return;
     //     }
     // }
@@ -1528,7 +1636,7 @@ async function executeTrade(side) {
             const price = parseFloat(priceInput.value);
             
             if (!price || price <= 0 || price >= 1) {
-                alert('Введите корректную цену (от 0 до 1)');
+                showNotification('Введите корректную цену (от 0 до 1)', 'error');
                 return;
             }
             
@@ -1565,23 +1673,23 @@ async function executeTrade(side) {
                     message += `\n🏦 Исполнено из AMM пула`;
                 }
                 
-                alert(message);
+                showNotification(message, 'error');
             } else if (selectedOrderType === 'limit' && result.order) {
                 const matched = result.matched || 0;
                 const remaining = result.order.amount - matched;
                 
                 if (matched > 0 && remaining > 0) {
-                    alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\n` +
+                    showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\n` +
                           `Исполнено сразу: ${matched} токенов\n` +
                           `Осталось в стакане: ${remaining} токенов`);
                 } else if (matched > 0) {
-                    alert(`✅ ${typeText} ордер на ${sideText} полностью исполнен!\n\n` +
+                    showNotification(`✅ ${typeText} ордер на ${sideText} полностью исполнен!\n\n` +
                           `Количество: ${matched} токенов`);
                 } else {
-                    alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`);
+                    showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`, 'success');
                 }
             } else {
-                alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`);
+                showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`, 'success');
             }
             
             // Reset form
@@ -1599,12 +1707,12 @@ async function executeTrade(side) {
                 fetchUserPositions()    // NEW: Refresh positions
             ]);
         } else {
-            alert(`Ошибка: ${result.error}`);
+            showNotification(`Ошибка: ${result.error}`, 'error');
         }
         
     } catch (error) {
         console.error('❌ Trade execution error:', error);
-        alert('Ошибка при размещении ордера');
+        showNotification('Ошибка при размещении ордера', 'error');
     }
 }
 
@@ -1720,12 +1828,12 @@ async function executeUnifiedTrade() {
     const side = currentTradeSide;
     
     if (amount <= 0) {
-        alert('Введите корректную сумму');
+        showNotification('Введите корректную сумму', 'error');
         return;
     }
     
     if (amount > tokenBalance) {
-        alert('Недостаточно токенов');
+        showNotification('Недостаточно токенов', 'error');
         return;
     }
     
@@ -1744,7 +1852,7 @@ async function executeUnifiedTrade() {
             const price = parseFloat(document.getElementById('tradePrice').value);
             
             if (!price || price <= 0 || price >= 1) {
-                alert('Введите корректную цену (от 0 до 1)');
+                showNotification('Введите корректную цену (от 0 до 1)', 'error');
                 return;
             }
             
@@ -1778,9 +1886,9 @@ async function executeUnifiedTrade() {
                     message += `\n🏦 Исполнено из AMM пула`;
                 }
                 
-                alert(message);
+                showNotification(message, 'error');
             } else {
-                alert(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`);
+                showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\nКоличество: ${amount} токенов`, 'success');
             }
             
             // Reset
@@ -1796,11 +1904,11 @@ async function executeUnifiedTrade() {
                 fetchUserPositions()
             ]);
         } else {
-            alert(`Ошибка: ${result.error}`);
+            showNotification(`Ошибка: ${result.error}`, 'error');
         }
     } catch (error) {
         console.error('❌ Trade execution error:', error);
-        alert('Ошибка при размещении ордера');
+        showNotification('Ошибка при размещении ордера', 'error');
     }
 }
 
@@ -1963,17 +2071,73 @@ window.addEventListener('load', async () => {
     console.log('🚀 $TOKEN Prediction Market загружается...');
     
     await waitForWallets(3000);
+    discoverWalletStandard();
     
-    // Попробовать автоподключение любого кошелька
+    // Автоподключение через сохранённый выбор
+    const savedWallet = getSavedWalletChoice();
     let autoConnected = false;
-    for (const [key, info] of Object.entries(WALLETS)) {
-        const provider = info.get();
-        if (provider?.isConnected && provider?.publicKey) {
-            wallet = provider.publicKey.toString();
-            activeProvider = provider;
-            console.log('✅ Кошелек автоматически подключен через', info.name);
-            autoConnected = true;
-            break;
+    
+    if (savedWallet) {
+        try {
+            if (savedWallet.startsWith('ws:')) {
+                // Wallet Standard
+                const wsName = savedWallet.slice(3);
+                const w = walletStandardWallets.find(w => w.name === wsName);
+                if (w) {
+                    const connectFeature = w.features?.['standard:connect'];
+                    if (connectFeature?.connect) {
+                        const result = await connectFeature.connect({ silent: true });
+                        const account = result.accounts?.[0];
+                        if (account) {
+                            wallet = account.address;
+                            activeProvider = window.solana || null;
+                            activeWalletType = savedWallet;
+                            autoConnected = true;
+                            console.log('✅ Автоподключен через WS:', w.name);
+                        }
+                    }
+                }
+            } else if (WALLETS[savedWallet]) {
+                const provider = WALLETS[savedWallet].get();
+                if (provider) {
+                    // Попробовать тихое подключение
+                    try {
+                        const resp = await provider.connect({ onlyIfTrusted: true });
+                        wallet = resp.publicKey.toString();
+                        activeProvider = provider;
+                        activeWalletType = savedWallet;
+                        autoConnected = true;
+                        console.log('✅ Автоподключен через', WALLETS[savedWallet].name);
+                    } catch(e) {
+                        // onlyIfTrusted не сработал — попробуем проверить isConnected
+                        if (provider.isConnected && provider.publicKey) {
+                            wallet = provider.publicKey.toString();
+                            activeProvider = provider;
+                            activeWalletType = savedWallet;
+                            autoConnected = true;
+                            console.log('✅ Автоподключен (уже подключён):', WALLETS[savedWallet].name);
+                        }
+                    }
+                }
+            }
+        } catch(e) {
+            console.log('Auto-reconnect failed:', e.message);
+        }
+    }
+    
+    // Fallback: проверить любой уже подключённый кошелёк
+    if (!autoConnected) {
+        for (const [key, info] of Object.entries(WALLETS)) {
+            const provider = info.get();
+            if (provider?.isConnected && provider?.publicKey) {
+                wallet = provider.publicKey.toString();
+                activeProvider = provider;
+                activeWalletType = key;
+                autoConnected = true;
+                saveWalletChoice(key);
+                console.log('✅ Найден подключённый кошелёк:', info.name);
+                break;
+            }
         }
     }
     
@@ -2064,14 +2228,14 @@ window.addEventListener('load', async () => {
 
     async function claimSettlement(roundId) {
         if (!wallet) {
-            alert('Подключите кошелек');
+            showNotification('Подключите кошелек', 'error');
             return;
         }
         
         try {
             const settlement = userSettlements.find(s => s.roundId === roundId);
             if (!settlement) {
-                alert('Settlement не найден');
+                showNotification('Settlement не найден', 'error');
                 return;
             }
             
@@ -2106,7 +2270,7 @@ window.addEventListener('load', async () => {
             const result = await response.json();
             
             if (result.success) {
-                alert(`✅ Выигрыш забран!\n\nПолучено: ${result.payout.toFixed(2)} токенов\nПрибыль: ${result.profitLoss.toFixed(2)} токенов`);
+                showNotification(`✅ Выигрыш забран!\n\nПолучено: ${result.payout.toFixed(2)} токенов\nПрибыль: ${result.profitLoss.toFixed(2)} токенов`, 'success');
                 
                 await Promise.all([
                     fetchUnclaimedSettlements(),
@@ -2119,7 +2283,7 @@ window.addEventListener('load', async () => {
                     renderSettlementHistory();
                 }
             } else {
-                alert(`Ошибка: ${result.error}`);
+                showNotification(`Ошибка: ${result.error}`, 'error');
                 if (btn) {
                     btn.disabled = false;
                     btn.textContent = 'Забрать';
@@ -2128,7 +2292,7 @@ window.addEventListener('load', async () => {
             
         } catch (error) {
             console.error('❌ Claim settlement error:', error);
-            alert('Ошибка при получении выигрыша');
+            showNotification('Ошибка при получении выигрыша', 'error');
         }
     }
 
