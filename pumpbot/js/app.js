@@ -1845,6 +1845,11 @@ function updateCountdown() {
         document.getElementById('countdown').textContent = '00:00';
         // Reload round data when time expires
         fetchAllRounds();
+        // Fetch settlements after short delay to let backend settle
+        if (wallet) {
+            setTimeout(() => fetchUnclaimedSettlements(), 2000);
+            setTimeout(() => fetchUnclaimedSettlements(), 6000);
+        }
         return;
     }
     
@@ -1965,7 +1970,7 @@ window.addEventListener('load', async () => {
             fetchUserPositions();
             fetchUnclaimedSettlements();
         }
-    }, 20000);
+    }, 10000);
     
     console.log('✅ Приложение готово к работе');
     
