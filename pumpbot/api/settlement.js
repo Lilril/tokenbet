@@ -418,7 +418,7 @@ export default async function handler(req, res) {
             // GET UNCLAIMED SETTLEMENTS
             if (action === 'unclaimed') {
                 // ✅ Быстрый settlement check: settle раунды этого юзера ПЕРЕД ответом
-                await quickSettleForUser(user.id);
+                try { await quickSettleForUser(user.id); } catch(e) { console.error('quickSettle err:', e.message); }
                 
                 const settlements = await getUserSettlements(user.id, true);
                 
