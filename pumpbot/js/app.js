@@ -2089,16 +2089,14 @@ window.addEventListener('load', async () => {
     }
 
     function updateSettlementsAlert() {
-        const alertEl = document.getElementById('settlementsAlert');
-        const count = document.getElementById('settlementsCount');
-        
-        if (!alertEl || !count) return;
+        const countEl = document.getElementById('settlementsCount');
+        if (!countEl) return;
         
         if (userSettlements.length > 0) {
-            alertEl.style.display = '';
-            count.textContent = userSettlements.length;
+            // Show badge with unclaimed count
+            countEl.innerHTML = `<span style="color: var(--accent-yellow);">🎁 ${userSettlements.length}</span>`;
         } else {
-            alertEl.style.display = 'none';
+            countEl.innerHTML = `<span style="color: var(--text-dim);">→</span>`;
         }
     }
 
@@ -2113,7 +2111,12 @@ window.addEventListener('load', async () => {
         const modal = document.getElementById('settlementsModal');
         if (modal) {
             modal.classList.add('active');
-            switchSettlementTab('unclaimed');
+            // Show unclaimed tab if there are unclaimed, otherwise show history
+            if (userSettlements.length > 0) {
+                switchSettlementTab('unclaimed');
+            } else {
+                switchSettlementTab('history');
+            }
         }
     }
 
@@ -2133,11 +2136,15 @@ window.addEventListener('load', async () => {
         
         document.getElementById('settlementsUnclaimed').style.display = tab === 'unclaimed' ? 'block' : 'none';
         document.getElementById('settlementsHistory').style.display = tab === 'history' ? 'block' : 'none';
+        const txContainer = document.getElementById('settlementsTransactions');
+        if (txContainer) txContainer.style.display = tab === 'transactions' ? 'block' : 'none';
         
         if (tab === 'unclaimed') {
             await renderUnclaimedSettlements();
-        } else {
+        } else if (tab === 'history') {
             await renderSettlementHistory();
+        } else if (tab === 'transactions') {
+            await renderTransactions();
         }
     }
 
@@ -2238,6 +2245,90 @@ window.addEventListener('load', async () => {
         `;
     }
 }
+
+    async function renderTransactions() {
+        const container = document.getElementById('settlementsTransactions');
+        if (!container) return;
+        
+        if (!wallet) {
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--text-dim);">
+                    Подключите кошелек для просмотра
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                Загрузка транзакций...
+            </div>
+        `;
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/settlement?action=transactions&wallet=${wallet}`);
+            const data = await response.json();
+            
+            if (!data.success || !data.transactions || data.transactions.length === 0) {
+                container.innerHTML = `
+                    <div style="padding: 40px; text-align: center; color: var(--text-dim);">
+                        <div style="font-size: 3em; margin-bottom: 15px;">💳</div>
+                        <div style="font-size: 1.2em;">Нет транзакций</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = `
+                <div style="max-height: 500px; overflow-y: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 0.85em;">
+                                <th style="padding: 10px; text-align: left;">Дата</th>
+                                <th style="padding: 10px; text-align: left;">Тип</th>
+                                <th style="padding: 10px; text-align: right;">Сумма</th>
+                                <th style="padding: 10px; text-align: right;">Баланс</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.transactions.map(t => {
+                                const typeMap = {
+                                    'deposit': { label: '📥 Депозит', color: 'var(--accent-green)' },
+                                    'withdrawal': { label: '📤 Вывод', color: 'var(--accent-red)' },
+                                    'trade_credit': { label: '💰 Выплата', color: 'var(--accent-green)' },
+                                    'trade_debit': { label: '🎯 Ставка', color: 'var(--accent-red)' },
+                                    'order_lock': { label: '🔒 Блокировка', color: 'var(--text-dim)' },
+                                    'order_unlock': { label: '🔓 Разблокировка', color: 'var(--text-dim)' },
+                                    'refund': { label: '🔄 Возврат', color: 'var(--accent-yellow)' }
+                                };
+                                const info = typeMap[t.type] || { label: t.type, color: 'var(--text-dim)' };
+                                const isPositive = t.amount > 0 && (t.type === 'deposit' || t.type === 'trade_credit' || t.type === 'refund' || t.type === 'order_unlock');
+                                const amtColor = isPositive ? 'var(--accent-green)' : 'var(--accent-red)';
+                                const sign = isPositive ? '+' : (t.type === 'withdrawal' || t.type === 'trade_debit' || t.type === 'order_lock') ? '-' : '';
+                                const date = new Date(t.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                                
+                                return \`
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td style="padding: 10px; color: var(--text-dim);">\${date}</td>
+                                        <td style="padding: 10px; color: \${info.color};">\${info.label}</td>
+                                        <td style="padding: 10px; text-align: right; color: \${amtColor}; font-weight: 600;">\${sign}\${Math.abs(t.amount).toFixed(2)}</td>
+                                        <td style="padding: 10px; text-align: right; color: var(--text-primary);">\${t.balanceAfter.toFixed(2)}</td>
+                                    </tr>
+                                \`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            console.error('❌ Error loading transactions:', error);
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: var(--accent-red);">
+                    Ошибка загрузки транзакций
+                </div>
+            `;
+        }
+    }
 
     function renderSettlementCard(settlement, showClaimed) {
         const {
