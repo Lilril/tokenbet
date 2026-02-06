@@ -194,9 +194,41 @@ async function claimSettlement(userId, roundId, txHash = null) {
         }
         
         const s = settlement.rows[0];
+        const payout = parseFloat(s.payout);
         
-        if (parseFloat(s.payout) <= 0) {
+        if (payout <= 0) {
             throw new Error('No payout available to claim');
+        }
+        
+        // ✅ ВАЖНО: Зачисляем выплату на баланс пользователя
+        // (раньше это делалось в settlement, но для надёжности делаем и здесь)
+        // Проверяем не зачислено ли уже через balance_transactions
+        const alreadyCredited = await sql`
+            SELECT 1 FROM balance_transactions 
+            WHERE user_id = ${userId} 
+            AND description LIKE ${`%round #${roundId}%`}
+            AND type = 'trade_credit'
+            LIMIT 1
+        `;
+        
+        if (alreadyCredited.rows.length === 0) {
+            // Ещё не зачислено — зачисляем
+            await sql`
+                UPDATE user_balances 
+                SET available = available + ${payout}, updated_at = NOW()
+                WHERE user_id = ${userId}
+            `;
+            
+            // Логируем транзакцию
+            const balResult = await sql`SELECT available FROM user_balances WHERE user_id = ${userId}`;
+            const balAfter = balResult.rows.length > 0 ? parseFloat(balResult.rows[0].available) : payout;
+            
+            await sql`
+                INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+                VALUES (${userId}, 'trade_credit', ${payout}, ${balAfter - payout}, ${balAfter}, ${'Claim round #' + roundId + ', payout ' + payout.toFixed(2)})
+            `;
+            
+            console.log(`✅ Credited ${payout} to user ${userId} for round ${roundId}`);
         }
         
         // Обновляем статус
@@ -211,14 +243,14 @@ async function claimSettlement(userId, roundId, txHash = null) {
             INSERT INTO audit_log (user_id, action, details)
             VALUES (${userId}, 'claim_settlement', ${JSON.stringify({
                 roundId,
-                payout: parseFloat(s.payout),
+                payout: payout,
                 txHash
             })})
         `;
         
         return {
             success: true,
-            payout: parseFloat(s.payout),
+            payout: payout,
             profitLoss: parseFloat(s.profit_loss),
             txHash
         };
