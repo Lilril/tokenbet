@@ -48,6 +48,42 @@ async function settleRound(roundId) {
         const initialMarketCap = parseFloat(round.start_market_cap || 0);
         
         // 3. Определяем кто выиграл
+        // Ничья — капитализация не изменилась → рефанд
+        if (finalMarketCap === initialMarketCap || initialMarketCap <= 0) {
+            console.log(`🎯 Round ${roundId}: TIE or no start cap, refunding all`);
+            
+            const positions = await sql`
+                SELECT user_id, side, amount, avg_price, total_cost
+                FROM user_positions WHERE round_id = ${roundId}
+            `;
+            
+            for (const pos of positions.rows) {
+                const totalCost = parseFloat(pos.total_cost);
+                await sql`
+                    INSERT INTO user_settlements (
+                        user_id, round_id, side, amount, avg_price, total_cost,
+                        won, payout, profit_loss, claimed
+                    ) VALUES (
+                        ${pos.user_id}, ${roundId}, ${pos.side}, ${parseFloat(pos.amount)}, 
+                        ${pos.avg_price}, ${totalCost}, true, ${totalCost}, 0, false
+                    )
+                    ON CONFLICT (user_id, round_id, side)
+                    DO UPDATE SET won = true, payout = ${totalCost}, profit_loss = 0
+                `;
+            }
+            
+            await sql`
+                UPDATE rounds 
+                SET settlement_status = 'settled', settled_at = NOW(), winning_side = 'tie'
+                WHERE id = ${roundId}
+            `;
+            
+            return {
+                success: true, roundId, winningSide: 'tie',
+                settlementsCreated: positions.rows.length
+            };
+        }
+        
         const winningSide = finalMarketCap > initialMarketCap ? 'higher' : 'lower';
         
         console.log(`🎯 Round ${roundId}: Initial=${initialMarketCap}, Final=${finalMarketCap}, Winner=${winningSide}`);
@@ -155,7 +191,7 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
                     r.start_market_cap
                 FROM user_settlements s
                 JOIN rounds r ON s.round_id = r.id
-                WHERE s.user_id = ${userId} AND s.claimed = false
+                WHERE s.user_id = ${userId} AND s.claimed = false AND s.payout > 0
                 ORDER BY r.end_time DESC
             `
             : await sql`
@@ -200,43 +236,37 @@ async function claimSettlement(userId, roundId, txHash = null) {
             throw new Error('No payout available to claim');
         }
         
-        // ✅ ВАЖНО: Зачисляем выплату на баланс пользователя
-        // (раньше это делалось в settlement, но для надёжности делаем и здесь)
-        // Проверяем не зачислено ли уже через balance_transactions
-        const alreadyCredited = await sql`
-            SELECT 1 FROM balance_transactions 
-            WHERE user_id = ${userId} 
-            AND description LIKE ${`%round #${roundId}%`}
-            AND type = 'trade_credit'
-            LIMIT 1
-        `;
-        
-        if (alreadyCredited.rows.length === 0) {
-            // Ещё не зачислено — зачисляем
-            await sql`
-                UPDATE user_balances 
-                SET available = available + ${payout}, updated_at = NOW()
-                WHERE user_id = ${userId}
-            `;
-            
-            // Логируем транзакцию
-            const balResult = await sql`SELECT available FROM user_balances WHERE user_id = ${userId}`;
-            const balAfter = balResult.rows.length > 0 ? parseFloat(balResult.rows[0].available) : payout;
-            
-            await sql`
-                INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
-                VALUES (${userId}, 'trade_credit', ${payout}, ${balAfter - payout}, ${balAfter}, ${'Claim round #' + roundId + ', payout ' + payout.toFixed(2)})
-            `;
-            
-            console.log(`✅ Credited ${payout} to user ${userId} for round ${roundId}`);
-        }
-        
-        // Обновляем статус
-        await sql`
+        // ✅ Атомарно помечаем claimed=true и зачисляем баланс
+        // Сначала помечаем claimed чтобы избежать двойного зачисления
+        const claimResult = await sql`
             UPDATE user_settlements
             SET claimed = true, claimed_at = NOW(), claim_tx_hash = ${txHash}
-            WHERE user_id = ${userId} AND round_id = ${roundId}
+            WHERE user_id = ${userId} AND round_id = ${roundId} AND claimed = false
+            RETURNING id
         `;
+        
+        // Если ничего не обновилось — значит уже забрано (race condition protection)
+        if (claimResult.rows.length === 0) {
+            throw new Error('Settlement already claimed (concurrent request)');
+        }
+        
+        // Зачисляем на баланс
+        await sql`
+            UPDATE user_balances 
+            SET available = available + ${payout}, updated_at = NOW()
+            WHERE user_id = ${userId}
+        `;
+        
+        // Логируем транзакцию
+        const balResult = await sql`SELECT available FROM user_balances WHERE user_id = ${userId}`;
+        const balAfter = balResult.rows.length > 0 ? parseFloat(balResult.rows[0].available) : payout;
+        
+        await sql`
+            INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+            VALUES (${userId}, 'trade_credit', ${payout}, ${balAfter - payout}, ${balAfter}, ${'Claim round #' + roundId + ', payout ' + payout.toFixed(2)})
+        `;
+        
+        console.log(`✅ Credited ${payout} to user ${userId} for round ${roundId}`);
         
         // Логируем действие
         await sql`
