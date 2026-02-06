@@ -2273,7 +2273,7 @@ window.addEventListener('load', async () => {
                     <div class="settlement-detail">
                         <div class="settlement-detail-label">${won ? 'Выплата' : 'Убыток'}</div>
                         <div class="settlement-detail-value ${won ? 'settlement-payout' : 'settlement-loss'}">
-                            ${won ? '+' : ''}${profitLoss.toFixed(2)}
+                            ${won ? '+' : ''}${(won ? profitLoss : totalCost).toFixed(2)}
                         </div>
                     </div>
                 </div>
