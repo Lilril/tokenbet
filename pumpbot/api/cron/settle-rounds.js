@@ -86,6 +86,40 @@ async function settleRound(roundId) {
             return { success: true, roundId, winningSide: 'tie (refund)', settlementsCreated: positions.rows.length };
         }
         
+        // Если цена не изменилась — ничья, возврат всем
+        if (finalMarketCap === initialMarketCap) {
+            console.log(`⚠️ Round ${roundId}: price unchanged (${initialMarketCap} === ${finalMarketCap}), refunding all`);
+            
+            const positions = await sql`
+                SELECT user_id, side, amount, avg_price, total_cost
+                FROM user_positions
+                WHERE round_id = ${roundId}
+            `;
+            
+            for (const pos of positions.rows) {
+                const totalCost = parseFloat(pos.total_cost);
+                await sql`
+                    INSERT INTO user_settlements (
+                        user_id, round_id, side, amount, avg_price, total_cost,
+                        won, payout, profit_loss, claimed
+                    ) VALUES (
+                        ${pos.user_id}, ${roundId}, ${pos.side}, ${parseFloat(pos.amount)}, 
+                        ${pos.avg_price}, ${totalCost}, true, ${totalCost}, 0, false
+                    )
+                    ON CONFLICT (user_id, round_id, side) 
+                    DO UPDATE SET won = true, payout = ${totalCost}, profit_loss = 0
+                `;
+            }
+            
+            await sql`
+                UPDATE rounds 
+                SET settlement_status = 'settled', settled_at = NOW(), winning_side = 'tie'
+                WHERE id = ${roundId}
+            `;
+            
+            return { success: true, roundId, winningSide: 'tie (refund)', settlementsCreated: positions.rows.length };
+        }
+        
         const winningSide = finalMarketCap > initialMarketCap ? 'higher' : 'lower';
         
         console.log(`🎯 Settling Round ${roundId}: ${initialMarketCap} → ${finalMarketCap} (Winner: ${winningSide})`);
@@ -178,7 +212,7 @@ async function settleRound(roundId) {
 }
 
 async function fetchFinalMarketCap(round) {
-    const TOKEN_ADDRESS = 'GB8KtQfMChhYrCYtd5PoAB42kAdkHnuyAincSSmFpump';
+    const TOKEN_ADDRESS = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
     const TOTAL_SUPPLY = 1000000000;
     
     // Метод 1: DexScreener
