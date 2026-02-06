@@ -601,45 +601,57 @@ async function creditBalance(userId, amount, description) {
 // ============================================
 // INLINE SETTLEMENT
 // ============================================
-let lastSettlementCheck = 0;
+let lastHeavyCheck = 0;
 
 async function inlineSettlementCheck() {
-    const now = Date.now();
-    if (now - lastSettlementCheck < 30000) return;
-    lastSettlementCheck = now;
-    
     try {
+        // ============================================
+        // БЫСТРАЯ ЧАСТЬ (каждый запрос, без throttle):
+        // 1. Закрыть истекшие раунды
+        // 2. Settle раунды с позициями (мгновенно)
+        // ============================================
+        
         // 1. Закрыть истекшие раунды
         await sql`UPDATE rounds SET status = 'closed' WHERE status = 'active' AND end_time < NOW()`;
         
-        // 2. КРИТИЧНО: Отменить ВСЕ ордера в закрытых раундах, вернуть locked
+        // 2. Отменить ордера в закрытых раундах
         await cancelExpiredOrders();
         
-        // 3. Найти раунды с позициями для settlement
+        // 3. Settle раунды с позициями — ПРИОРИТЕТ, без throttle!
         const toSettle = await sql`
             SELECT r.id FROM rounds r
             WHERE r.status = 'closed'
             AND (r.settlement_status IS NULL OR r.settlement_status = 'pending')
             AND r.end_time < NOW()
             AND EXISTS (SELECT 1 FROM user_positions WHERE round_id = r.id)
-            ORDER BY r.end_time ASC LIMIT 1
+            ORDER BY r.end_time ASC LIMIT 3
         `;
         
-        if (toSettle.rows.length === 0) {
-            await sql`
-                UPDATE rounds SET settlement_status = 'settled', settled_at = NOW()
-                WHERE status = 'closed'
-                AND (settlement_status IS NULL OR settlement_status = 'pending')
-                AND end_time < NOW()
-                AND NOT EXISTS (SELECT 1 FROM user_positions WHERE round_id = rounds.id)
-                AND NOT EXISTS (SELECT 1 FROM limit_orders WHERE round_id = rounds.id AND status = 'active')
-                AND id IN (SELECT id FROM rounds WHERE status = 'closed' AND (settlement_status IS NULL OR settlement_status = 'pending') AND end_time < NOW() LIMIT 50)
-            `;
-        } else {
-            for (const r of toSettle.rows) await inlineSettleRound(r.id);
+        for (const r of toSettle.rows) {
+            await inlineSettleRound(r.id);
         }
         
-        // 4. Safety net: если locked > 0 но нет живых ордеров — вернуть
+        // ============================================
+        // ТЯЖЁЛАЯ ЧАСТЬ (раз в 60 сек):
+        // - Пустые раунды
+        // - Orphan locks
+        // ============================================
+        const now = Date.now();
+        if (now - lastHeavyCheck < 60000) return;
+        lastHeavyCheck = now;
+        
+        // Пустые раунды без позиций — просто пометить settled
+        await sql`
+            UPDATE rounds SET settlement_status = 'settled', settled_at = NOW()
+            WHERE status = 'closed'
+            AND (settlement_status IS NULL OR settlement_status = 'pending')
+            AND end_time < NOW()
+            AND NOT EXISTS (SELECT 1 FROM user_positions WHERE round_id = rounds.id)
+            AND NOT EXISTS (SELECT 1 FROM limit_orders WHERE round_id = rounds.id AND status = 'active')
+            AND id IN (SELECT id FROM rounds WHERE status = 'closed' AND (settlement_status IS NULL OR settlement_status = 'pending') AND end_time < NOW() LIMIT 50)
+        `;
+        
+        // Safety net: orphaned locks
         await fixOrphanedLocks();
     } catch (e) {
         console.error('Settlement error:', e.message);
@@ -724,7 +736,31 @@ async function inlineSettleRound(roundId) {
         if (rr.rows.length === 0) return;
         const round = rr.rows[0];
         
-        // Final market cap
+        const startMC = parseFloat(round.start_market_cap) || 0;
+        const positions = await sql`SELECT user_id, side, amount, avg_price, total_cost FROM user_positions WHERE round_id = ${roundId}`;
+        if (positions.rows.length === 0) {
+            await sql`UPDATE rounds SET settlement_status = 'settled', settled_at = NOW() WHERE id = ${roundId}`;
+            return;
+        }
+        
+        // ============================================
+        // CASE 1: start_market_cap = 0 → рефанд всем (не нужен finalMC!)
+        // ============================================
+        if (startMC <= 0) {
+            for (const pos of positions.rows) {
+                const tc = parseFloat(pos.total_cost);
+                await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
+                    VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
+                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
+            }
+            await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
+            console.log(`✅ Settled round ${roundId}: refund (no start cap)`);
+            return;
+        }
+        
+        // ============================================
+        // Получаем finalMC (нужен только если startMC > 0)
+        // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
             const TOKEN = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
@@ -748,28 +784,6 @@ async function inlineSettleRound(roundId) {
             } catch(e) {}
             if (!finalMC) return; // GitHub cron подхватит
             await sql`UPDATE rounds SET final_market_cap = ${finalMC} WHERE id = ${roundId}`;
-        }
-        
-        const startMC = parseFloat(round.start_market_cap) || 0;
-        const positions = await sql`SELECT user_id, side, amount, avg_price, total_cost FROM user_positions WHERE round_id = ${roundId}`;
-        if (positions.rows.length === 0) {
-            await sql`UPDATE rounds SET settlement_status = 'settled', settled_at = NOW() WHERE id = ${roundId}`;
-            return;
-        }
-        
-        // ============================================
-        // CASE 1: start_market_cap = 0 → рефанд всем
-        // ============================================
-        if (startMC <= 0) {
-            for (const pos of positions.rows) {
-                const tc = parseFloat(pos.total_cost);
-                await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
-                    VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
-                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
-            }
-            await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
-            console.log(`✅ Settled round ${roundId}: refund (no start cap)`);
-            return;
         }
         
         // ============================================
