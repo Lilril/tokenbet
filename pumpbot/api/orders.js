@@ -601,15 +601,17 @@ async function creditBalance(userId, amount, description) {
 // ============================================
 // INLINE SETTLEMENT
 // ============================================
+let lastSettleCheck = 0;
 let lastHeavyCheck = 0;
 
 async function inlineSettlementCheck() {
     try {
         // ============================================
-        // БЫСТРАЯ ЧАСТЬ (каждый запрос, без throttle):
-        // 1. Закрыть истекшие раунды
-        // 2. Settle раунды с позициями (мгновенно)
+        // БЫСТРАЯ ЧАСТЬ (раз в 5 сек):
         // ============================================
+        const now = Date.now();
+        if (now - lastSettleCheck < 5000) return;
+        lastSettleCheck = now;
         
         // 1. Закрыть истекшие раунды
         await sql`UPDATE rounds SET status = 'closed' WHERE status = 'active' AND end_time < NOW()`;
@@ -617,7 +619,7 @@ async function inlineSettlementCheck() {
         // 2. Отменить ордера в закрытых раундах
         await cancelExpiredOrders();
         
-        // 3. Settle раунды с позициями — ПРИОРИТЕТ, без throttle!
+        // 3. Settle раунды с позициями
         const toSettle = await sql`
             SELECT r.id FROM rounds r
             WHERE r.status = 'closed'
@@ -633,10 +635,7 @@ async function inlineSettlementCheck() {
         
         // ============================================
         // ТЯЖЁЛАЯ ЧАСТЬ (раз в 60 сек):
-        // - Пустые раунды
-        // - Orphan locks
         // ============================================
-        const now = Date.now();
         if (now - lastHeavyCheck < 60000) return;
         lastHeavyCheck = now;
         
