@@ -702,7 +702,7 @@
         }
     </script>
     
-    <!-- Mercury Blob Effect — Zero-Gravity Liquid Metal -->
+    <!-- Mercury Blob Effect — Zero-Gravity Liquid Metal v2 -->
     <script>
     (function() {
         const canvas = document.getElementById('mercuryCanvas');
@@ -721,53 +721,84 @@
             constructor() {
                 this.x = Math.random() * W;
                 this.y = Math.random() * H;
-                this.baseR = 8 + Math.random() * 25;
+                this.baseR = 10 + Math.random() * 28;
                 this.r = this.baseR;
-                this.vx = (Math.random() - 0.5) * 0.25;
-                this.vy = (Math.random() - 0.5) * 0.25;
+                this.vx = (Math.random() - 0.5) * 0.3;
+                this.vy = (Math.random() - 0.5) * 0.3;
+                this.ax = 0; this.ay = 0;
                 this.phase = Math.random() * Math.PI * 2;
-                this.wobbleSpeed = 0.008 + Math.random() * 0.012;
-                this.wobbleAmp = 0.15 + Math.random() * 0.2;
-                this.opacity = 0.06 + Math.random() * 0.12;
-                // number of control points for organic shape
-                this.points = 6 + Math.floor(Math.random() * 4);
+                this.wobbleSpeed = 0.006 + Math.random() * 0.01;
+                this.opacity = 0.07 + Math.random() * 0.11;
+                this.points = 7 + Math.floor(Math.random() * 5);
                 this.offsets = [];
                 for (let i = 0; i < this.points; i++) {
                     this.offsets.push({
                         phase: Math.random() * Math.PI * 2,
-                        speed: 0.01 + Math.random() * 0.02,
-                        amp: 0.1 + Math.random() * 0.25
+                        speed: 0.008 + Math.random() * 0.018,
+                        amp: 0.12 + Math.random() * 0.2
                     });
                 }
+                // Specular highlight angle tracks velocity
+                this.specAngle = Math.random() * Math.PI * 2;
+                this.specTargetAngle = this.specAngle;
+                // Secondary environment reflection
+                this.envPhase = Math.random() * Math.PI * 2;
             }
             
             update() {
                 this.phase += this.wobbleSpeed;
+                this.envPhase += 0.003;
                 
-                // Slow drifting movement
-                this.x += this.vx + Math.sin(this.phase * 0.7) * 0.08;
-                this.y += this.vy + Math.cos(this.phase * 0.5) * 0.06;
+                // Gentle random acceleration changes
+                if (Math.random() < 0.01) {
+                    this.ax = (Math.random() - 0.5) * 0.003;
+                    this.ay = (Math.random() - 0.5) * 0.003;
+                }
                 
-                // Gentle pulsation
-                this.r = this.baseR * (1 + Math.sin(this.phase) * 0.08);
+                this.vx += this.ax + Math.sin(this.phase * 0.7) * 0.002;
+                this.vy += this.ay + Math.cos(this.phase * 0.5) * 0.002;
+                
+                // Damping
+                this.vx *= 0.998;
+                this.vy *= 0.998;
+                
+                // Clamp velocity
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 0.5) {
+                    this.vx = (this.vx / speed) * 0.5;
+                    this.vy = (this.vy / speed) * 0.5;
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Pulsation
+                this.r = this.baseR * (1 + Math.sin(this.phase) * 0.06);
                 
                 // Update wobble offsets
                 for (let o of this.offsets) {
                     o.phase += o.speed;
                 }
                 
+                // Specular highlight follows opposite of velocity direction
+                if (speed > 0.02) {
+                    this.specTargetAngle = Math.atan2(-this.vy, -this.vx) - 0.5;
+                }
+                // Smooth interpolate specular angle
+                let diff = this.specTargetAngle - this.specAngle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                this.specAngle += diff * 0.03;
+                
                 // Wrap around
-                if (this.x < -this.r * 3) this.x = W + this.r * 2;
-                if (this.x > W + this.r * 3) this.x = -this.r * 2;
-                if (this.y < -this.r * 3) this.y = H + this.r * 2;
-                if (this.y > H + this.r * 3) this.y = -this.r * 2;
+                const margin = this.r * 3;
+                if (this.x < -margin) this.x = W + margin * 0.5;
+                if (this.x > W + margin) this.x = -margin * 0.5;
+                if (this.y < -margin) this.y = H + margin * 0.5;
+                if (this.y > H + margin) this.y = -margin * 0.5;
             }
             
-            draw() {
-                ctx.save();
-                ctx.translate(this.x, this.y);
-                
-                // Build organic blob shape using catmull-rom-like curve
+            getPoints() {
                 const pts = [];
                 for (let i = 0; i < this.points; i++) {
                     const angle = (i / this.points) * Math.PI * 2;
@@ -779,8 +810,10 @@
                         y: Math.sin(angle) * rr
                     });
                 }
-                
-                // Draw smooth blob
+                return pts;
+            }
+            
+            drawBlobPath(pts) {
                 ctx.beginPath();
                 for (let i = 0; i < pts.length; i++) {
                     const curr = pts[i];
@@ -794,55 +827,82 @@
                     ctx.quadraticCurveTo(curr.x, curr.y, cpx, cpy);
                 }
                 ctx.closePath();
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
                 
-                // Mercury gradient — metallic look
-                const grad = ctx.createRadialGradient(
-                    -this.r * 0.25, -this.r * 0.3, this.r * 0.1,
-                    0, 0, this.r * 1.2
-                );
-                grad.addColorStop(0, `rgba(240, 245, 255, ${this.opacity * 1.8})`);
-                grad.addColorStop(0.2, `rgba(200, 210, 230, ${this.opacity * 1.4})`);
-                grad.addColorStop(0.5, `rgba(150, 160, 185, ${this.opacity})`);
-                grad.addColorStop(0.8, `rgba(100, 110, 140, ${this.opacity * 0.6})`);
-                grad.addColorStop(1, `rgba(60, 65, 90, ${this.opacity * 0.2})`);
+                const pts = this.getPoints();
                 
+                // === BASE MERCURY BODY ===
+                this.drawBlobPath(pts);
+                const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.r * 1.3);
+                grad.addColorStop(0, `rgba(180, 195, 215, ${this.opacity * 1.3})`);
+                grad.addColorStop(0.4, `rgba(140, 155, 180, ${this.opacity})`);
+                grad.addColorStop(0.7, `rgba(100, 110, 135, ${this.opacity * 0.7})`);
+                grad.addColorStop(1, `rgba(50, 55, 75, ${this.opacity * 0.15})`);
                 ctx.fillStyle = grad;
                 ctx.fill();
                 
-                // Specular highlight — bright chrome reflection
+                // === DARK EDGE (shadow side) ===
+                this.drawBlobPath(pts);
+                const shadowAngle = this.specAngle + Math.PI;
+                const edgeGrad = ctx.createLinearGradient(
+                    Math.cos(shadowAngle) * this.r * 0.8,
+                    Math.sin(shadowAngle) * this.r * 0.8,
+                    Math.cos(this.specAngle) * this.r * 0.8,
+                    Math.sin(this.specAngle) * this.r * 0.8
+                );
+                edgeGrad.addColorStop(0, `rgba(30, 35, 50, ${this.opacity * 0.5})`);
+                edgeGrad.addColorStop(0.5, `rgba(30, 35, 50, 0)`);
+                edgeGrad.addColorStop(1, `rgba(30, 35, 50, 0)`);
+                ctx.fillStyle = edgeGrad;
+                ctx.fill();
+                
+                // === PRIMARY SPECULAR HIGHLIGHT (moves with direction) ===
+                const specDist = this.r * 0.35;
+                const sx = Math.cos(this.specAngle) * specDist;
+                const sy = Math.sin(this.specAngle) * specDist;
+                
                 ctx.beginPath();
-                ctx.ellipse(
-                    -this.r * 0.2, -this.r * 0.25,
-                    this.r * 0.35, this.r * 0.2,
-                    -0.4, 0, Math.PI * 2
-                );
-                const specGrad = ctx.createRadialGradient(
-                    -this.r * 0.2, -this.r * 0.25, 0,
-                    -this.r * 0.2, -this.r * 0.25, this.r * 0.35
-                );
-                specGrad.addColorStop(0, `rgba(255, 255, 255, ${this.opacity * 1.2})`);
-                specGrad.addColorStop(0.5, `rgba(255, 255, 255, ${this.opacity * 0.3})`);
-                specGrad.addColorStop(1, `rgba(255, 255, 255, 0)`);
+                ctx.ellipse(sx, sy, this.r * 0.38, this.r * 0.2, this.specAngle + 0.3, 0, Math.PI * 2);
+                const specGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, this.r * 0.4);
+                specGrad.addColorStop(0, `rgba(255, 255, 255, ${this.opacity * 1.5})`);
+                specGrad.addColorStop(0.3, `rgba(230, 240, 255, ${this.opacity * 0.8})`);
+                specGrad.addColorStop(0.7, `rgba(200, 215, 240, ${this.opacity * 0.2})`);
+                specGrad.addColorStop(1, `rgba(200, 215, 240, 0)`);
                 ctx.fillStyle = specGrad;
                 ctx.fill();
                 
-                // Secondary smaller highlight for depth
+                // === SMALL SHARP HIGHLIGHT (bright pinpoint) ===
                 ctx.beginPath();
-                ctx.ellipse(
-                    this.r * 0.15, this.r * 0.2,
-                    this.r * 0.12, this.r * 0.08,
-                    0.6, 0, Math.PI * 2
-                );
-                ctx.fillStyle = `rgba(200, 220, 255, ${this.opacity * 0.4})`;
+                const pinX = sx + Math.cos(this.specAngle) * this.r * 0.05;
+                const pinY = sy + Math.sin(this.specAngle) * this.r * 0.05;
+                ctx.arc(pinX, pinY, this.r * 0.08, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 2})`;
                 ctx.fill();
+                
+                // === SECONDARY ENVIRONMENT REFLECTION (opposite side, subtle) ===
+                const envX = Math.cos(this.specAngle + Math.PI + 0.8) * this.r * 0.4;
+                const envY = Math.sin(this.specAngle + Math.PI + 0.8) * this.r * 0.4;
+                ctx.beginPath();
+                ctx.ellipse(envX, envY, this.r * 0.15, this.r * 0.1, this.envPhase, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(180, 200, 230, ${this.opacity * 0.35})`;
+                ctx.fill();
+                
+                // === EDGE RIM LIGHT ===
+                this.drawBlobPath(pts);
+                ctx.strokeStyle = `rgba(200, 220, 250, ${this.opacity * 0.3})`;
+                ctx.lineWidth = 0.5;
+                ctx.stroke();
                 
                 ctx.restore();
             }
         }
         
-        // Create blobs — fewer but larger and more visible
         const blobs = [];
-        const blobCount = Math.min(18, Math.max(8, Math.floor(W / 120)));
+        const blobCount = Math.min(16, Math.max(7, Math.floor(W / 130)));
         for (let i = 0; i < blobCount; i++) {
             blobs.push(new MercuryBlob());
         }
