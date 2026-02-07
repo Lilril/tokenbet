@@ -111,7 +111,7 @@ body::before {
    CONTAINER
    ============================================ */
 .container {
-    max-width: 1600px;
+    max-width: 1320px;
     margin: 0 auto;
     padding: 20px;
     position: relative;
@@ -360,7 +360,7 @@ button:disabled:hover {
    PRICE DISPLAY
    ============================================ */
 .price-display {
-    border: 1px solid var(--accent-yellow);
+    border: 1px solid rgba(200, 160, 40, 0.4);
     border-left: 3px solid var(--accent-yellow);
     padding: 30px;
     text-align: center;
@@ -368,51 +368,69 @@ button:disabled:hover {
     position: relative;
     border-radius: 2px;
     overflow: hidden;
-    transition: all 0.4s ease;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
+/* Gold shimmer band — sweeps across on hover */
 .price-display::before {
     content: '';
     position: absolute;
     top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: radial-gradient(circle at 50% 50%, rgba(240, 192, 48, 0.0) 0%, transparent 70%);
-    transition: background 0.4s ease;
+    left: -120%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+        105deg,
+        transparent 20%,
+        rgba(255, 215, 80, 0.03) 35%,
+        rgba(255, 230, 120, 0.08) 45%,
+        rgba(255, 245, 180, 0.12) 50%,
+        rgba(255, 230, 120, 0.08) 55%,
+        rgba(255, 215, 80, 0.03) 65%,
+        transparent 80%
+    );
     pointer-events: none;
+    transition: none;
 }
 
 .price-display:hover::before {
-    background: radial-gradient(circle at 50% 50%, rgba(240, 192, 48, 0.06) 0%, transparent 70%);
+    animation: goldSweep 1s ease-in-out forwards;
 }
 
+@keyframes goldSweep {
+    0% { left: -120%; }
+    100% { left: 160%; }
+}
+
+/* Warm golden ambient glow on hover */
 .price-display:hover {
-    border-color: var(--accent-yellow);
-    box-shadow: 0 0 30px rgba(240, 192, 48, 0.08), inset 0 0 40px rgba(240, 192, 48, 0.03);
+    border-color: rgba(240, 200, 60, 0.6);
+    box-shadow:
+        0 0 20px rgba(240, 192, 48, 0.08),
+        0 0 50px rgba(240, 192, 48, 0.04),
+        inset 0 0 30px rgba(240, 192, 48, 0.03);
 }
 
+/* Subtle golden reflection at bottom */
 .price-display::after {
     content: '';
     position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: conic-gradient(from 0deg, transparent, rgba(240, 192, 48, 0.03), transparent, rgba(240, 192, 48, 0.02), transparent);
-    animation: priceRotate 12s linear infinite;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40%;
+    background: linear-gradient(
+        to top,
+        rgba(200, 160, 40, 0.04) 0%,
+        transparent 100%
+    );
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.4s;
+    transition: opacity 0.4s ease;
 }
 
 .price-display:hover::after {
     opacity: 1;
-}
-
-@keyframes priceRotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
 }
 
 .price-label {
@@ -831,16 +849,65 @@ input[type="number"]:focus {
    ============================================ */
 .countdown-section {
     background: var(--bg-secondary);
-    border: 1px solid var(--accent-yellow);
+    border: 1px solid rgba(200, 160, 40, 0.4);
     border-left: 3px solid var(--accent-yellow);
     padding: 20px;
     text-align: center;
     border-radius: 2px;
-    transition: all 0.3s ease;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Gold shimmer band */
+.countdown-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -120%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+        105deg,
+        transparent 20%,
+        rgba(255, 215, 80, 0.03) 35%,
+        rgba(255, 230, 120, 0.08) 45%,
+        rgba(255, 245, 180, 0.12) 50%,
+        rgba(255, 230, 120, 0.08) 55%,
+        rgba(255, 215, 80, 0.03) 65%,
+        transparent 80%
+    );
+    pointer-events: none;
+}
+
+.countdown-section:hover::before {
+    animation: goldSweep 1s ease-in-out forwards;
 }
 
 .countdown-section:hover {
-    box-shadow: 0 0 20px rgba(240, 192, 48, 0.06);
+    border-color: rgba(240, 200, 60, 0.6);
+    box-shadow:
+        0 0 20px rgba(240, 192, 48, 0.08),
+        0 0 50px rgba(240, 192, 48, 0.04),
+        inset 0 0 30px rgba(240, 192, 48, 0.03);
+}
+
+/* Bottom golden reflection */
+.countdown-section::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40%;
+    background: linear-gradient(to top, rgba(200, 160, 40, 0.04) 0%, transparent 100%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.countdown-section:hover::after {
+    opacity: 1;
 }
 
 .countdown-label {
