@@ -823,9 +823,10 @@ async function inlineSettleRound(roundId) {
         }
         
         // ============================================
-        // CASE 2: Ничья — капа не изменилась → рефанд всем
+        // CASE 2: Ничья — капа не изменилась (или разница < 0.01%) → рефанд всем
         // ============================================
-        if (finalMC === startMC) {
+        const capChangePercent = startMC > 0 ? Math.abs((finalMC - startMC) / startMC * 100) : 0;
+        if (finalMC === startMC || capChangePercent < 0.01) {
             for (const pos of positions.rows) {
                 const tc = parseFloat(pos.total_cost);
                 await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
