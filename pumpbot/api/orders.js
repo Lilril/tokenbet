@@ -1390,25 +1390,30 @@ if (action === 'orderbook') {
                 let soldAmount = 0;
                 const trades = [];
                 
-                // Продажа — ищем buy-лимитки на нашей стороне от ДРУГИХ пользователей
-                // Лимитка HIGHER 0.50 от user_id=5 = "хочу купить HIGHER по 0.50"
-                // Мы продаём HIGHER → матчимся с ней
+                // Продажа работает через complementary matching:
+                // Продажа LOWER → ищем HIGHER лимитки (они платят за HIGHER, мы возвращаем LOWER)
+                // Продажа HIGHER → ищем LOWER лимитки
+                const oppositeSide = side === 'higher' ? 'lower' : 'higher';
                 
                 if (type === 'limit') {
                     const sellPrice = parseFloat(price);
-                    if (!sellPrice || sellPrice <= 0 || sellPrice >= 1 || isNaN(sellPrice)) {
-                        return res.status(400).json({ success: false, error: 'Цена должна быть от 0 до 1' });
+                    if (!sellPrice || sellPrice < 0.01 || sellPrice > 0.99 || isNaN(sellPrice)) {
+                        return res.status(400).json({ success: false, error: 'Цена должна быть от 0.01 до 0.99' });
                     }
+                    
+                    // Ищем opposite-side лимитки где opp_price >= (1 - sellPrice)
+                    // т.е. покупатель другой стороны готов заплатить достаточно
+                    const minOppPrice = 1 - sellPrice;
                     
                     const buyOrders = await sql`
                         SELECT id, user_id, side, amount, filled, price
                         FROM limit_orders
                         WHERE round_id = ${round.id} 
-                        AND side = ${side}
+                        AND side = ${oppositeSide}
                         AND user_id != ${user.id}
                         AND status = 'active' 
                         AND amount > filled
-                        AND price >= ${sellPrice}
+                        AND price >= ${minOppPrice}
                         ORDER BY price DESC, created_at ASC
                         LIMIT 50
                     `;
@@ -1419,8 +1424,10 @@ if (action === 'orderbook') {
                         
                         const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
                         const matchAmount = Math.min(remaining, orderRemaining);
-                        const matchPrice = parseFloat(buyOrder.price);
-                        const proceeds = matchAmount * matchPrice;
+                        const oppPrice = parseFloat(buyOrder.price);
+                        // Seller gets (1 - opp_price) per token
+                        const sellGetPrice = 1 - oppPrice;
+                        const proceeds = matchAmount * sellGetPrice;
                         
                         const trade = await db.recordTrade({
                             roundId: round.id,
@@ -1430,15 +1437,17 @@ if (action === 'orderbook') {
                             sellOrderId: null,
                             side,
                             amount: matchAmount,
-                            price: matchPrice,
+                            price: sellGetPrice,
                             totalCost: proceeds,
                             tradeType: 'sell'
                         });
                         trades.push(trade);
                         
                         await db.updateOrderFilled(buyOrder.id, matchAmount);
-                        await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, matchPrice, proceeds);
-                        await deductLocked(buyOrder.user_id, proceeds);
+                        // Покупатель opposite side получает позицию на своей стороне
+                        const buyerCost = matchAmount * oppPrice;
+                        await db.upsertUserPosition(buyOrder.user_id, round.id, oppositeSide, matchAmount, oppPrice, buyerCost);
+                        await deductLocked(buyOrder.user_id, buyerCost);
                         
                         totalProceeds += proceeds;
                         soldAmount += matchAmount;
@@ -1446,12 +1455,12 @@ if (action === 'orderbook') {
                 }
                 
                 if (type === 'market') {
-                    // Маркет продажа — ищем buy-лимитки от других пользователей
+                    // Маркет продажа — ищем opposite-side лимитки
                     const buyOrders = await sql`
                         SELECT id, user_id, side, amount, filled, price
                         FROM limit_orders
                         WHERE round_id = ${round.id} 
-                        AND side = ${side}
+                        AND side = ${oppositeSide}
                         AND user_id != ${user.id}
                         AND status = 'active' 
                         AND amount > filled
@@ -1465,8 +1474,10 @@ if (action === 'orderbook') {
                         
                         const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
                         const matchAmount = Math.min(remaining, orderRemaining);
-                        const matchPrice = parseFloat(buyOrder.price);
-                        const proceeds = matchAmount * matchPrice;
+                        const oppPrice = parseFloat(buyOrder.price);
+                        // Seller gets (1 - opp_price) per token
+                        const sellGetPrice = 1 - oppPrice;
+                        const proceeds = matchAmount * sellGetPrice;
                         
                         const trade = await db.recordTrade({
                             roundId: round.id,
@@ -1476,15 +1487,16 @@ if (action === 'orderbook') {
                             sellOrderId: null,
                             side,
                             amount: matchAmount,
-                            price: matchPrice,
+                            price: sellGetPrice,
                             totalCost: proceeds,
                             tradeType: 'sell'
                         });
                         trades.push(trade);
                         
                         await db.updateOrderFilled(buyOrder.id, matchAmount);
-                        await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, matchPrice, proceeds);
-                        await deductLocked(buyOrder.user_id, proceeds);
+                        const buyerCost = matchAmount * oppPrice;
+                        await db.upsertUserPosition(buyOrder.user_id, round.id, oppositeSide, matchAmount, oppPrice, buyerCost);
+                        await deductLocked(buyOrder.user_id, buyerCost);
                         
                         totalProceeds += proceeds;
                         soldAmount += matchAmount;
