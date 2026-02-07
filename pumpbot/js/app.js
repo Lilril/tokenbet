@@ -106,24 +106,6 @@ const WALLETS = {
             return null;
         }
     },
-    jupiter: {
-        name: 'Jupiter',
-        icon: '🪐',
-        color: '#C7F284',
-        get: () => {
-            // Jupiter registers via multiple possible globals
-            if (window.jupiterWallet) return window.jupiterWallet;
-            if (window.jupiter?.solana) return window.jupiter.solana;
-            // Check providers map (EIP-6963 style)
-            if (window.providerMap?.get?.('Jupiter')) return window.providerMap.get('Jupiter');
-            // Check solana providers array
-            if (window.solana?.providers) {
-                const jup = window.solana.providers.find(p => p.isJupiter);
-                if (jup) return jup;
-            }
-            return null;
-        }
-    },
     solflare: {
         name: 'Solflare',
         icon: '🔥',
@@ -140,49 +122,49 @@ const WALLETS = {
 
 // Wallet Standard кошельки (Jupiter и другие)
 let walletStandardWallets = [];
+let wsListenerAdded = false;
 
 function discoverWalletStandard() {
+    walletStandardWallets = []; // Reset
+    
     try {
-        // Wallet Standard uses a global registry pattern
-        // Wallets register via window['wallet-standard:register-wallet'] or similar
-        const register = window['wallet-standard:register-wallet'];
-        
-        // Method 1: Check if getWallets exists (from @wallet-standard/app)
-        if (typeof window.getWallets === 'function') {
-            const api = window.getWallets();
-            if (api?.get) {
-                walletStandardWallets = api.get().filter(w => 
-                    w.chains?.some(c => c.includes('solana'))
-                );
-                return;
+        // Method 1: navigator.wallets
+        if (window.navigator?.wallets) {
+            const navWallets = window.navigator.wallets;
+            if (typeof navWallets.get === 'function') {
+                const all = navWallets.get();
+                walletStandardWallets = all.filter(w => w.chains?.some(c => c.includes('solana')));
+            } else if (Array.isArray(navWallets)) {
+                walletStandardWallets = navWallets.filter(w => w.chains?.some(c => c.includes('solana')));
             }
         }
         
-        // Method 2: Use the register callback pattern  
-        // Wallets add themselves to a callbacks array on window
-        const callbacks = window['wallet-standard:app-ready'];
-        if (Array.isArray(callbacks)) {
-            for (const cb of callbacks) {
-                try {
-                    if (typeof cb === 'function') cb({ register: (w) => {
-                        if (w.chains?.some(c => c.includes('solana'))) {
-                            walletStandardWallets.push(w);
-                        }
-                    }});
-                } catch(e) {}
-            }
-        }
-        
-        // Method 3: Check window.providerMap or known Jupiter globals
-        if (window.jupiterWallet) {
-            walletStandardWallets.push({ 
-                name: 'Jupiter', 
-                icon: '🪐',
-                provider: window.jupiterWallet 
+        // Method 2: Listen for late-registering wallets (only add listener once)
+        if (!wsListenerAdded) {
+            wsListenerAdded = true;
+            window.addEventListener('wallet-standard:register-wallet', (e) => {
+                const w = e.detail?.wallet || e.detail;
+                if (w?.chains?.some(c => c.includes('solana'))) {
+                    const exists = walletStandardWallets.find(x => x.name === w.name);
+                    if (!exists) walletStandardWallets.push(w);
+                }
             });
+
+            // Method 3: Trigger app-ready to get existing wallets
+            window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', {
+                detail: {
+                    register: (w) => {
+                        if (w?.chains?.some(c => c.includes('solana'))) {
+                            const exists = walletStandardWallets.find(x => x.name === w.name);
+                            if (!exists) walletStandardWallets.push(w);
+                        }
+                    },
+                    get: () => walletStandardWallets
+                }
+            }));
         }
     } catch(e) {
-        console.log('WS discovery error:', e);
+        console.log('WS discovery:', e.message);
     }
 }
 
@@ -283,7 +265,14 @@ async function connectWallet(walletType) {
         
     } catch (error) {
         console.error('❌ Ошибка подключения:', error);
-        showNotification('Ошибка подключения кошелька', 'error');
+        const msg = error.message || '';
+        if (msg.includes('User rejected') || msg.includes('rejected')) {
+            showNotification('Подключение отменено', 'error');
+        } else if (msg.includes('not found') || msg.includes('not installed')) {
+            showNotification(walletInfo.name + ' не настроен. Откройте расширение и создайте кошелёк.', 'error');
+        } else {
+            showNotification(walletInfo.name + ': ' + (msg || 'ошибка подключения'), 'error');
+        }
     }
 }
 
