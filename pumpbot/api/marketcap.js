@@ -1,4 +1,30 @@
 // Кеш в памяти
+import { sql } from '@vercel/postgres';
+
+// Создание таблицы (один раз)
+let tableCreated = false;
+async function ensureTable() {
+  if (tableCreated) return;
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS market_cap_history (
+      id SERIAL PRIMARY KEY,
+      market_cap NUMERIC NOT NULL,
+      price NUMERIC,
+      source TEXT,
+      recorded_at TIMESTAMP DEFAULT NOW()
+    )`;
+    tableCreated = true;
+  } catch(e) { tableCreated = true; } // Ignore if already exists
+}
+
+// Сохранить капу в БД (fire-and-forget)
+function saveMarketCap(marketCap, price, source) {
+  ensureTable().then(() => {
+    sql`INSERT INTO market_cap_history (market_cap, price, source) VALUES (${marketCap}, ${price}, ${source})`
+      .catch(e => console.log('Save cap err:', e.message));
+  });
+}
+
 let priceCache = {
   price: null,
   timestamp: 0,
@@ -70,6 +96,7 @@ export default async function handler(req, res) {
         if (price > 0 && !isNaN(price)) {
           priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
+          saveMarketCap(marketCap, price, 'auto');
           
           console.log(`✅ DexScreener: $${price.toFixed(8)}`);
           
@@ -119,6 +146,7 @@ export default async function handler(req, res) {
         if (price > 0 && !isNaN(price)) {
           priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
+          saveMarketCap(marketCap, price, 'auto');
           
           console.log(`✅ Jupiter: $${price.toFixed(8)}`);
           
@@ -166,6 +194,7 @@ export default async function handler(req, res) {
         if (price > 0 && !isNaN(price)) {
           priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
+          saveMarketCap(marketCap, price, 'auto');
           
           console.log(`✅ GeckoTerminal: $${price.toFixed(8)}`);
           
@@ -213,6 +242,7 @@ export default async function handler(req, res) {
         if (price > 0 && !isNaN(price)) {
           priceCache = { price, timestamp: now };
           const marketCap = price * TOTAL_SUPPLY;
+          saveMarketCap(marketCap, price, 'auto');
           
           console.log(`✅ Birdeye: $${price.toFixed(8)}`);
           
