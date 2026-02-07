@@ -45,7 +45,7 @@ async function settleRound(roundId) {
         // 2. Определяем финальную капитализацию (это должно приходить из внешнего источника)
         // Для примера берем target_market_cap или можно добавить поле final_market_cap
         const finalMarketCap = parseFloat(round.final_market_cap || round.target_market_cap);
-        const initialMarketCap = parseFloat(round.start_market_cap || 0);
+        const initialMarketCap = parseFloat(round.target_market_cap || 0);
         
         // 3. Определяем кто выиграл
         // Ничья — капитализация не изменилась → рефанд
@@ -188,7 +188,7 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
                     r.start_time,
                     r.end_time,
                     r.final_market_cap,
-                    r.start_market_cap
+                    r.target_market_cap
                 FROM user_settlements s
                 JOIN rounds r ON s.round_id = r.id
                 WHERE s.user_id = ${userId} AND s.claimed = false AND s.payout > 0
@@ -202,7 +202,7 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
                     r.start_time,
                     r.end_time,
                     r.final_market_cap,
-                    r.start_market_cap
+                    r.target_market_cap
                 FROM user_settlements s
                 JOIN rounds r ON s.round_id = r.id
                 WHERE s.user_id = ${userId}
@@ -302,7 +302,7 @@ async function quickSettleForUser(userId) {
         
         // 2. Найти unsettled раунды именно этого юзера
         const unsettled = await sql`
-            SELECT DISTINCT r.id, r.start_market_cap, r.final_market_cap
+            SELECT DISTINCT r.id, r.target_market_cap, r.final_market_cap
             FROM rounds r
             INNER JOIN user_positions up ON up.round_id = r.id AND up.user_id = ${userId}
             WHERE r.status = 'closed'
@@ -317,7 +317,7 @@ async function quickSettleForUser(userId) {
         console.log(`⚡ Quick settle: ${unsettled.rows.length} rounds for user ${userId}`);
         
         for (const round of unsettled.rows) {
-            const startMC = parseFloat(round.start_market_cap) || 0;
+            const startMC = parseFloat(round.target_market_cap) || 0;
             const finalMC = parseFloat(round.final_market_cap) || 0;
             
             // CASE 1: startMC = 0 → мгновенный refund (НЕ нужен finalMC)
@@ -436,7 +436,7 @@ export default async function handler(req, res) {
                         payout: parseFloat(s.payout),
                         profitLoss: parseFloat(s.profit_loss),
                         endTime: s.end_time,
-                        startMarketCap: parseFloat(s.start_market_cap) || 0,
+                        startMarketCap: parseFloat(s.target_market_cap) || 0,
                         finalMarketCap: parseFloat(s.final_market_cap) || 0
                     }))
                 });
@@ -463,7 +463,7 @@ export default async function handler(req, res) {
                         claimedAt: s.claimed_at,
                         claimTxHash: s.claim_tx_hash,
                         endTime: s.end_time,
-                        startMarketCap: parseFloat(s.start_market_cap) || 0,
+                        startMarketCap: parseFloat(s.target_market_cap) || 0,
                         finalMarketCap: parseFloat(s.final_market_cap) || 0
                     }))
                 });
