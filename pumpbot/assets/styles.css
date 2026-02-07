@@ -1,19 +1,27 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
 
 :root {
-    --bg-primary: #0a0e14;
-    --bg-secondary: #0d1117;
-    --bg-tertiary: #161b22;
-    --text-primary: #00ff41;
-    --text-secondary: #8b949e;
-    --text-dim: #6e7681;
-    --accent-green: #00ff41;
-    --accent-red: #ff4444;
-    --accent-yellow: #ffaa00;
-    --accent-blue: #00d4ff;
-    --border: #30363d;
-    --border-bright: #00ff41;
-    --shadow: rgba(0, 255, 65, 0.2);
+    --bg-primary: #07060d;
+    --bg-secondary: #0e0c18;
+    --bg-tertiary: #15122a;
+    --text-primary: #c0f0ff;
+    --text-secondary: #8b94ae;
+    --text-dim: #5a6080;
+    --accent-green: #00ffa3;
+    --accent-red: #ff3366;
+    --accent-yellow: #ffd000;
+    --accent-blue: #00ccff;
+    --accent-magenta: #ff00cc;
+    --accent-chrome: #c8d8e8;
+    --border: #2a2548;
+    --border-bright: #6040d0;
+    --shadow: rgba(96, 64, 208, 0.3);
+    --mercury-1: #c0cfe0;
+    --mercury-2: #8898b8;
+    --mercury-3: #e0e8f4;
+    --glow-purple: rgba(120, 60, 255, 0.15);
+    --glow-magenta: rgba(255, 0, 204, 0.1);
+    --glow-cyan: rgba(0, 204, 255, 0.1);
 }
 
 * {
@@ -28,9 +36,10 @@ body {
     color: var(--text-primary);
     line-height: 1.6;
     overflow-x: hidden;
+    position: relative;
 }
 
-/* Scanline effect */
+/* Ambient glow overlay */
 body::before {
     content: '';
     position: fixed;
@@ -38,22 +47,93 @@ body::before {
     left: 0;
     width: 100%;
     height: 100%;
-    background: repeating-linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0.1),
-        rgba(0, 0, 0, 0.1) 1px,
-        transparent 1px,
-        transparent 2px
-    );
+    background: 
+        radial-gradient(ellipse at 20% 0%, var(--glow-magenta) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, var(--glow-cyan) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, var(--glow-purple) 0%, transparent 60%);
     pointer-events: none;
-    z-index: 9999;
-    opacity: 0.3;
+    z-index: 0;
 }
 
+/* Subtle noise texture */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+}
+
+/* ============================================
+   MERCURY PARTICLES CANVAS
+   ============================================ */
+#mercuryCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* ============================================
+   FLOATING CHARACTER IMAGES
+   ============================================ */
+.floating-character {
+    position: fixed;
+    pointer-events: none;
+    z-index: 2;
+    filter: brightness(1.4) contrast(1.1);
+    transition: opacity 0.5s;
+}
+
+.floating-character.char-pharaoh-1 {
+    bottom: -60px;
+    left: -30px;
+    width: 300px;
+    transform: rotate(5deg);
+    opacity: 0.10;
+}
+
+.floating-character.char-pharaoh-2 {
+    top: 40px;
+    right: -50px;
+    width: 260px;
+    transform: rotate(-8deg);
+    opacity: 0.08;
+}
+
+.floating-character.char-trans {
+    bottom: 80px;
+    right: 30px;
+    width: 200px;
+    transform: rotate(3deg);
+    opacity: 0.07;
+}
+
+@media (max-width: 1200px) {
+    .floating-character { opacity: 0.04 !important; }
+}
+
+@media (max-width: 768px) {
+    .floating-character { display: none; }
+}
+
+/* ============================================
+   CONTAINER
+   ============================================ */
 .container {
     max-width: 1600px;
     margin: 0 auto;
     padding: 20px;
+    position: relative;
+    z-index: 5;
 }
 
 /* ============================================
@@ -61,12 +141,13 @@ body::before {
    ============================================ */
 .header {
     text-align: center;
-    border: 2px solid var(--border-bright);
+    border: 1px solid var(--border-bright);
     padding: 30px;
     margin-bottom: 30px;
-    background: var(--bg-secondary);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(30, 20, 60, 0.9) 100%);
     position: relative;
     overflow: hidden;
+    border-radius: 12px;
 }
 
 .header::before {
@@ -76,28 +157,45 @@ body::before {
     left: -50%;
     width: 200%;
     height: 200%;
-    background: radial-gradient(
-        circle,
-        rgba(0, 255, 65, 0.1) 0%,
-        transparent 70%
-    );
-    animation: pulse 4s ease-in-out infinite;
+    background: 
+        radial-gradient(circle at 30% 40%, rgba(255, 0, 204, 0.07) 0%, transparent 40%),
+        radial-gradient(circle at 70% 60%, rgba(0, 204, 255, 0.07) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(120, 60, 255, 0.05) 0%, transparent 50%);
+    animation: headerPulse 6s ease-in-out infinite;
 }
 
-@keyframes pulse {
+@keyframes headerPulse {
     0%, 100% { transform: scale(1); opacity: 0.5; }
-    50% { transform: scale(1.1); opacity: 0.8; }
+    50% { transform: scale(1.05); opacity: 0.9; }
+}
+
+.header::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(192, 207, 224, 0.06), transparent);
+    animation: shimmer 4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 200%; }
 }
 
 .header h1 {
+    font-family: 'Orbitron', 'JetBrains Mono', monospace;
     font-size: 2.8em;
-    font-weight: 700;
-    text-shadow: 
-        0 0 10px var(--accent-green),
-        0 0 20px var(--accent-green),
-        0 0 30px var(--accent-green);
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--mercury-3) 0%, var(--accent-blue) 40%, var(--accent-magenta) 70%, var(--mercury-1) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(0, 204, 255, 0.3));
     margin-bottom: 10px;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
     position: relative;
     z-index: 1;
 }
@@ -107,6 +205,7 @@ body::before {
     font-size: 1.1em;
     position: relative;
     z-index: 1;
+    letter-spacing: 2px;
 }
 
 /* ============================================
@@ -116,7 +215,8 @@ body::before {
     border: 1px solid var(--border);
     padding: 20px;
     margin-bottom: 20px;
-    background: var(--bg-secondary);
+    background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(14, 12, 28, 0.95) 100%);
+    border-radius: 10px;
 }
 
 .wallet-status {
@@ -139,7 +239,13 @@ body::before {
     padding: 15px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.balance-item:hover {
+    border-color: var(--border-bright);
+    box-shadow: 0 0 15px rgba(96, 64, 208, 0.15);
 }
 
 .balance-label {
@@ -159,7 +265,7 @@ body::before {
    BUTTONS
    ============================================ */
 button {
-    background: var(--accent-green);
+    background: linear-gradient(135deg, var(--accent-green), #00cc88);
     color: var(--bg-primary);
     border: none;
     padding: 12px 24px;
@@ -172,6 +278,7 @@ button {
     letter-spacing: 1px;
     position: relative;
     overflow: hidden;
+    border-radius: 6px;
 }
 
 button::before {
@@ -181,7 +288,7 @@ button::before {
     left: 50%;
     width: 0;
     height: 0;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.2);
     border-radius: 50%;
     transform: translate(-50%, -50%);
     transition: width 0.6s, height 0.6s;
@@ -194,7 +301,7 @@ button:hover::before {
 
 button:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--shadow);
+    box-shadow: 0 4px 20px var(--shadow);
 }
 
 button:active {
@@ -214,11 +321,11 @@ button:disabled:hover {
 .btn-secondary {
     background: transparent;
     border: 1px solid var(--border-bright);
-    color: var(--accent-green);
+    color: var(--accent-blue);
 }
 
 .btn-danger {
-    background: var(--accent-red);
+    background: linear-gradient(135deg, var(--accent-red), #cc0044);
     color: white;
 }
 
@@ -242,11 +349,24 @@ button:disabled:hover {
    PRICE DISPLAY
    ============================================ */
 .price-display {
-    border: 2px solid var(--accent-yellow);
+    border: 1px solid var(--accent-yellow);
     padding: 30px;
     text-align: center;
-    background: var(--bg-secondary);
+    background: linear-gradient(135deg, var(--bg-secondary), rgba(40, 30, 10, 0.5));
     position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.price-display::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 208, 0, 0.04), transparent);
+    animation: shimmer 5s ease-in-out infinite;
 }
 
 .price-label {
@@ -258,12 +378,11 @@ button:disabled:hover {
 }
 
 .price-value {
+    font-family: 'Orbitron', monospace;
     font-size: 3.5em;
     font-weight: 700;
     color: var(--accent-yellow);
-    text-shadow: 
-        0 0 20px var(--accent-yellow),
-        0 0 40px var(--accent-yellow);
+    text-shadow: 0 0 30px rgba(255, 208, 0, 0.4);
     font-variant-numeric: tabular-nums;
 }
 
@@ -296,11 +415,13 @@ button:disabled:hover {
    ORDER BOOK
    ============================================ */
 .orderbook-panel {
-    background: var(--bg-secondary);
+    background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     max-height: 600px;
+    border-radius: 10px;
+    overflow: hidden;
 }
 
 .orderbook-header {
@@ -310,6 +431,7 @@ button:disabled:hover {
     text-transform: uppercase;
     font-size: 0.9em;
     letter-spacing: 1px;
+    background: rgba(96, 64, 208, 0.05);
 }
 
 .orderbook-content {
@@ -339,6 +461,7 @@ button:disabled:hover {
     font-size: 0.85em;
     font-variant-numeric: tabular-nums;
     position: relative;
+    border-radius: 3px;
 }
 
 .orderbook-row::before {
@@ -348,8 +471,9 @@ button:disabled:hover {
     top: 0;
     height: 100%;
     background: currentColor;
-    opacity: 0.1;
+    opacity: 0.08;
     transition: width 0.3s;
+    border-radius: 3px;
 }
 
 .orderbook-row.buy {
@@ -377,6 +501,7 @@ button:disabled:hover {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 20px;
+    border-radius: 10px;
 }
 
 .trade-panel.buy {
@@ -415,10 +540,11 @@ button:disabled:hover {
     border: 1px solid var(--border);
     color: var(--text-secondary);
     font-size: 0.85em;
+    border-radius: 6px;
 }
 
 .order-type-btn.active {
-    background: var(--accent-green);
+    background: linear-gradient(135deg, var(--accent-green), #00cc88);
     color: var(--bg-primary);
     border-color: var(--accent-green);
 }
@@ -443,19 +569,20 @@ input[type="number"] {
     color: var(--text-primary);
     font-family: 'JetBrains Mono', monospace;
     font-size: 1em;
-    transition: border-color 0.3s;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    border-radius: 6px;
 }
 
 input[type="number"]:focus {
     outline: none;
-    border-color: var(--accent-green);
-    box-shadow: 0 0 0 2px rgba(0, 255, 65, 0.1);
+    border-color: var(--border-bright);
+    box-shadow: 0 0 0 3px rgba(96, 64, 208, 0.15);
 }
 
 .estimate-display {
     background: var(--bg-tertiary);
     padding: 15px;
-    border-radius: 4px;
+    border-radius: 8px;
     margin: 15px 0;
     font-size: 0.9em;
 }
@@ -481,11 +608,11 @@ input[type="number"]:focus {
 }
 
 .trade-btn.buy {
-    background: var(--accent-green);
+    background: linear-gradient(135deg, var(--accent-green), #00cc88);
 }
 
 .trade-btn.sell {
-    background: var(--accent-red);
+    background: linear-gradient(135deg, var(--accent-red), #cc0044);
 }
 
 /* ============================================
@@ -495,6 +622,7 @@ input[type="number"]:focus {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 20px;
+    border-radius: 10px;
 }
 
 .trade-history-header {
@@ -518,6 +646,7 @@ input[type="number"]:focus {
     background: var(--bg-tertiary);
     font-size: 0.85em;
     border-left: 3px solid transparent;
+    border-radius: 4px;
 }
 
 .trade-item.buy {
@@ -543,11 +672,11 @@ input[type="number"]:focus {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(7, 6, 13, 0.92);
     z-index: 10000;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(15px);
 }
 
 .modal.active {
@@ -555,25 +684,32 @@ input[type="number"]:focus {
 }
 
 .modal-content {
-    background: var(--bg-secondary);
-    border: 2px solid var(--border-bright);
+    background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+    border: 1px solid var(--border-bright);
     padding: 30px;
     max-width: 450px;
     width: 90%;
     max-height: 80vh;
     overflow-y: auto;
+    border-radius: 16px;
     box-shadow: 
-        0 0 40px rgba(0, 255, 65, 0.3),
-        inset 0 0 40px rgba(0, 255, 65, 0.1);
+        0 0 60px rgba(96, 64, 208, 0.2),
+        0 0 120px rgba(0, 204, 255, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .modal-header {
+    font-family: 'Orbitron', monospace;
     font-size: 1.5em;
     margin-bottom: 20px;
     text-align: center;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
+    background: linear-gradient(135deg, var(--text-primary), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .wallet-option {
@@ -585,12 +721,14 @@ input[type="number"]:focus {
     background: var(--bg-tertiary);
     cursor: pointer;
     transition: all 0.3s;
+    border-radius: 10px;
 }
 
 .wallet-option:hover {
     background: var(--bg-primary);
     border-color: var(--border-bright);
     transform: translateX(5px);
+    box-shadow: 0 0 20px rgba(96, 64, 208, 0.15);
 }
 
 .wallet-icon {
@@ -610,12 +748,13 @@ input[type="number"]:focus {
     right: 20px;
     font-size: 2em;
     cursor: pointer;
-    color: var(--accent-green);
-    transition: transform 0.3s;
+    color: var(--accent-blue);
+    transition: transform 0.3s, color 0.3s;
 }
 
 .close-modal:hover {
     transform: rotate(90deg);
+    color: var(--accent-magenta);
 }
 
 /* ============================================
@@ -649,10 +788,12 @@ input[type="number"]:focus {
    COUNTDOWN
    ============================================ */
 .countdown-section {
-    background: var(--bg-secondary);
-    border: 2px dashed var(--accent-yellow);
+    background: linear-gradient(135deg, var(--bg-secondary), rgba(40, 30, 10, 0.3));
+    border: 1px solid var(--accent-yellow);
+    border-left: 3px solid var(--accent-yellow);
     padding: 20px;
     text-align: center;
+    border-radius: 10px;
 }
 
 .countdown-label {
@@ -663,11 +804,12 @@ input[type="number"]:focus {
 }
 
 .countdown-value {
+    font-family: 'Orbitron', monospace;
     font-size: 2.5em;
     font-weight: 700;
     color: var(--accent-yellow);
     font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 20px var(--accent-yellow);
+    text-shadow: 0 0 20px rgba(255, 208, 0, 0.3);
 }
 
 /* RESPONSIVE — TABLET */
@@ -679,10 +821,10 @@ input[type="number"]:focus {
 /* RESPONSIVE — MOBILE */
 @media (max-width: 768px) {
     .container { padding: 10px; }
-    .header { padding: 15px; margin-bottom: 15px; }
+    .header { padding: 15px; margin-bottom: 15px; border-radius: 8px; }
     .header h1 { font-size: 1.4em; letter-spacing: 0; }
     .header p { font-size: 0.8em; }
-    .wallet-section { padding: 12px; }
+    .wallet-section { padding: 12px; border-radius: 8px; }
     .wallet-status button { padding: 8px 14px; font-size: 0.8em; }
     .balance-display { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .balance-item { padding: 10px; }
@@ -691,8 +833,8 @@ input[type="number"]:focus {
     .price-value { font-size: 1.6em; }
     .price-stats { gap: 8px; margin-top: 10px; padding-top: 10px; }
     .stat-value { font-size: 1em; }
-    .round-selector { gap: 6px; padding: 10px; }
-    .round-tab { padding: 10px 8px; }
+    .round-selector { gap: 6px; padding: 10px; border-radius: 8px; }
+    .round-tab { padding: 10px 8px; border-radius: 6px; }
     .round-tab-title { font-size: 1em; }
     .round-tab-info { font-size: 0.7em; }
     .countdown-value { font-size: 1.5em; }
@@ -703,7 +845,7 @@ input[type="number"]:focus {
     input[type="number"] { padding: 10px; font-size: 0.9em; }
     .trading-interface { grid-template-columns: 1fr; }
     .price-stats { grid-template-columns: repeat(3, 1fr); }
-    .modal-content { width: 95%; padding: 20px; max-height: 90vh; }
+    .modal-content { width: 95%; padding: 20px; max-height: 90vh; border-radius: 12px; }
     .modal-header { font-size: 1.1em; letter-spacing: 0; }
     .trade-history { padding: 12px; }
     .settlement-card { padding: 12px; }
@@ -721,8 +863,8 @@ input[type="number"]:focus {
    SCROLLBAR
    ============================================ */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -731,7 +873,7 @@ input[type="number"]:focus {
 
 ::-webkit-scrollbar-thumb {
     background: var(--border);
-    border-radius: 4px;
+    border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
