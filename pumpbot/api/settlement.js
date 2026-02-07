@@ -1,5 +1,5 @@
 // ============================================
-// SETTLEMENT API - для расчетов завершенных раундов
+
 // ============================================
 
 import { sql } from '@vercel/postgres';
@@ -31,7 +31,7 @@ async function getOrCreateUser(walletAddress) {
 
 async function settleRound(roundId) {
     try {
-        // 1. Получаем раунд
+        
         const roundResult = await sql`
             SELECT * FROM rounds WHERE id = ${roundId} AND status = 'closed'
         `;
@@ -42,15 +42,14 @@ async function settleRound(roundId) {
         
         const round = roundResult.rows[0];
         
-        // 2. Определяем финальную капитализацию (это должно приходить из внешнего источника)
-        // Для примера берем target_market_cap или можно добавить поле final_market_cap
+        
+        
         const finalMarketCap = parseFloat(round.final_market_cap || round.target_market_cap);
         const initialMarketCap = parseFloat(round.target_market_cap || 0);
         
-        // 3. Определяем кто выиграл
-        // Ничья — капитализация не изменилась → рефанд
+        
+        
         if (finalMarketCap === initialMarketCap || initialMarketCap <= 0) {
-            console.log(`🎯 Round ${roundId}: TIE or no start cap, refunding all`);
             
             const positions = await sql`
                 SELECT user_id, side, amount, avg_price, total_cost
@@ -86,9 +85,8 @@ async function settleRound(roundId) {
         
         const winningSide = finalMarketCap > initialMarketCap ? 'higher' : 'lower';
         
-        console.log(`🎯 Round ${roundId}: Initial=${initialMarketCap}, Final=${finalMarketCap}, Winner=${winningSide}`);
         
-        // 4. Получаем все позиции пользователей
+        
         const positions = await sql`
             SELECT 
                 user_id,
@@ -100,11 +98,11 @@ async function settleRound(roundId) {
             WHERE round_id = ${roundId}
         `;
         
-        // 5. Рассчитываем выплаты
+        
         let totalWinningAmount = 0;
         let totalLosingCost = 0;
         
-        // Подсчитываем общие суммы
+        
         for (const pos of positions.rows) {
             if (pos.side === winningSide) {
                 totalWinningAmount += parseFloat(pos.amount);
@@ -113,7 +111,7 @@ async function settleRound(roundId) {
             }
         }
         
-        // 6. Создаем расчеты для каждого пользователя
+        
         for (const pos of positions.rows) {
             const won = pos.side === winningSide;
             const amount = parseFloat(pos.amount);
@@ -123,20 +121,20 @@ async function settleRound(roundId) {
             let profitLoss = 0;
             
             if (won) {
-                // Выигравшие получают свои токены обратно + пропорциональную долю из пула проигравших
-                const returnAmount = totalCost; // Возврат вложенных средств
+                
+                const returnAmount = totalCost; 
                 const winShare = totalWinningAmount > 0 ? (amount / totalWinningAmount) : 0;
                 const winnings = totalLosingCost * winShare;
                 
                 payout = returnAmount + winnings;
                 profitLoss = payout - totalCost;
             } else {
-                // Проигравшие теряют все
+                
                 payout = 0;
                 profitLoss = -totalCost;
             }
             
-            // Сохраняем расчет
+            
             await sql`
                 INSERT INTO user_settlements (
                     user_id, round_id, side, amount, avg_price, total_cost,
@@ -153,14 +151,13 @@ async function settleRound(roundId) {
             `;
         }
         
-        // 7. Обновляем статус раунда
+        
         await sql`
             UPDATE rounds 
             SET settlement_status = 'settled', settled_at = NOW()
             WHERE id = ${roundId}
         `;
         
-        console.log(`✅ Round ${roundId} settled successfully`);
         
         return {
             success: true,
@@ -219,7 +216,7 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
 
 async function claimSettlement(userId, roundId, txHash = null) {
     try {
-        // Проверяем что settlement существует и не забран
+        
         const settlement = await sql`
             SELECT * FROM user_settlements
             WHERE user_id = ${userId} AND round_id = ${roundId} AND claimed = false
@@ -236,8 +233,8 @@ async function claimSettlement(userId, roundId, txHash = null) {
             throw new Error('No payout available to claim');
         }
         
-        // ✅ Атомарно помечаем claimed=true и зачисляем баланс
-        // Сначала помечаем claimed чтобы избежать двойного зачисления
+        
+        
         const claimResult = await sql`
             UPDATE user_settlements
             SET claimed = true, claimed_at = NOW(), claim_tx_hash = ${txHash}
@@ -245,19 +242,19 @@ async function claimSettlement(userId, roundId, txHash = null) {
             RETURNING id
         `;
         
-        // Если ничего не обновилось — значит уже забрано (race condition protection)
+        
         if (claimResult.rows.length === 0) {
             throw new Error('Settlement already claimed (concurrent request)');
         }
         
-        // Зачисляем на баланс
+        
         await sql`
             UPDATE user_balances 
             SET available = available + ${payout}, updated_at = NOW()
             WHERE user_id = ${userId}
         `;
         
-        // Логируем транзакцию
+        
         const balResult = await sql`SELECT available FROM user_balances WHERE user_id = ${userId}`;
         const balAfter = balResult.rows.length > 0 ? parseFloat(balResult.rows[0].available) : payout;
         
@@ -266,9 +263,8 @@ async function claimSettlement(userId, roundId, txHash = null) {
             VALUES (${userId}, 'trade_credit', ${payout}, ${balAfter - payout}, ${balAfter}, ${'Claim round #' + roundId + ', payout ' + payout.toFixed(2)})
         `;
         
-        console.log(`✅ Credited ${payout} to user ${userId} for round ${roundId}`);
         
-        // Логируем действие
+        
         await sql`
             INSERT INTO audit_log (user_id, action, details)
             VALUES (${userId}, 'claim_settlement', ${JSON.stringify({
@@ -292,15 +288,15 @@ async function claimSettlement(userId, roundId, txHash = null) {
 }
 
 // ============================================
-// QUICK INLINE SETTLEMENT (для конкретного юзера)
-// Settle ТОЛЬКО то что можно settle МГНОВЕННО (без внешних API)
+
+
 // ============================================
 async function quickSettleForUser(userId) {
     try {
-        // 1. Закрыть истекшие раунды (быстрый SQL)
+        
         await sql`UPDATE rounds SET status = 'closed' WHERE status = 'active' AND end_time < NOW()`;
         
-        // 2. Найти unsettled раунды именно этого юзера
+        
         const unsettled = await sql`
             SELECT DISTINCT r.id, r.target_market_cap, r.final_market_cap
             FROM rounds r
@@ -314,13 +310,12 @@ async function quickSettleForUser(userId) {
         
         if (unsettled.rows.length === 0) return;
         
-        console.log(`⚡ Quick settle: ${unsettled.rows.length} rounds for user ${userId}`);
         
         for (const round of unsettled.rows) {
             const startMC = parseFloat(round.target_market_cap) || 0;
             const finalMC = parseFloat(round.final_market_cap) || 0;
             
-            // CASE 1: startMC = 0 → мгновенный refund (НЕ нужен finalMC)
+            
             if (startMC <= 0) {
                 const positions = await sql`
                     SELECT user_id, side, amount, avg_price, total_cost 
@@ -333,13 +328,12 @@ async function quickSettleForUser(userId) {
                         ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
                 }
                 await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${round.id}`;
-                console.log(`  ✅ Round ${round.id}: refund (startMC=0)`);
                 continue;
             }
             
-            // CASE 2: Есть finalMC → можем settle
+            
             if (finalMC > 0) {
-                // Ничья
+                
                 if (finalMC === startMC) {
                     const positions = await sql`SELECT user_id,side,amount,avg_price,total_cost FROM user_positions WHERE round_id=${round.id}`;
                     for (const pos of positions.rows) {
@@ -349,11 +343,10 @@ async function quickSettleForUser(userId) {
                             ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
                     }
                     await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${round.id}`;
-                    console.log(`  ✅ Round ${round.id}: TIE`);
                     continue;
                 }
                 
-                // Нормальный settlement
+                
                 const winningSide = finalMC > startMC ? 'higher' : 'lower';
                 const positions = await sql`SELECT user_id,side,amount,avg_price,total_cost FROM user_positions WHERE round_id=${round.id}`;
                 let totalWinAmt = 0, totalLoseCost = 0;
@@ -372,16 +365,14 @@ async function quickSettleForUser(userId) {
                         ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=${won},payout=${payout},profit_loss=${pl}`;
                 }
                 await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side=${winningSide} WHERE id=${round.id}`;
-                console.log(`  ✅ Round ${round.id}: ${winningSide}`);
                 continue;
             }
             
-            // CASE 3: Нет finalMC и startMC > 0 → пропускаем, orders.js inlineSettlement подхватит
-            console.log(`  ⏳ Round ${round.id}: waiting for finalMC (startMC=${startMC})`);
+            
         }
     } catch (e) {
         console.error('quickSettleForUser error:', e.message);
-        // НЕ бросаем ошибку — пусть unclaimed вернётся хотя бы с тем что есть
+        
     }
 }
 
@@ -401,7 +392,7 @@ export default async function handler(req, res) {
         const { method, query, body } = req;
         
         // ============================================
-        // GET - Получить settlements
+        
         // ============================================
         if (method === 'GET') {
             const { action, wallet } = query;
@@ -417,7 +408,7 @@ export default async function handler(req, res) {
             
             // GET UNCLAIMED SETTLEMENTS
             if (action === 'unclaimed') {
-                // ✅ Быстрый settlement check: settle раунды этого юзера ПЕРЕД ответом
+                
                 try { await quickSettleForUser(user.id); } catch(e) { console.error('quickSettle err:', e.message); }
                 
                 const settlements = await getUserSettlements(user.id, true);
