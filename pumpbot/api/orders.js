@@ -4,6 +4,16 @@
 
 import { sql } from '@vercel/postgres';
 
+// Ensure unique constraint on slug (idempotent)
+let indexCreated = false;
+async function ensureIndexes() {
+    if (indexCreated) return;
+    indexCreated = true;
+    try {
+        await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_rounds_slug ON rounds(slug)`;
+    } catch(e) {} // Already exists
+}
+
 // ============================================ 
 // ROUND TIMESTAMP CALCULATION & AUTO-GENERATION
 // ============================================
@@ -50,6 +60,7 @@ function generateRoundSlug(intervalMinutes, closeTimestamp) {
 
 async function getOrCreateCurrentRound(intervalMinutes) {
     try {
+        await ensureIndexes();
         const closeTimestamp = calculateRoundCloseTime(intervalMinutes);
         const slug = generateRoundSlug(intervalMinutes, closeTimestamp);
         
@@ -139,8 +150,16 @@ async function getOrCreateCurrentRound(intervalMinutes) {
             ) VALUES (
                 ${slug}, ${closeTimestamp}, ${intervalMinutes},
                 ${startTime.toISOString()}, ${endTime.toISOString()}, ${startMarketCap}, 'active'
-            ) RETURNING *
+            ) 
+            ON CONFLICT (slug) DO NOTHING
+            RETURNING *
         `;
+        
+        // Если ON CONFLICT сработал — значит другой запрос уже создал раунд
+        if (!newRound.rows.length) {
+            const retry = await sql`SELECT * FROM rounds WHERE slug = ${slug}`;
+            return retry.rows[0];
+        }
         
         const round = newRound.rows[0];
         
