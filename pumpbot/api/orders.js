@@ -400,41 +400,76 @@ async function getUserOrders(userId, roundId) {
     }
 }
 
-async function getMatchableOrders(roundId, side, price) {
+async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
     try {
         const oppositeSide = side === 'higher' ? 'lower' : 'higher';
         
         let result;
         
         if (price === null || price === undefined || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
-            result = await sql`
-                SELECT id, user_id, side, amount, filled, price
-                FROM limit_orders
-                WHERE round_id = ${roundId} 
-                AND side = ${oppositeSide}
-                AND status = 'active' 
-                AND amount > filled
-                ORDER BY 
-                    CASE WHEN side = 'higher' THEN price END DESC,
-                    CASE WHEN side = 'lower' THEN price END ASC,
-                    created_at ASC
-                LIMIT 50
-            `;
+            if (excludeUserId) {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND user_id != ${excludeUserId}
+                    AND status = 'active' 
+                    AND amount > filled
+                    ORDER BY 
+                        CASE WHEN side = 'higher' THEN price END DESC,
+                        CASE WHEN side = 'lower' THEN price END ASC,
+                        created_at ASC
+                    LIMIT 50
+                `;
+            } else {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND status = 'active' 
+                    AND amount > filled
+                    ORDER BY 
+                        CASE WHEN side = 'higher' THEN price END DESC,
+                        CASE WHEN side = 'lower' THEN price END ASC,
+                        created_at ASC
+                    LIMIT 50
+                `;
+            }
         } else {
-            result = await sql`
-                SELECT id, user_id, side, amount, filled, price
-                FROM limit_orders
-                WHERE round_id = ${roundId} 
-                AND side = ${oppositeSide}
-                AND status = 'active' 
-                AND amount > filled
-                AND price <= ${price}
-                ORDER BY 
-                    CASE WHEN side = 'higher' THEN price END DESC,
-                    CASE WHEN side = 'lower' THEN price END ASC,
-                    created_at ASC
-                LIMIT 50
-            `;
+            if (excludeUserId) {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND user_id != ${excludeUserId}
+                    AND status = 'active' 
+                    AND amount > filled
+                    AND price <= ${price}
+                    ORDER BY 
+                        CASE WHEN side = 'higher' THEN price END DESC,
+                        CASE WHEN side = 'lower' THEN price END ASC,
+                        created_at ASC
+                    LIMIT 50
+                `;
+            } else {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND status = 'active' 
+                    AND amount > filled
+                    AND price <= ${price}
+                    ORDER BY 
+                        CASE WHEN side = 'higher' THEN price END DESC,
+                        CASE WHEN side = 'lower' THEN price END ASC,
+                        created_at ASC
+                    LIMIT 50
+                `;
+            }
         }
         
         return result.rows;
@@ -1353,21 +1388,22 @@ if (action === 'orderbook') {
                 let soldAmount = 0;
                 const trades = [];
                 
-                // Продажа по лимитной цене
+                // Продажа — ищем buy-лимитки на нашей стороне от ДРУГИХ пользователей
+                // Лимитка HIGHER 0.50 от user_id=5 = "хочу купить HIGHER по 0.50"
+                // Мы продаём HIGHER → матчимся с ней
+                
                 if (type === 'limit') {
                     const sellPrice = parseFloat(price);
                     if (!sellPrice || sellPrice <= 0 || sellPrice >= 1 || isNaN(sellPrice)) {
                         return res.status(400).json({ success: false, error: 'Цена должна быть от 0 до 1' });
                     }
                     
-                    // Ищем покупателей на нашей стороне (те кто ставят лимитки на BUY нашей стороны)
-                    // Т.е. opposite side limit orders с price >= (1 - sellPrice)
-                    const oppositeSide = side === 'higher' ? 'lower' : 'higher';
                     const buyOrders = await sql`
                         SELECT id, user_id, side, amount, filled, price
                         FROM limit_orders
                         WHERE round_id = ${round.id} 
                         AND side = ${side}
+                        AND user_id != ${user.id}
                         AND status = 'active' 
                         AND amount > filled
                         AND price >= ${sellPrice}
@@ -1399,26 +1435,22 @@ if (action === 'orderbook') {
                         trades.push(trade);
                         
                         await db.updateOrderFilled(buyOrder.id, matchAmount);
-                        // Покупатель получает позицию
                         await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, matchPrice, proceeds);
-                        // Списываем locked покупателя
                         await deductLocked(buyOrder.user_id, proceeds);
                         
                         totalProceeds += proceeds;
                         soldAmount += matchAmount;
                     }
-                    
-                    // Если не всё продано — можно создать лимитный sell-ордер
-                    // Пока просто возвращаем частичное исполнение
                 }
                 
-                // Маркет продажа — продаём в существующие buy-лимитки
                 if (type === 'market') {
+                    // Маркет продажа — ищем buy-лимитки от других пользователей
                     const buyOrders = await sql`
                         SELECT id, user_id, side, amount, filled, price
                         FROM limit_orders
                         WHERE round_id = ${round.id} 
                         AND side = ${side}
+                        AND user_id != ${user.id}
                         AND status = 'active' 
                         AND amount > filled
                         ORDER BY price DESC, created_at ASC
@@ -1456,10 +1488,9 @@ if (action === 'orderbook') {
                         soldAmount += matchAmount;
                     }
                     
-                    // Если стакан пуст — продаём по текущей AMM цене (0.5 для обеих сторон при равных резервах)
+                    // Если стакан пуст — продаём по AMM цене
                     if (soldAmount < sellAmount) {
                         const remainSell = sellAmount - soldAmount;
-                        // Получаем текущую AMM цену
                         const poolResult = await sql`
                             SELECT higher_reserve, lower_reserve 
                             FROM pool_snapshots WHERE round_id = ${round.id}
@@ -1470,7 +1501,6 @@ if (action === 'orderbook') {
                             const hReserve = parseFloat(pool.higher_reserve);
                             const lReserve = parseFloat(pool.lower_reserve);
                             const totalReserve = hReserve + lReserve;
-                            // Цена стороны = opposing_reserve / total
                             const sellAtPrice = side === 'higher' 
                                 ? lReserve / totalReserve 
                                 : hReserve / totalReserve;
@@ -1563,7 +1593,7 @@ if (action === 'orderbook') {
             
             // MARKET ORDER
             if (type === 'market') {
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
                 
                 let totalMatched = 0;
                 const trades = [];
@@ -1704,7 +1734,7 @@ if (action === 'orderbook') {
                 }
                 
                 const order = await db.placeLimitOrder(user.id, round.id, side, amt, prc);
-                const matchableOrders = await db.getMatchableOrders(round.id, side, prc);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
                 
                 let totalMatched = 0;
                 
