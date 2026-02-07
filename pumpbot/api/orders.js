@@ -404,72 +404,40 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
     try {
         const oppositeSide = side === 'higher' ? 'lower' : 'higher';
         
+        // Complementary pricing: match when my_price + opposite_price >= 1.0
+        // i.e. opposite_price >= (1 - my_price)
+        const minOppositePrice = price !== null && price !== undefined ? (1 - price) : null;
+        
         let result;
         
-        if (price === null || price === undefined || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
-            if (excludeUserId) {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND user_id != ${excludeUserId}
-                    AND status = 'active' 
-                    AND amount > filled
-                    ORDER BY 
-                        CASE WHEN side = 'higher' THEN price END DESC,
-                        CASE WHEN side = 'lower' THEN price END ASC,
-                        created_at ASC
-                    LIMIT 50
-                `;
-            } else {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND status = 'active' 
-                    AND amount > filled
-                    ORDER BY 
-                        CASE WHEN side = 'higher' THEN price END DESC,
-                        CASE WHEN side = 'lower' THEN price END ASC,
-                        created_at ASC
-                    LIMIT 50
-                `;
-            }
+        if (minOppositePrice === null || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
+            // Market order — match all opposite orders (best price first = cheapest for buyer)
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} 
+                AND side = ${oppositeSide}
+                ${excludeUserId ? sql`AND user_id != ${excludeUserId}` : sql``}
+                AND status = 'active' 
+                AND amount > filled
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+            `;
         } else {
-            if (excludeUserId) {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND user_id != ${excludeUserId}
-                    AND status = 'active' 
-                    AND amount > filled
-                    AND price <= ${price}
-                    ORDER BY 
-                        CASE WHEN side = 'higher' THEN price END DESC,
-                        CASE WHEN side = 'lower' THEN price END ASC,
-                        created_at ASC
-                    LIMIT 50
-                `;
-            } else {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND status = 'active' 
-                    AND amount > filled
-                    AND price <= ${price}
-                    ORDER BY 
-                        CASE WHEN side = 'higher' THEN price END DESC,
-                        CASE WHEN side = 'lower' THEN price END ASC,
-                        created_at ASC
-                    LIMIT 50
-                `;
-            }
+            // Limit order — match only where opposite_price >= (1 - my_price)
+            // Higher opposite_price = cheaper for me (I pay 1 - opp_price)
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} 
+                AND side = ${oppositeSide}
+                ${excludeUserId ? sql`AND user_id != ${excludeUserId}` : sql``}
+                AND status = 'active' 
+                AND amount > filled
+                AND price >= ${minOppositePrice}
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+            `;
         }
         
         return result.rows;
@@ -1335,6 +1303,14 @@ if (action === 'orderbook') {
                 });
             }
             
+            // Минимум 500 монет для покупки (продажа — без ограничений)
+            if (action !== 'sell' && amt < 500) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Минимальное количество: 500 токенов'
+                });
+            }
+            
             if (!['higher', 'lower'].includes(side)) {
                 return res.status(400).json({
                     success: false,
@@ -1599,13 +1575,19 @@ if (action === 'orderbook') {
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
+                    // Self-trade protection
+                    if (oppositeOrder.user_id === user.id) continue;
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
                     if (remainingToFill <= 0) break;
                     
                     const matchAmount = Math.min(remainingToFill, oppositeRemaining);
-                    const matchPrice = parseFloat(oppositeOrder.price);
+                    const oppPrice = parseFloat(oppositeOrder.price);
+                    // Complementary: buyer pays (1 - opposite_price), seller pays opposite_price
+                    const buyerPrice = 1 - oppPrice;
+                    const buyerCost = matchAmount * buyerPrice;
+                    const sellerCost = matchAmount * oppPrice;
                     
                     const trade = await db.recordTrade({
                         roundId: round.id,
@@ -1615,19 +1597,18 @@ if (action === 'orderbook') {
                         sellOrderId: oppositeOrder.id,
                         side,
                         amount: matchAmount,
-                        price: matchPrice,
-                        totalCost: matchAmount * matchPrice,
+                        price: buyerPrice,
+                        totalCost: buyerCost,
                         tradeType: 'market'
                     });
                     
                     trades.push(trade);
                     
                     await db.updateOrderFilled(oppositeOrder.id, matchAmount);
-                    await db.upsertUserPosition(user.id, round.id, side, matchAmount, matchPrice, matchAmount * matchPrice);
-                    await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, matchPrice, matchAmount * matchPrice);
+                    await db.upsertUserPosition(user.id, round.id, side, matchAmount, buyerPrice, buyerCost);
+                    await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, oppPrice, sellerCost);
                     
-                    // ✅ ФИКС: Списываем locked у владельца лимитки (seller)
-                    const sellerCost = matchAmount * matchPrice;
+                    // Списываем locked у владельца лимитки (seller)
                     await deductLocked(oppositeOrder.user_id, sellerCost);
                     
                     totalMatched += matchAmount;
@@ -1724,12 +1705,12 @@ if (action === 'orderbook') {
             else {
                 const prc = parseFloat(price);
                 
-                if (!prc || prc <= 0 || prc >= 1 || isNaN(prc)) {
+                if (!prc || prc < 0.01 || prc > 0.99 || isNaN(prc)) {
                     // Разблокируем — невалидная цена
                     await unlockBalance(user.id, estimatedCost);
                     return res.status(400).json({
                         success: false,
-                        error: 'Invalid limit price (must be between 0 and 1)'
+                        error: 'Цена должна быть от 0.01 до 0.99'
                     });
                 }
                 
@@ -1737,15 +1718,27 @@ if (action === 'orderbook') {
                 const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
                 
                 let totalMatched = 0;
+                let totalBuyerCost = 0;
                 
                 for (const oppositeOrder of matchableOrders) {
+                    // Self-trade protection
+                    if (oppositeOrder.user_id === user.id) continue;
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
                     if (remainingToFill <= 0) break;
                     
                     const matchAmount = Math.min(remainingToFill, oppositeRemaining);
-                    const matchPrice = (prc + parseFloat(oppositeOrder.price)) / 2;
+                    const oppPrice = parseFloat(oppositeOrder.price);
+                    // Complementary: each side pays their own price
+                    const buyerPrice = prc; // Buyer pays their limit price
+                    const sellerPrice = oppPrice; // Seller pays their limit price
+                    // If total > 1.0, there's surplus — split evenly (price improvement)
+                    const surplus = (buyerPrice + sellerPrice - 1.0) / 2;
+                    const effectiveBuyerPrice = buyerPrice - surplus;
+                    const effectiveSellerPrice = sellerPrice - surplus;
+                    const buyerCost = matchAmount * effectiveBuyerPrice;
+                    const sellerCost = matchAmount * effectiveSellerPrice;
                     
                     await db.recordTrade({
                         roundId: round.id,
@@ -1755,28 +1748,31 @@ if (action === 'orderbook') {
                         sellOrderId: oppositeOrder.id,
                         side,
                         amount: matchAmount,
-                        price: matchPrice,
-                        totalCost: matchAmount * matchPrice,
+                        price: effectiveBuyerPrice,
+                        totalCost: buyerCost,
                         tradeType: 'limit'
                     });
                     
                     await db.updateOrderFilled(order.id, matchAmount);
                     await db.updateOrderFilled(oppositeOrder.id, matchAmount);
                     
-                    await db.upsertUserPosition(user.id, round.id, side, matchAmount, matchPrice, matchAmount * matchPrice);
-                    await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, matchPrice, matchAmount * matchPrice);
+                    await db.upsertUserPosition(user.id, round.id, side, matchAmount, effectiveBuyerPrice, buyerCost);
+                    await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
                     
-                    // ✅ ФИКС: Списываем locked у владельца противоположной лимитки
-                    const oppositeCost = matchAmount * parseFloat(oppositeOrder.price);
-                    await deductLocked(oppositeOrder.user_id, oppositeCost);
+                    // Списываем locked у обоих
+                    await deductLocked(oppositeOrder.user_id, sellerCost);
                     
                     totalMatched += matchAmount;
+                    totalBuyerCost += buyerCost;
                 }
                 
-                // ✅ Для лимитного: исполненная часть списывается, остаток остаётся locked
+                // Для лимитного: исполненная часть списывается, остаток остаётся locked
                 if (totalMatched > 0) {
-                    const matchedCost = totalMatched * prc;
-                    await deductLocked(user.id, matchedCost);
+                    await deductLocked(user.id, totalBuyerCost);
+                    // Refund: locked was at full limit price, but effective price may be less
+                    const lockedForMatched = totalMatched * prc;
+                    const refund = lockedForMatched - totalBuyerCost;
+                    if (refund > 0.001) await unlockBalance(user.id, refund);
                 }
                 // Неисполненная часть остаётся в locked до отмены или исполнения
                 
