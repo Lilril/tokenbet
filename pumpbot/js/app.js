@@ -1008,50 +1008,67 @@ function renderOrderBook() {
     
     const side = (typeof currentTradeSide !== 'undefined') ? currentTradeSide : 'higher';
     
-    let asksData, bidsData, asksColor, bidsColor, asksBarColor, bidsBarColor;
-    let asksSide, bidsSide; // track which side for user highlight
+    // Polymarket-style orderbook:
+    // When viewing HIGHER (YES): 
+    //   Asks (top, red) = LOWER orders shown as (1 - price) — selling YES
+    //   Bids (bottom, green) = HIGHER orders — buying YES
+    // When viewing LOWER (NO):
+    //   Asks (top, red) = HIGHER orders shown as (1 - price) — selling NO
+    //   Bids (bottom, green) = LOWER orders — buying NO
+    
+    let asksRaw, bidsRaw;
+    let asksSide, bidsSide;
     
     if (side === 'higher') {
-        asksData = orderBookData.higher;
-        bidsData = orderBookData.lower;
-        asksColor = 'text-green';
-        bidsColor = 'text-red';
-        asksBarColor = 'rgba(0, 255, 159, 0.2)';
-        bidsBarColor = 'rgba(255, 71, 87, 0.2)';
-        asksSide = 'higher';
-        bidsSide = 'lower';
-    } else {
-        asksData = orderBookData.lower;
-        bidsData = orderBookData.higher;
-        asksColor = 'text-red';
-        bidsColor = 'text-green';
-        asksBarColor = 'rgba(255, 71, 87, 0.2)';
-        bidsBarColor = 'rgba(0, 255, 159, 0.2)';
+        asksRaw = orderBookData.lower;  // LOWER orders = YES asks (sellers)
+        bidsRaw = orderBookData.higher; // HIGHER orders = YES bids (buyers)
         asksSide = 'lower';
         bidsSide = 'higher';
+    } else {
+        asksRaw = orderBookData.higher; // HIGHER orders = NO asks (sellers)
+        bidsRaw = orderBookData.lower;  // LOWER orders = NO bids (buyers)
+        asksSide = 'higher';
+        bidsSide = 'lower';
     }
+    
+    // Convert asks to complementary prices (1 - price)
+    const asksData = asksRaw.map(o => ({
+        ...o,
+        displayPrice: 1 - o.price, // complementary
+        rawPrice: o.price
+    })).sort((a, b) => a.displayPrice - b.displayPrice); // lowest ask first (closest to spread)
+    
+    // Bids keep original prices
+    const bidsData = bidsRaw.map(o => ({
+        ...o,
+        displayPrice: o.price,
+        rawPrice: o.price
+    })).sort((a, b) => b.displayPrice - a.displayPrice); // highest bid first (closest to spread)
+    
+    // Reverse asks so highest is at top, lowest near spread
+    const asksReversed = [...asksData].reverse();
     
     // Helper: check if this price level has user's order
-    function isUserOrder(orderSide, price) {
+    function isUserOrder(orderSide, rawPrice) {
         const prices = userOrderPrices[orderSide] || [];
-        return prices.some(p => Math.abs(p - price) < 0.00001);
+        return prices.some(p => Math.abs(p - rawPrice) < 0.00001);
     }
     
-    // Render ASKS (top section)
-    if (asksData.length === 0) {
+    // Render ASKS (top section) — red
+    if (asksReversed.length === 0) {
         higherEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>';
     } else {
-        const maxAmount = Math.max(...asksData.map(o => o.amount));
-        higherEl.innerHTML = asksData.map(order => {
+        const maxAmount = Math.max(...asksReversed.map(o => o.amount));
+        higherEl.innerHTML = asksReversed.map(order => {
             const pct = (order.amount / maxAmount) * 100;
-            const isUser = isUserOrder(asksSide, order.price);
+            const isUser = isUserOrder(asksSide, order.rawPrice);
             const userStyle = isUser ? 'border-left: 3px solid var(--accent-yellow); background: rgba(255, 204, 0, 0.08);' : '';
             const userMarker = isUser ? '<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 4px;" title="Ваш ордер">★</span>' : '';
             return `
-                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Ваш ордер — ' : ''}Нажмите чтобы подставить">
-                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, ${asksBarColor});"></div>
+                <div class="order-book-row" onclick="fillFromOrderBook(${order.displayPrice}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Ваш ордер — ' : ''}Нажмите чтобы подставить">
+                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(255, 71, 87, 0.2));"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="${asksColor}">${order.price.toFixed(4)}${userMarker}</span>
+                        <span class="text-red">${order.displayPrice.toFixed(4)}${userMarker}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
@@ -1059,26 +1076,37 @@ function renderOrderBook() {
         }).join('');
     }
     
-    // Render BIDS (bottom section)
+    // Render BIDS (bottom section) — green
     if (bidsData.length === 0) {
         lowerEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Нет ордеров</div>';
     } else {
         const maxAmount = Math.max(...bidsData.map(o => o.amount));
         lowerEl.innerHTML = bidsData.map(order => {
             const pct = (order.amount / maxAmount) * 100;
-            const isUser = isUserOrder(bidsSide, order.price);
+            const isUser = isUserOrder(bidsSide, order.rawPrice);
             const userStyle = isUser ? 'border-left: 3px solid var(--accent-yellow); background: rgba(255, 204, 0, 0.08);' : '';
             const userMarker = isUser ? '<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 4px;" title="Ваш ордер">★</span>' : '';
             return `
-                <div class="order-book-row" onclick="fillFromOrderBook(${order.price}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Ваш ордер — ' : ''}Нажмите чтобы подставить">
-                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, ${bidsBarColor});"></div>
+                <div class="order-book-row" onclick="fillFromOrderBook(${order.displayPrice}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Ваш ордер — ' : ''}Нажмите чтобы подставить">
+                    <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(0, 255, 159, 0.2));"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="${bidsColor}">${order.price.toFixed(4)}${userMarker}</span>
+                        <span class="text-green">${order.displayPrice.toFixed(4)}${userMarker}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
             `;
         }).join('');
+    }
+    
+    // Calculate and show spread
+    const bestBid = bidsData.length > 0 ? bidsData[0].displayPrice : null;
+    const bestAsk = asksData.length > 0 ? asksData[0].displayPrice : null;
+    const spreadEl = document.getElementById('spreadDisplay');
+    if (spreadEl && bestBid !== null && bestAsk !== null) {
+        const spread = ((bestAsk - bestBid) * 100).toFixed(2);
+        spreadEl.textContent = spread + '%';
+    } else if (spreadEl) {
+        spreadEl.textContent = '0.00%';
     }
 }
 
