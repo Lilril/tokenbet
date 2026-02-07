@@ -1624,8 +1624,8 @@ async function executeTrade(side) {
             const priceInput = document.getElementById(`price${side === 'higher' ? 'Higher' : 'Lower'}`);
             const price = parseFloat(priceInput.value);
             
-            if (!price || price <= 0 || price >= 1) {
-                showNotification('Введите корректную цену (от 0 до 1)', 'error');
+            if (!price || price < 0.01 || price > 0.99) {
+                showNotification('Цена должна быть от 0.01 до 0.99', 'error');
                 return;
             }
             
@@ -1889,6 +1889,12 @@ async function executeUnifiedTrade() {
         return;
     }
     
+    // Минимум 500 для покупки
+    if (currentTradeAction !== 'sell' && amount < 500) {
+        showNotification('Минимальное количество: 500 токенов', 'error');
+        return;
+    }
+    
     // SELL mode
     if (currentTradeAction === 'sell') {
         try {
@@ -1905,8 +1911,8 @@ async function executeUnifiedTrade() {
             
             if (selectedOrderType === 'limit') {
                 const price = parseFloat(document.getElementById('tradePrice').value);
-                if (!price || price <= 0 || price >= 1) {
-                    showNotification('Введите корректную цену (от 0 до 1)', 'error');
+                if (!price || price < 0.01 || price > 0.99) {
+                    showNotification('Цена должна быть от 0.01 до 0.99', 'error');
                     return;
                 }
                 orderData.price = price;
@@ -1968,8 +1974,8 @@ async function executeUnifiedTrade() {
         if (selectedOrderType === 'limit') {
             const price = parseFloat(document.getElementById('tradePrice').value);
             
-            if (!price || price <= 0 || price >= 1) {
-                showNotification('Введите корректную цену (от 0 до 1)', 'error');
+            if (!price || price < 0.01 || price > 0.99) {
+                showNotification('Цена должна быть от 0.01 до 0.99', 'error');
                 return;
             }
             
