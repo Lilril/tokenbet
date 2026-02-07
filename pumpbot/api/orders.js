@@ -69,7 +69,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         if (existing.rows.length > 0) {
             const round = existing.rows[0];
             
-            // Если target_market_cap = 0 — попробуем заполнить из market_cap_history
+            
             if (parseFloat(round.target_market_cap || 0) <= 0) {
                 try {
                     const capResult = await sql`
@@ -81,22 +81,18 @@ async function getOrCreateCurrentRound(intervalMinutes) {
                         const cap = parseFloat(capResult.rows[0].market_cap);
                         await sql`UPDATE rounds SET target_market_cap = ${cap} WHERE id = ${round.id} AND (target_market_cap IS NULL OR target_market_cap = 0)`;
                         round.target_market_cap = cap;
-                        console.log(`✅ Updated target_market_cap for ${slug}: $${cap}`);
                     }
                 } catch(e) {
-                    console.log('Cap backfill error:', e.message);
                 }
             }
             
-            console.log(`✅ Found round: ${slug}`);
             return round;
         }
         
-        console.log(`🔨 Creating round: ${slug}`);
         const endTime = new Date(closeTimestamp * 1000);
         const startTime = new Date(endTime.getTime() - intervalMinutes * 60 * 1000);
         
-        // Получаем market cap из GeckoTerminal (лоукап токен)
+        
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
         const TOKEN_ADDR = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
@@ -119,14 +115,13 @@ async function getOrCreateCurrentRound(intervalMinutes) {
                 const price = parseFloat(geckData?.data?.attributes?.price_usd);
                 if (price > 0 && !isNaN(price)) {
                     startMarketCap = price * TOTAL_SUPPLY;
-                    console.log(`✅ Got start market cap from GeckoTerminal: $${startMarketCap.toFixed(2)}`);
                 }
             }
         } catch (error) {
             console.error('⚠️ Failed to fetch start market cap from GeckoTerminal:', error.message);
         }
         
-        // Fallback: из market_cap_history (записывается marketcap.js)
+        
         if (startMarketCap <= 0) {
             try {
                 const capResult = await sql`
@@ -136,10 +131,8 @@ async function getOrCreateCurrentRound(intervalMinutes) {
                 `;
                 if (capResult.rows.length > 0) {
                     startMarketCap = parseFloat(capResult.rows[0].market_cap);
-                    console.log(`✅ Got start market cap from DB history: $${startMarketCap}`);
                 }
             } catch(e) {
-                console.log('Cap history fallback error:', e.message);
             }
         }
         
@@ -155,7 +148,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
             RETURNING *
         `;
         
-        // Если ON CONFLICT сработал — значит другой запрос уже создал раунд
+        
         if (!newRound.rows.length) {
             const retry = await sql`SELECT * FROM rounds WHERE slug = ${slug}`;
             return retry.rows[0];
@@ -168,7 +161,6 @@ async function getOrCreateCurrentRound(intervalMinutes) {
             VALUES (${round.id}, 10000, 10000, 100000000)
         `;
         
-        console.log(`✅ Created round ${slug} (ID: ${round.id}, Start Cap: $${startMarketCap})`);
         return round;
     } catch (error) {
         console.error('❌ getOrCreateCurrentRound error:', error);
@@ -411,7 +403,7 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
         let result;
         
         if (minOppositePrice === null || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
-            // Market order — match all opposite orders
+            
             if (excludeUserId) {
                 result = await sql`
                     SELECT id, user_id, side, amount, filled, price
@@ -437,7 +429,7 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
                 `;
             }
         } else {
-            // Limit order — match only where opposite_price >= (1 - my_price)
+            
             if (excludeUserId) {
                 result = await sql`
                     SELECT id, user_id, side, amount, filled, price
@@ -579,7 +571,7 @@ async function enforceRateLimit(req, res, identifier, endpoint) {
 }
 
 // ============================================
-// BALANCE HELPERS (кастодиальная модель)
+
 // ============================================
 
 async function getOrCreateBalance(userId) {
@@ -597,7 +589,7 @@ async function getOrCreateBalance(userId) {
 }
 
 async function lockBalance(userId, amount) {
-    // Переводит средства из available в locked
+    
     const balance = await getOrCreateBalance(userId);
     const available = parseFloat(balance.available);
     
@@ -613,7 +605,7 @@ async function lockBalance(userId, amount) {
         WHERE user_id = ${userId}
     `;
     
-    // Лог
+    
     await sql`
         INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
         VALUES (${userId}, 'order_lock', ${-amount}, ${available}, ${available - amount}, ${'Lock for order'})
@@ -621,7 +613,7 @@ async function lockBalance(userId, amount) {
 }
 
 async function unlockBalance(userId, amount) {
-    // Возвращает средства из locked в available (отмена ордера, переплата)
+    
     await sql`
         UPDATE user_balances 
         SET available = available + ${amount},
@@ -638,7 +630,7 @@ async function unlockBalance(userId, amount) {
 }
 
 async function deductLocked(userId, amount) {
-    // Списывает из locked (исполнение ордера — деньги ушли)
+    
     await sql`
         UPDATE user_balances 
         SET locked = locked - ${amount},
@@ -648,7 +640,7 @@ async function deductLocked(userId, amount) {
 }
 
 async function creditBalance(userId, amount, description) {
-    // Зачисляет в available (выигрыш, продажа)
+    
     const balance = await getOrCreateBalance(userId);
     const before = parseFloat(balance.available);
     
@@ -674,19 +666,19 @@ let lastHeavyCheck = 0;
 async function inlineSettlementCheck() {
     try {
         // ============================================
-        // БЫСТРАЯ ЧАСТЬ (раз в 5 сек):
+        
         // ============================================
         const now = Date.now();
         if (now - lastSettleCheck < 5000) return;
         lastSettleCheck = now;
         
-        // 1. Закрыть истекшие раунды
+        
         await sql`UPDATE rounds SET status = 'closed' WHERE status = 'active' AND end_time < NOW()`;
         
-        // 2. Отменить ордера в закрытых раундах
+        
         await cancelExpiredOrders();
         
-        // 3. Settle раунды с позициями
+        
         const toSettle = await sql`
             SELECT r.id FROM rounds r
             WHERE r.status = 'closed'
@@ -701,12 +693,12 @@ async function inlineSettlementCheck() {
         }
         
         // ============================================
-        // ТЯЖЁЛАЯ ЧАСТЬ (раз в 60 сек):
+        
         // ============================================
         if (now - lastHeavyCheck < 60000) return;
         lastHeavyCheck = now;
         
-        // Пустые раунды без позиций — просто пометить settled
+        
         await sql`
             UPDATE rounds SET settlement_status = 'settled', settled_at = NOW()
             WHERE status = 'closed'
@@ -724,10 +716,10 @@ async function inlineSettlementCheck() {
     }
 }
 
-// Отменяет все ордера в закрытых раундах и возвращает locked средства
+
 async function cancelExpiredOrders() {
     try {
-        // Атомарно: помечаем expired и получаем только те что РЕАЛЬНО обновились
+        
         const expired = await sql`
             UPDATE limit_orders lo
             SET status = 'expired', cancelled_at = NOW()
@@ -739,7 +731,6 @@ async function cancelExpiredOrders() {
         `;
         
         if (expired.rows.length === 0) return;
-        console.log('Expired ' + expired.rows.length + ' orders from closed rounds');
         
         for (const order of expired.rows) {
             const unfilled = parseFloat(order.amount) - parseFloat(order.filled);
@@ -747,7 +738,6 @@ async function cancelExpiredOrders() {
             
             if (cost > 0.001) {
                 await unlockBalance(order.user_id, cost);
-                console.log('  Refund order #' + order.id + ': ' + cost.toFixed(2) + ' to user ' + order.user_id);
             }
         }
     } catch (e) {
@@ -755,11 +745,11 @@ async function cancelExpiredOrders() {
     }
 }
 
-// Safety net: ТОЛЬКО логирует, не дублирует unlock
-// (unlock уже делает cancelExpiredOrders)
+
+
 async function fixOrphanedLocks() {
     try {
-        // Проверяем: есть ли locked > 0 без живых ордеров?
+        
         const orphaned = await sql`
             SELECT ub.user_id, ub.locked
             FROM user_balances ub
@@ -775,11 +765,11 @@ async function fixOrphanedLocks() {
         
         if (orphaned.rows.length === 0) return;
         
-        // Есть orphaned locks — значит cancelExpiredOrders пропустил. Фиксим.
+        
         for (const row of orphaned.rows) {
             const amt = parseFloat(row.locked);
             if (amt > 0.001) {
-                // Атомарно: SET locked=0 только если locked > 0 (предотвращает двойной unlock)
+                
                 const result = await sql`
                     UPDATE user_balances 
                     SET available = available + locked, locked = 0, updated_at = NOW()
@@ -787,7 +777,6 @@ async function fixOrphanedLocks() {
                     RETURNING user_id, available
                 `;
                 if (result.rows.length > 0) {
-                    console.log('Orphan fix: +' + amt.toFixed(2) + ' to user ' + row.user_id);
                 }
             }
         }
@@ -810,7 +799,7 @@ async function inlineSettleRound(roundId) {
         }
         
         // ============================================
-        // CASE 1: target_market_cap = 0 → рефанд всем (не нужен finalMC!)
+        
         // ============================================
         if (startMC <= 0) {
             for (const pos of positions.rows) {
@@ -820,18 +809,17 @@ async function inlineSettleRound(roundId) {
                     ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
             }
             await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
-            console.log(`✅ Settled round ${roundId}: refund (no start cap)`);
             return;
         }
         
         // ============================================
-        // Получаем finalMC (нужен только если startMC > 0)
+        
         // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
             const TOKEN = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
             
-            // GeckoTerminal (лоукап)
+            
             try {
                 const ctrl = new AbortController();
                 const t = setTimeout(() => ctrl.abort(), 5000);
@@ -844,14 +832,12 @@ async function inlineSettleRound(roundId) {
                     const price = parseFloat(d?.data?.attributes?.price_usd);
                     if (price > 0 && !isNaN(price)) {
                         finalMC = price * 1000000000;
-                        console.log(`✅ Final MC from GeckoTerminal: $${finalMC.toFixed(2)}`);
                     }
                 }
             } catch(e) {
-                console.log('GeckoTerminal finalMC error:', e.message);
             }
             
-            // Fallback: из market_cap_history
+            
             if (finalMC <= 0) {
                 try {
                     const capResult = await sql`
@@ -861,17 +847,16 @@ async function inlineSettleRound(roundId) {
                     `;
                     if (capResult.rows.length > 0) {
                         finalMC = parseFloat(capResult.rows[0].market_cap);
-                        console.log(`✅ Final MC from DB history: $${finalMC}`);
                     }
                 } catch(e) {}
             }
             
-            if (!finalMC) return; // Cron подхватит позже
+            if (!finalMC) return; 
             await sql`UPDATE rounds SET final_market_cap = ${finalMC} WHERE id = ${roundId}`;
         }
         
         // ============================================
-        // CASE 2: Ничья — капа не изменилась (или разница < 0.01%) → рефанд всем
+        
         // ============================================
         const capChangePercent = startMC > 0 ? Math.abs((finalMC - startMC) / startMC * 100) : 0;
         if (finalMC === startMC || capChangePercent < 0.01) {
@@ -882,12 +867,11 @@ async function inlineSettleRound(roundId) {
                     ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
             }
             await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
-            console.log(`✅ Settled round ${roundId}: TIE (${startMC}=${finalMC}), refund all`);
             return;
         }
         
         // ============================================
-        // CASE 3: Нормальный settlement — есть победитель
+        
         // ============================================
         const winningSide = finalMC > startMC ? 'higher' : 'lower';
         let totalWinAmt = 0, totalLoseCost = 0;
@@ -903,7 +887,7 @@ async function inlineSettleRound(roundId) {
             if (won && totalWinAmt > 0) {
                 payout = tc + totalLoseCost * (amt / totalWinAmt);
                 pl = payout - tc;
-                // НЕ кредитим баланс здесь! Кредит только при claim
+                
             } else if (!won) {
                 payout = 0;
                 pl = -tc;
@@ -915,7 +899,6 @@ async function inlineSettleRound(roundId) {
         }
         
         await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side=${winningSide} WHERE id=${roundId}`;
-        console.log(`✅ Settled round ${roundId}: ${startMC}→${finalMC}, winner: ${winningSide}`);
     } catch (e) {
         console.error(`⚠️ Settle round ${roundId}:`, e.message);
     }
@@ -938,18 +921,18 @@ export default async function handler(req, res) {
     
     try {
         // ============================================
-        // GET - Получить данные рынка
+        
         // ============================================
         if (method === 'GET') {
             const action = query.action;
             
-            // Фоновый settlement (не блокирует ответ)
+            
             inlineSettlementCheck().catch(() => {});
             
             const rateLimitError = await enforceRateLimit(req, res, clientIP, `GET:${action}`);
             if (rateLimitError) return;
             
-            // GET ALL CURRENT ROUNDS (для табов)
+            
             if (action === 'rounds' || action === 'all-rounds') {
                 const rounds = [];
                 
@@ -982,7 +965,7 @@ export default async function handler(req, res) {
                 });
             }
             
-            // Получить раунд
+            
             let round;
             
             if (query.roundId) {
@@ -1010,7 +993,7 @@ if (action === 'orderbook') {
         lower: parseFloat(poolSnapshot.higher_reserve) / parseFloat(poolSnapshot.lower_reserve)
     } : { higher: 0.5, lower: 0.5 };
     
-    // Получаем ордера текущего пользователя для подсветки в стакане
+    
     let userOrderPrices = { higher: [], lower: [] };
     const reqWallet = req.query.wallet;
     if (reqWallet) {
@@ -1080,7 +1063,7 @@ if (action === 'orderbook') {
                 });
             }
             
-            // QUOTE для маркет ордера
+            
             if (action === 'quote') {
                 const { side, amount } = query;
                 const amt = parseFloat(amount);
@@ -1271,7 +1254,7 @@ if (action === 'orderbook') {
                 });
             }
             
-            // DEFAULT: Вернуть всё
+            
             const orderBook = await db.getAggregatedOrderBook(round.id);
             const poolSnapshot = await db.getLatestPoolSnapshot(round.id);
             const recentTrades = await db.getRecentTrades(round.id, 10);
@@ -1304,7 +1287,7 @@ if (action === 'orderbook') {
         }
         
         // ============================================
-        // POST - Разместить ордер (С ПРОВЕРКОЙ БАЛАНСА)
+        
         // ============================================
         if (method === 'POST') {
             const { wallet, side, amount, price, type, roundId, intervalMinutes, action } = 
@@ -1329,11 +1312,11 @@ if (action === 'orderbook') {
                 });
             }
             
-            // Минимум 500 монет для покупки (продажа — без ограничений)
+            
             if (action !== 'sell' && amt < 500) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Минимальное количество: 500 токенов'
+                    error: 'Minimum: 500 токенов'
                 });
             }
             
@@ -1344,7 +1327,7 @@ if (action === 'orderbook') {
                 });
             }
             
-            // Получить раунд
+            
             let round;
             if (roundId) {
                 round = await getRoundById(roundId);
@@ -1358,23 +1341,23 @@ if (action === 'orderbook') {
                 return res.status(400).json({ success: false, error: 'Round not found' });
             }
             
-            // Проверка что раунд активен
+            
             if (round.status !== 'active') {
-                return res.status(400).json({ success: false, error: 'Раунд уже закрыт' });
+                return res.status(400).json({ success: false, error: 'Round already closed' });
             }
             
             const user = await db.getOrCreateUser(wallet);
             
             // ============================================
-            // SELL — продажа позиции
+            
             // ============================================
             if (action === 'sell') {
-                // Проверяем позицию пользователя
+                
                 const positions = await db.getUserPositions(user.id, round.id);
                 const position = positions.find(p => p.side === side);
                 
                 if (!position || parseFloat(position.amount) <= 0) {
-                    return res.status(400).json({ success: false, error: 'У вас нет позиции для продажи' });
+                    return res.status(400).json({ success: false, error: 'No position to sell' });
                 }
                 
                 const posAmount = parseFloat(position.amount);
@@ -1390,19 +1373,19 @@ if (action === 'orderbook') {
                 let soldAmount = 0;
                 const trades = [];
                 
-                // Продажа работает через complementary matching:
-                // Продажа LOWER → ищем HIGHER лимитки (они платят за HIGHER, мы возвращаем LOWER)
-                // Продажа HIGHER → ищем LOWER лимитки
+                
+                
+                
                 const oppositeSide = side === 'higher' ? 'lower' : 'higher';
                 
                 if (type === 'limit') {
                     const sellPrice = parseFloat(price);
                     if (!sellPrice || sellPrice < 0.01 || sellPrice > 0.99 || isNaN(sellPrice)) {
-                        return res.status(400).json({ success: false, error: 'Цена должна быть от 0.01 до 0.99' });
+                        return res.status(400).json({ success: false, error: 'Price must be 0.01 to 0.99' });
                     }
                     
-                    // Ищем opposite-side лимитки где opp_price >= (1 - sellPrice)
-                    // т.е. покупатель другой стороны готов заплатить достаточно
+                    
+                    
                     const minOppPrice = 1 - sellPrice;
                     
                     const buyOrders = await sql`
@@ -1444,7 +1427,7 @@ if (action === 'orderbook') {
                         trades.push(trade);
                         
                         await db.updateOrderFilled(buyOrder.id, matchAmount);
-                        // Покупатель opposite side получает позицию на своей стороне
+                        
                         const buyerCost = matchAmount * oppPrice;
                         await db.upsertUserPosition(buyOrder.user_id, round.id, oppositeSide, matchAmount, oppPrice, buyerCost);
                         await deductLocked(buyOrder.user_id, buyerCost);
@@ -1455,7 +1438,7 @@ if (action === 'orderbook') {
                 }
                 
                 if (type === 'market') {
-                    // Маркет продажа — ищем opposite-side лимитки
+                    
                     const buyOrders = await sql`
                         SELECT id, user_id, side, amount, filled, price
                         FROM limit_orders
@@ -1502,7 +1485,7 @@ if (action === 'orderbook') {
                         soldAmount += matchAmount;
                     }
                     
-                    // Если стакан пуст — продаём по AMM цене
+                    
                     if (soldAmount < sellAmount) {
                         const remainSell = sellAmount - soldAmount;
                         const poolResult = await sql`
@@ -1533,12 +1516,12 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                // Уменьшаем позицию
+                
                 const newAmount = posAmount - soldAmount;
                 const costReduction = (soldAmount / posAmount) * parseFloat(position.total_cost);
                 
                 if (newAmount <= 0.001) {
-                    // Полная продажа — удаляем позицию
+                    
                     await sql`DELETE FROM user_positions WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}`;
                 } else {
                     await sql`
@@ -1549,7 +1532,7 @@ if (action === 'orderbook') {
                     `;
                 }
                 
-                // Зачисляем выручку на баланс
+                
                 await creditBalance(user.id, totalProceeds, `Продажа ${soldAmount} ${side} токенов`);
                 
                 const avgSellPrice = totalProceeds / soldAmount;
@@ -1574,7 +1557,7 @@ if (action === 'orderbook') {
             }
             
             // ============================================
-            // BUY — покупка (existing logic below)
+            
             // ============================================
             await db.logAction(
                 user.id,
@@ -1585,14 +1568,14 @@ if (action === 'orderbook') {
             );
             
             // ============================================
-            // ПРОВЕРКА И БЛОКИРОВКА БАЛАНСА
+            
             // ============================================
             let estimatedCost;
             if (type === 'market') {
-                // Для маркета блокируем максимум = amount * 1.0
+                
                 estimatedCost = amt;
             } else {
-                // Для лимитного = amount * price
+                
                 estimatedCost = amt * parseFloat(price);
             }
             
@@ -1646,7 +1629,7 @@ if (action === 'orderbook') {
                     await db.upsertUserPosition(user.id, round.id, side, matchAmount, buyerPrice, buyerCost);
                     await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, oppPrice, sellerCost);
                     
-                    // Списываем locked у владельца лимитки (seller)
+                    
                     await deductLocked(oppositeOrder.user_id, sellerCost);
                     
                     totalMatched += matchAmount;
@@ -1656,7 +1639,7 @@ if (action === 'orderbook') {
                     const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / amt;
                     const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
                     
-                    // ✅ Списываем реальную стоимость, возвращаем переплату
+                    
                     await deductLocked(user.id, totalCost);
                     const refund = estimatedCost - totalCost;
                     if (refund > 0) await unlockBalance(user.id, refund);
@@ -1677,7 +1660,7 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                // Стакан пустой — разблокируем всё
+                
                 if (totalMatched === 0) {
                     await unlockBalance(user.id, estimatedCost);
                     
@@ -1687,7 +1670,7 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                // Частичное исполнение — списываем исполненное, возвращаем остаток
+                
                 if (totalMatched < amt) {
                     const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / totalMatched;
                     const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
@@ -1744,11 +1727,11 @@ if (action === 'orderbook') {
                 const prc = parseFloat(price);
                 
                 if (!prc || prc < 0.01 || prc > 0.99 || isNaN(prc)) {
-                    // Разблокируем — невалидная цена
+                    
                     await unlockBalance(user.id, estimatedCost);
                     return res.status(400).json({
                         success: false,
-                        error: 'Цена должна быть от 0.01 до 0.99'
+                        error: 'Price must be 0.01 to 0.99'
                     });
                 }
                 
@@ -1771,7 +1754,7 @@ if (action === 'orderbook') {
                     // Complementary: each side pays their own price
                     const buyerPrice = prc; // Buyer pays their limit price
                     const sellerPrice = oppPrice; // Seller pays their limit price
-                    // If total > 1.0, there's surplus — split evenly (price improvement)
+                    
                     const surplus = (buyerPrice + sellerPrice - 1.0) / 2;
                     const effectiveBuyerPrice = buyerPrice - surplus;
                     const effectiveSellerPrice = sellerPrice - surplus;
@@ -1797,14 +1780,14 @@ if (action === 'orderbook') {
                     await db.upsertUserPosition(user.id, round.id, side, matchAmount, effectiveBuyerPrice, buyerCost);
                     await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
                     
-                    // Списываем locked у обоих
+                    
                     await deductLocked(oppositeOrder.user_id, sellerCost);
                     
                     totalMatched += matchAmount;
                     totalBuyerCost += buyerCost;
                 }
                 
-                // Для лимитного: исполненная часть списывается, остаток остаётся locked
+                
                 if (totalMatched > 0) {
                     await deductLocked(user.id, totalBuyerCost);
                     // Refund: locked was at full limit price, but effective price may be less
@@ -1812,7 +1795,7 @@ if (action === 'orderbook') {
                     const refund = lockedForMatched - totalBuyerCost;
                     if (refund > 0.001) await unlockBalance(user.id, refund);
                 }
-                // Неисполненная часть остаётся в locked до отмены или исполнения
+                
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
@@ -1833,7 +1816,7 @@ if (action === 'orderbook') {
         }
         
         // ============================================
-        // DELETE - Отменить ордер (С ВОЗВРАТОМ БАЛАНСА)
+        
         // ============================================
         if (method === 'DELETE') {
             const { orderId, wallet } = query;
@@ -1847,7 +1830,7 @@ if (action === 'orderbook') {
             
             const user = await db.getOrCreateUser(wallet);
             
-            // Получаем ордер ДО отмены чтобы знать сумму для разблокировки
+            
             const orderBefore = await sql`
                 SELECT * FROM limit_orders 
                 WHERE id = ${parseInt(orderId)} AND user_id = ${user.id} AND status = 'active'
@@ -1862,7 +1845,7 @@ if (action === 'orderbook') {
                 });
             }
             
-            // ✅ Возвращаем заблокированные средства за неисполненную часть
+            
             const unfilledAmount = parseFloat(canceledOrder.amount) - parseFloat(canceledOrder.filled);
             const unfilledCost = unfilledAmount * parseFloat(canceledOrder.price);
             if (unfilledCost > 0) {
