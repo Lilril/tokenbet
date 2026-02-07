@@ -1,27 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 :root {
-    --bg-primary: #07060d;
-    --bg-secondary: #0e0c18;
-    --bg-tertiary: #15122a;
-    --text-primary: #c0f0ff;
-    --text-secondary: #8b94ae;
-    --text-dim: #5a6080;
-    --accent-green: #00ffa3;
-    --accent-red: #ff3366;
-    --accent-yellow: #ffd000;
-    --accent-blue: #00ccff;
-    --accent-magenta: #ff00cc;
-    --accent-chrome: #c8d8e8;
-    --border: #2a2548;
-    --border-bright: #6040d0;
-    --shadow: rgba(96, 64, 208, 0.3);
-    --mercury-1: #c0cfe0;
-    --mercury-2: #8898b8;
-    --mercury-3: #e0e8f4;
-    --glow-purple: rgba(120, 60, 255, 0.15);
-    --glow-magenta: rgba(255, 0, 204, 0.1);
-    --glow-cyan: rgba(0, 204, 255, 0.1);
+    --bg-primary: #0b0b0f;
+    --bg-secondary: #111116;
+    --bg-tertiary: #1a1a22;
+    --text-primary: #e8e8f0;
+    --text-secondary: #8a8a9a;
+    --text-dim: #55556a;
+    --accent-green: #00e89d;
+    --accent-red: #ff3860;
+    --accent-yellow: #f0c030;
+    --accent-blue: #40a0ff;
+    --accent-magenta: #c840ff;
+    --border: #252530;
+    --border-bright: #3a3a50;
+    --shadow: rgba(0, 232, 157, 0.12);
+    --glass: rgba(255, 255, 255, 0.03);
 }
 
 * {
@@ -39,7 +33,7 @@ body {
     position: relative;
 }
 
-/* Ambient glow overlay */
+/* Subtle warm ambient — NOT cosmic, more like studio lighting */
 body::before {
     content: '';
     position: fixed;
@@ -47,30 +41,16 @@ body::before {
     left: 0;
     width: 100%;
     height: 100%;
-    background: 
-        radial-gradient(ellipse at 20% 0%, var(--glow-magenta) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 100%, var(--glow-cyan) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 50%, var(--glow-purple) 0%, transparent 60%);
+    background:
+        radial-gradient(ellipse at 15% 10%, rgba(200, 64, 255, 0.04) 0%, transparent 40%),
+        radial-gradient(ellipse at 85% 90%, rgba(0, 232, 157, 0.03) 0%, transparent 40%),
+        radial-gradient(ellipse at 50% 50%, rgba(240, 192, 48, 0.02) 0%, transparent 50%);
     pointer-events: none;
     z-index: 0;
 }
 
-/* Subtle noise texture */
-body::after {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-    pointer-events: none;
-    z-index: 9999;
-    opacity: 0.4;
-}
-
 /* ============================================
-   MERCURY PARTICLES CANVAS
+   MERCURY BLOBS CANVAS
    ============================================ */
 #mercuryCanvas {
     position: fixed;
@@ -86,39 +66,42 @@ body::after {
    FLOATING CHARACTER IMAGES
    ============================================ */
 .floating-character {
-    position: fixed;
+    position: absolute;
     pointer-events: none;
-    z-index: 2;
-    filter: brightness(1.4) contrast(1.1);
-    transition: opacity 0.5s;
+    z-index: 3;
+    filter: brightness(1.2) contrast(1.05);
 }
 
 .floating-character.char-pharaoh-1 {
-    bottom: -60px;
-    left: -30px;
-    width: 300px;
-    transform: rotate(5deg);
-    opacity: 0.10;
+    bottom: -40px;
+    left: -20px;
+    width: 260px;
+    opacity: 0.09;
+    transform: rotate(4deg);
 }
 
 .floating-character.char-pharaoh-2 {
-    top: 40px;
-    right: -50px;
-    width: 260px;
-    transform: rotate(-8deg);
-    opacity: 0.08;
+    top: 30px;
+    right: -30px;
+    width: 220px;
+    opacity: 0.07;
+    transform: rotate(-6deg);
 }
 
+/* trans_floyd — positioned near wallet/header area */
 .floating-character.char-trans {
-    bottom: 80px;
-    right: 30px;
-    width: 200px;
-    transform: rotate(3deg);
-    opacity: 0.07;
+    position: absolute;
+    top: 100px;
+    left: 20px;
+    width: 170px;
+    opacity: 0.13;
+    transform: scaleX(-1);
+    z-index: 4;
 }
 
 @media (max-width: 1200px) {
     .floating-character { opacity: 0.04 !important; }
+    .floating-character.char-trans { opacity: 0.06 !important; }
 }
 
 @media (max-width: 768px) {
@@ -137,6 +120,29 @@ body::after {
 }
 
 /* ============================================
+   SVG ICON BASE
+   ============================================ */
+.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+}
+
+.icon svg {
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+}
+
+.icon-lg {
+    width: 1.3em;
+    height: 1.3em;
+}
+
+/* ============================================
    HEADER
    ============================================ */
 .header {
@@ -144,29 +150,22 @@ body::after {
     border: 1px solid var(--border-bright);
     padding: 30px;
     margin-bottom: 30px;
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(30, 20, 60, 0.9) 100%);
+    background: var(--bg-secondary);
     position: relative;
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: 2px;
 }
 
+/* Subtle gradient sweep */
 .header::before {
     content: '';
     position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: 
-        radial-gradient(circle at 30% 40%, rgba(255, 0, 204, 0.07) 0%, transparent 40%),
-        radial-gradient(circle at 70% 60%, rgba(0, 204, 255, 0.07) 0%, transparent 40%),
-        radial-gradient(circle at 50% 50%, rgba(120, 60, 255, 0.05) 0%, transparent 50%);
-    animation: headerPulse 6s ease-in-out infinite;
-}
-
-@keyframes headerPulse {
-    0%, 100% { transform: scale(1); opacity: 0.5; }
-    50% { transform: scale(1.05); opacity: 0.9; }
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-green), var(--accent-magenta), transparent);
+    opacity: 0.6;
 }
 
 .header::after {
@@ -174,38 +173,43 @@ body::after {
     position: absolute;
     top: 0;
     left: -100%;
-    width: 50%;
+    width: 40%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(192, 207, 224, 0.06), transparent);
-    animation: shimmer 4s ease-in-out infinite;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.015), transparent);
+    animation: headerSweep 6s ease-in-out infinite;
 }
 
-@keyframes shimmer {
-    0% { left: -100%; }
-    100% { left: 200%; }
+@keyframes headerSweep {
+    0% { left: -40%; }
+    100% { left: 140%; }
 }
 
 .header h1 {
-    font-family: 'Orbitron', 'JetBrains Mono', monospace;
-    font-size: 2.8em;
+    font-family: 'Outfit', sans-serif;
+    font-size: 2.6em;
     font-weight: 800;
-    background: linear-gradient(135deg, var(--mercury-3) 0%, var(--accent-blue) 40%, var(--accent-magenta) 70%, var(--mercury-1) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    filter: drop-shadow(0 0 20px rgba(0, 204, 255, 0.3));
-    margin-bottom: 10px;
-    letter-spacing: 3px;
+    color: var(--text-primary);
+    letter-spacing: 4px;
     position: relative;
     z-index: 1;
+    text-transform: uppercase;
+}
+
+.header h1 .icon {
+    color: var(--accent-green);
+    font-size: 0.85em;
+    margin-right: 8px;
+    filter: drop-shadow(0 0 8px rgba(0, 232, 157, 0.5));
 }
 
 .header p {
-    color: var(--text-secondary);
-    font-size: 1.1em;
+    color: var(--text-dim);
+    font-size: 0.95em;
     position: relative;
     z-index: 1;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 8px;
 }
 
 /* ============================================
@@ -215,8 +219,8 @@ body::after {
     border: 1px solid var(--border);
     padding: 20px;
     margin-bottom: 20px;
-    background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(14, 12, 28, 0.95) 100%);
-    border-radius: 10px;
+    background: var(--bg-secondary);
+    border-radius: 2px;
 }
 
 .wallet-status {
@@ -239,13 +243,13 @@ body::after {
     padding: 15px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    transition: all 0.3s ease;
+    border-radius: 2px;
+    transition: all 0.25s ease;
 }
 
 .balance-item:hover {
     border-color: var(--border-bright);
-    box-shadow: 0 0 15px rgba(96, 64, 208, 0.15);
+    background: rgba(26, 26, 34, 0.9);
 }
 
 .balance-label {
@@ -253,6 +257,7 @@ body::after {
     color: var(--text-dim);
     text-transform: uppercase;
     margin-bottom: 5px;
+    letter-spacing: 0.5px;
 }
 
 .balance-value {
@@ -265,7 +270,7 @@ body::after {
    BUTTONS
    ============================================ */
 button {
-    background: linear-gradient(135deg, var(--accent-green), #00cc88);
+    background: var(--accent-green);
     color: var(--bg-primary);
     border: none;
     padding: 12px 24px;
@@ -273,12 +278,12 @@ button {
     font-size: 0.9em;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s;
     text-transform: uppercase;
     letter-spacing: 1px;
     position: relative;
     overflow: hidden;
-    border-radius: 6px;
+    border-radius: 2px;
 }
 
 button::before {
@@ -288,10 +293,10 @@ button::before {
     left: 50%;
     width: 0;
     height: 0;
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
+    transition: width 0.5s, height 0.5s;
 }
 
 button:hover::before {
@@ -300,8 +305,8 @@ button:hover::before {
 }
 
 button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px var(--shadow);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--shadow);
 }
 
 button:active {
@@ -321,11 +326,11 @@ button:disabled:hover {
 .btn-secondary {
     background: transparent;
     border: 1px solid var(--border-bright);
-    color: var(--accent-blue);
+    color: var(--accent-green);
 }
 
 .btn-danger {
-    background: linear-gradient(135deg, var(--accent-red), #cc0044);
+    background: var(--accent-red);
     color: white;
 }
 
@@ -350,23 +355,12 @@ button:disabled:hover {
    ============================================ */
 .price-display {
     border: 1px solid var(--accent-yellow);
+    border-left: 3px solid var(--accent-yellow);
     padding: 30px;
     text-align: center;
-    background: linear-gradient(135deg, var(--bg-secondary), rgba(40, 30, 10, 0.5));
+    background: var(--bg-secondary);
     position: relative;
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-.price-display::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 60%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 208, 0, 0.04), transparent);
-    animation: shimmer 5s ease-in-out infinite;
+    border-radius: 2px;
 }
 
 .price-label {
@@ -378,11 +372,10 @@ button:disabled:hover {
 }
 
 .price-value {
-    font-family: 'Orbitron', monospace;
+    font-family: 'Outfit', sans-serif;
     font-size: 3.5em;
     font-weight: 700;
     color: var(--accent-yellow);
-    text-shadow: 0 0 30px rgba(255, 208, 0, 0.4);
     font-variant-numeric: tabular-nums;
 }
 
@@ -415,13 +408,12 @@ button:disabled:hover {
    ORDER BOOK
    ============================================ */
 .orderbook-panel {
-    background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
+    background: var(--bg-secondary);
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     max-height: 600px;
-    border-radius: 10px;
-    overflow: hidden;
+    border-radius: 2px;
 }
 
 .orderbook-header {
@@ -431,7 +423,9 @@ button:disabled:hover {
     text-transform: uppercase;
     font-size: 0.9em;
     letter-spacing: 1px;
-    background: rgba(96, 64, 208, 0.05);
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .orderbook-content {
@@ -461,7 +455,6 @@ button:disabled:hover {
     font-size: 0.85em;
     font-variant-numeric: tabular-nums;
     position: relative;
-    border-radius: 3px;
 }
 
 .orderbook-row::before {
@@ -471,9 +464,8 @@ button:disabled:hover {
     top: 0;
     height: 100%;
     background: currentColor;
-    opacity: 0.08;
+    opacity: 0.06;
     transition: width 0.3s;
-    border-radius: 3px;
 }
 
 .orderbook-row.buy {
@@ -501,7 +493,7 @@ button:disabled:hover {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 20px;
-    border-radius: 10px;
+    border-radius: 2px;
 }
 
 .trade-panel.buy {
@@ -540,11 +532,11 @@ button:disabled:hover {
     border: 1px solid var(--border);
     color: var(--text-secondary);
     font-size: 0.85em;
-    border-radius: 6px;
+    border-radius: 2px;
 }
 
 .order-type-btn.active {
-    background: linear-gradient(135deg, var(--accent-green), #00cc88);
+    background: var(--accent-green);
     color: var(--bg-primary);
     border-color: var(--accent-green);
 }
@@ -569,20 +561,20 @@ input[type="number"] {
     color: var(--text-primary);
     font-family: 'JetBrains Mono', monospace;
     font-size: 1em;
-    transition: border-color 0.3s, box-shadow 0.3s;
-    border-radius: 6px;
+    transition: border-color 0.2s;
+    border-radius: 2px;
 }
 
 input[type="number"]:focus {
     outline: none;
-    border-color: var(--border-bright);
-    box-shadow: 0 0 0 3px rgba(96, 64, 208, 0.15);
+    border-color: var(--accent-green);
+    box-shadow: 0 0 0 2px rgba(0, 232, 157, 0.08);
 }
 
 .estimate-display {
     background: var(--bg-tertiary);
     padding: 15px;
-    border-radius: 8px;
+    border-radius: 2px;
     margin: 15px 0;
     font-size: 0.9em;
 }
@@ -608,11 +600,11 @@ input[type="number"]:focus {
 }
 
 .trade-btn.buy {
-    background: linear-gradient(135deg, var(--accent-green), #00cc88);
+    background: var(--accent-green);
 }
 
 .trade-btn.sell {
-    background: linear-gradient(135deg, var(--accent-red), #cc0044);
+    background: var(--accent-red);
 }
 
 /* ============================================
@@ -622,7 +614,7 @@ input[type="number"]:focus {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 20px;
-    border-radius: 10px;
+    border-radius: 2px;
 }
 
 .trade-history-header {
@@ -631,6 +623,9 @@ input[type="number"]:focus {
     font-size: 0.9em;
     margin-bottom: 15px;
     letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .trade-history-list {
@@ -646,7 +641,6 @@ input[type="number"]:focus {
     background: var(--bg-tertiary);
     font-size: 0.85em;
     border-left: 3px solid transparent;
-    border-radius: 4px;
 }
 
 .trade-item.buy {
@@ -672,11 +666,11 @@ input[type="number"]:focus {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(7, 6, 13, 0.92);
+    background: rgba(0, 0, 0, 0.85);
     z-index: 10000;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(15px);
+    backdrop-filter: blur(8px);
 }
 
 .modal.active {
@@ -684,32 +678,30 @@ input[type="number"]:focus {
 }
 
 .modal-content {
-    background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+    background: var(--bg-secondary);
     border: 1px solid var(--border-bright);
     padding: 30px;
     max-width: 450px;
     width: 90%;
     max-height: 80vh;
     overflow-y: auto;
-    border-radius: 16px;
-    box-shadow: 
-        0 0 60px rgba(96, 64, 208, 0.2),
-        0 0 120px rgba(0, 204, 255, 0.05),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
 }
 
 .modal-header {
-    font-family: 'Orbitron', monospace;
-    font-size: 1.5em;
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.4em;
     margin-bottom: 20px;
     text-align: center;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
-    background: linear-gradient(135deg, var(--text-primary), var(--accent-blue));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
 }
 
 .wallet-option {
@@ -720,15 +712,14 @@ input[type="number"]:focus {
     border: 1px solid var(--border);
     background: var(--bg-tertiary);
     cursor: pointer;
-    transition: all 0.3s;
-    border-radius: 10px;
+    transition: all 0.2s;
+    border-radius: 2px;
 }
 
 .wallet-option:hover {
     background: var(--bg-primary);
-    border-color: var(--border-bright);
-    transform: translateX(5px);
-    box-shadow: 0 0 20px rgba(96, 64, 208, 0.15);
+    border-color: var(--accent-green);
+    transform: translateX(4px);
 }
 
 .wallet-icon {
@@ -748,13 +739,12 @@ input[type="number"]:focus {
     right: 20px;
     font-size: 2em;
     cursor: pointer;
-    color: var(--accent-blue);
-    transition: transform 0.3s, color 0.3s;
+    color: var(--text-dim);
+    transition: color 0.2s;
 }
 
 .close-modal:hover {
-    transform: rotate(90deg);
-    color: var(--accent-magenta);
+    color: var(--accent-red);
 }
 
 /* ============================================
@@ -776,24 +766,24 @@ input[type="number"]:focus {
 
 .status-connected {
     background: var(--accent-green);
-    box-shadow: 0 0 10px var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
 }
 
 .status-disconnected {
     background: var(--accent-red);
-    box-shadow: 0 0 10px var(--accent-red);
+    box-shadow: 0 0 8px var(--accent-red);
 }
 
 /* ============================================
    COUNTDOWN
    ============================================ */
 .countdown-section {
-    background: linear-gradient(135deg, var(--bg-secondary), rgba(40, 30, 10, 0.3));
+    background: var(--bg-secondary);
     border: 1px solid var(--accent-yellow);
     border-left: 3px solid var(--accent-yellow);
     padding: 20px;
     text-align: center;
-    border-radius: 10px;
+    border-radius: 2px;
 }
 
 .countdown-label {
@@ -804,12 +794,11 @@ input[type="number"]:focus {
 }
 
 .countdown-value {
-    font-family: 'Orbitron', monospace;
+    font-family: 'Outfit', sans-serif;
     font-size: 2.5em;
     font-weight: 700;
     color: var(--accent-yellow);
     font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 20px rgba(255, 208, 0, 0.3);
 }
 
 /* RESPONSIVE — TABLET */
@@ -821,10 +810,10 @@ input[type="number"]:focus {
 /* RESPONSIVE — MOBILE */
 @media (max-width: 768px) {
     .container { padding: 10px; }
-    .header { padding: 15px; margin-bottom: 15px; border-radius: 8px; }
-    .header h1 { font-size: 1.4em; letter-spacing: 0; }
-    .header p { font-size: 0.8em; }
-    .wallet-section { padding: 12px; border-radius: 8px; }
+    .header { padding: 15px; margin-bottom: 15px; }
+    .header h1 { font-size: 1.4em; letter-spacing: 1px; }
+    .header p { font-size: 0.75em; }
+    .wallet-section { padding: 12px; }
     .wallet-status button { padding: 8px 14px; font-size: 0.8em; }
     .balance-display { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .balance-item { padding: 10px; }
@@ -833,8 +822,8 @@ input[type="number"]:focus {
     .price-value { font-size: 1.6em; }
     .price-stats { gap: 8px; margin-top: 10px; padding-top: 10px; }
     .stat-value { font-size: 1em; }
-    .round-selector { gap: 6px; padding: 10px; border-radius: 8px; }
-    .round-tab { padding: 10px 8px; border-radius: 6px; }
+    .round-selector { gap: 6px; padding: 10px; }
+    .round-tab { padding: 10px 8px; }
     .round-tab-title { font-size: 1em; }
     .round-tab-info { font-size: 0.7em; }
     .countdown-value { font-size: 1.5em; }
@@ -845,7 +834,7 @@ input[type="number"]:focus {
     input[type="number"] { padding: 10px; font-size: 0.9em; }
     .trading-interface { grid-template-columns: 1fr; }
     .price-stats { grid-template-columns: repeat(3, 1fr); }
-    .modal-content { width: 95%; padding: 20px; max-height: 90vh; border-radius: 12px; }
+    .modal-content { width: 95%; padding: 20px; max-height: 90vh; }
     .modal-header { font-size: 1.1em; letter-spacing: 0; }
     .trade-history { padding: 12px; }
     .settlement-card { padding: 12px; }
@@ -863,8 +852,8 @@ input[type="number"]:focus {
    SCROLLBAR
    ============================================ */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -873,7 +862,7 @@ input[type="number"]:focus {
 
 ::-webkit-scrollbar-thumb {
     background: var(--border);
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
