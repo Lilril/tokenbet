@@ -702,6 +702,22 @@
         }
     </script>
     
+    <!-- Gold shimmer cursor tracking for price-display and countdown-section -->
+    <script>
+    (function() {
+        const panels = document.querySelectorAll('.price-display, .countdown-section');
+        panels.forEach(panel => {
+            panel.addEventListener('mousemove', (e) => {
+                const rect = panel.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                panel.style.setProperty('--gold-x', x + 'px');
+                panel.style.setProperty('--gold-y', y + 'px');
+            });
+        });
+    })();
+    </script>
+
     <!-- Mercury Blob Effect — Zero-Gravity Liquid Metal v2 -->
     <script>
     (function() {
