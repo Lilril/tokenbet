@@ -1,7 +1,6 @@
-// Кеш в памяти
 import { sql } from '@vercel/postgres';
 
-// Создание таблицы (один раз)
+
 let tableCreated = false;
 async function ensureTable() {
   if (tableCreated) return;
@@ -17,18 +16,17 @@ async function ensureTable() {
   } catch(e) { tableCreated = true; } // Ignore if already exists
 }
 
-// Сохранить капу в БД (fire-and-forget)
+
 function saveMarketCap(marketCap, price, source) {
   ensureTable().then(() => {
     sql`INSERT INTO market_cap_history (market_cap, price, source) VALUES (${marketCap}, ${price}, ${source})`
-      .catch(e => console.log('Save cap err:', e.message));
   });
 }
 
 let priceCache = {
   price: null,
   timestamp: 0,
-  duration: 8000 // 8 секунд кеш
+  duration: 8000 
 };
 
 export default async function handler(req, res) {
@@ -43,13 +41,11 @@ export default async function handler(req, res) {
   const tokenAddress = req.query.token || 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
   const TOTAL_SUPPLY = 1000000000;
   
-  console.log('🔍 Price request for:', tokenAddress);
   
-  // Возвращаем кеш если свежий
+  
   const now = Date.now();
   if (priceCache.price && (now - priceCache.timestamp) < priceCache.duration) {
     const marketCap = priceCache.price * TOTAL_SUPPLY;
-    console.log('📦 Cache hit:', priceCache.price);
     
     return res.status(200).json({
       success: true,
@@ -62,9 +58,8 @@ export default async function handler(req, res) {
     });
   }
   
-  // МЕТОД 1: DexScreener (самый надежный для pump.fun)
+  
   try {
-    console.log('→ DexScreener...');
     
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -86,7 +81,7 @@ export default async function handler(req, res) {
       const data = await response.json();
       
       if (data.pairs && data.pairs.length > 0) {
-        // Берем пару с наибольшей ликвидностью
+        
         const bestPair = data.pairs.sort((a, b) => 
           (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
         )[0];
@@ -98,7 +93,6 @@ export default async function handler(req, res) {
           const marketCap = price * TOTAL_SUPPLY;
           saveMarketCap(marketCap, price, 'auto');
           
-          console.log(`✅ DexScreener: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -115,14 +109,11 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log('⚠️ DexScreener: no data');
   } catch (error) {
-    console.log('❌ DexScreener:', error.message);
   }
   
-  // МЕТОД 2: Jupiter Price API v6
+  
   try {
-    console.log('→ Jupiter...');
     
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -148,7 +139,6 @@ export default async function handler(req, res) {
           const marketCap = price * TOTAL_SUPPLY;
           saveMarketCap(marketCap, price, 'auto');
           
-          console.log(`✅ Jupiter: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -163,14 +153,11 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log('⚠️ Jupiter: no data');
   } catch (error) {
-    console.log('❌ Jupiter:', error.message);
   }
   
-  // МЕТОД 3: GeckoTerminal (новый агрегатор)
+  
   try {
-    console.log('→ GeckoTerminal...');
     
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -196,7 +183,6 @@ export default async function handler(req, res) {
           const marketCap = price * TOTAL_SUPPLY;
           saveMarketCap(marketCap, price, 'auto');
           
-          console.log(`✅ GeckoTerminal: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -211,14 +197,11 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log('⚠️ GeckoTerminal: no data');
   } catch (error) {
-    console.log('❌ GeckoTerminal:', error.message);
   }
   
-  // МЕТОД 4: Birdeye Public API
+  
   try {
-    console.log('→ Birdeye...');
     
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -244,7 +227,6 @@ export default async function handler(req, res) {
           const marketCap = price * TOTAL_SUPPLY;
           saveMarketCap(marketCap, price, 'auto');
           
-          console.log(`✅ Birdeye: $${price.toFixed(8)}`);
           
           return res.status(200).json({
             success: true,
@@ -259,17 +241,14 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log('⚠️ Birdeye: no data');
   } catch (error) {
-    console.log('❌ Birdeye:', error.message);
   }
   
-  // Если есть старый кеш - отдаем его с предупреждением
+  
   if (priceCache.price) {
     const age = Math.floor((now - priceCache.timestamp) / 1000);
     const marketCap = priceCache.price * TOTAL_SUPPLY;
     
-    console.log(`⚠️ Returning stale cache (${age}s old)`);
     
     return res.status(200).json({
       success: true,
@@ -284,7 +263,7 @@ export default async function handler(req, res) {
     });
   }
   
-  // Совсем ничего не получилось
+  
   console.error('❌ All methods failed, no cache available');
   
   return res.status(503).json({
