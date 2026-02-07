@@ -467,11 +467,11 @@
                 </div>
                 <div class="input-group limit-price-group" style="display: none;">
                     <label class="input-label">Цена (0-1)</label>
-                    <input type="number" id="tradePrice" placeholder="0.5" min="0" max="1" step="0.001">
+                    <input type="number" id="tradePrice" placeholder="0.01 - 0.99" min="0" max="1" step="0.001">
                 </div>
                 <div class="input-group">
                     <label class="input-label">Количество (токенов)</label>
-                    <input type="number" id="tradeAmount" placeholder="0" min="0" step="1">
+                    <input type="number" id="tradeAmount" placeholder="мин. 500" min="0" step="1">
                 </div>
                 <div class="estimate-display" id="tradeEstimate">
                     <div style="color: var(--text-dim);">Введите сумму</div>
@@ -668,7 +668,7 @@
     </div>
 
     <script src="https://unpkg.com/@solana/web3.js@1.95.0/lib/index.iife.min.js"></script>
-    <script src="js/app.js?v=20260207v8"></script>
+    <script src="js/app.js?v=20260207v9"></script>
     <script>
         // Global variable for current round
         window.currentRoundId = 1; // Default to 15m round
