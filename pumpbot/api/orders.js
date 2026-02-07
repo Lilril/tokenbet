@@ -56,15 +56,36 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         const existing = await sql`SELECT * FROM rounds WHERE slug = ${slug}`;
         
         if (existing.rows.length > 0) {
+            const round = existing.rows[0];
+            
+            // Если start_market_cap = 0 — попробуем заполнить из market_cap_history
+            if (parseFloat(round.start_market_cap || 0) <= 0) {
+                try {
+                    const capResult = await sql`
+                        SELECT market_cap FROM market_cap_history 
+                        WHERE market_cap > 0 
+                        ORDER BY recorded_at DESC LIMIT 1
+                    `;
+                    if (capResult.rows.length > 0 && parseFloat(capResult.rows[0].market_cap) > 0) {
+                        const cap = parseFloat(capResult.rows[0].market_cap);
+                        await sql`UPDATE rounds SET start_market_cap = ${cap} WHERE id = ${round.id} AND (start_market_cap IS NULL OR start_market_cap = 0)`;
+                        round.start_market_cap = cap;
+                        console.log(`✅ Updated start_market_cap for ${slug}: $${cap}`);
+                    }
+                } catch(e) {
+                    console.log('Cap backfill error:', e.message);
+                }
+            }
+            
             console.log(`✅ Found round: ${slug}`);
-            return existing.rows[0];
+            return round;
         }
         
         console.log(`🔨 Creating round: ${slug}`);
         const endTime = new Date(closeTimestamp * 1000);
         const startTime = new Date(endTime.getTime() - intervalMinutes * 60 * 1000);
         
-        // ✅ ИСПРАВЛЕНО: Получаем market cap НАПРЯМУЮ из DexScreener 
+        // Получаем market cap из GeckoTerminal (лоукап токен)
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
         const TOKEN_ADDR = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
@@ -73,44 +94,42 @@ async function getOrCreateCurrentRound(intervalMinutes) {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 5000);
             
-            const dexResponse = await fetch(
-                `https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDR}`,
+            const geckResponse = await fetch(
+                `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${TOKEN_ADDR}`,
                 { 
                     signal: controller.signal,
-                    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+                    headers: { 'Accept': 'application/json' }
                 }
             );
             clearTimeout(timeout);
             
-            if (dexResponse.ok) {
-                const dexData = await dexResponse.json();
-                if (dexData.pairs && dexData.pairs.length > 0) {
-                    console.log(`📊 DexScreener returned ${dexData.pairs.length} pairs`);
-                    
-                    // Фильтруем только Solana pairs
-                    const solanaPairs = dexData.pairs.filter(p => p.chainId === 'solana');
-                    console.log(`📊 Solana pairs: ${solanaPairs.length}`);
-                    
-                    const pairsToUse = solanaPairs.length > 0 ? solanaPairs : dexData.pairs;
-                    
-                    // Логируем топ-3 пары
-                    const sorted = pairsToUse.sort((a, b) => 
-                        (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
-                    );
-                    sorted.slice(0, 3).forEach((p, i) => {
-                        console.log(`  #${i+1}: ${p.pairAddress?.substring(0, 10)}... price=$${p.priceUsd} liq=$${p.liquidity?.usd || 0}`);
-                    });
-                    
-                    const bestPair = sorted[0];
-                    const price = parseFloat(bestPair.priceUsd);
-                    if (price > 0 && !isNaN(price)) {
-                        startMarketCap = price * TOTAL_SUPPLY;
-                        console.log(`✅ Got start market cap from DexScreener: $${startMarketCap.toFixed(2)} (pair: ${bestPair.pairAddress})`);
-                    }
+            if (geckResponse.ok) {
+                const geckData = await geckResponse.json();
+                const price = parseFloat(geckData?.data?.attributes?.price_usd);
+                if (price > 0 && !isNaN(price)) {
+                    startMarketCap = price * TOTAL_SUPPLY;
+                    console.log(`✅ Got start market cap from GeckoTerminal: $${startMarketCap.toFixed(2)}`);
                 }
             }
         } catch (error) {
-            console.error('⚠️ Failed to fetch start market cap:', error.message);
+            console.error('⚠️ Failed to fetch start market cap from GeckoTerminal:', error.message);
+        }
+        
+        // Fallback: из market_cap_history (записывается marketcap.js)
+        if (startMarketCap <= 0) {
+            try {
+                const capResult = await sql`
+                    SELECT market_cap FROM market_cap_history 
+                    WHERE market_cap > 0 
+                    ORDER BY recorded_at DESC LIMIT 1
+                `;
+                if (capResult.rows.length > 0) {
+                    startMarketCap = parseFloat(capResult.rows[0].market_cap);
+                    console.log(`✅ Got start market cap from DB history: $${startMarketCap}`);
+                }
+            } catch(e) {
+                console.log('Cap history fallback error:', e.message);
+            }
         }
         
         const newRound = await sql`
