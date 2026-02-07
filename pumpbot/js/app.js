@@ -1709,35 +1709,105 @@ async function executeTrade(side) {
 // POLYMARKET-STYLE UNIFIED TRADING
 // ============================================
 let currentTradeSide = 'higher';
+let currentTradeAction = 'buy'; // 'buy' or 'sell'
+
+function switchTradeAction(action) {
+    currentTradeAction = action;
+    const buyBtn = document.getElementById('tradeBuyBtn');
+    const sellBtn = document.getElementById('tradeSellBtn');
+    const posInfo = document.getElementById('sellPositionInfo');
+    
+    if (action === 'buy') {
+        buyBtn.style.background = 'var(--accent-green)';
+        buyBtn.style.color = '#000';
+        buyBtn.style.border = 'none';
+        sellBtn.style.background = 'var(--bg-tertiary)';
+        sellBtn.style.color = 'var(--text-secondary)';
+        sellBtn.style.border = '1px solid var(--border)';
+        posInfo.style.display = 'none';
+    } else {
+        sellBtn.style.background = 'var(--accent-red)';
+        sellBtn.style.color = '#fff';
+        sellBtn.style.border = 'none';
+        buyBtn.style.background = 'var(--bg-tertiary)';
+        buyBtn.style.color = 'var(--text-secondary)';
+        buyBtn.style.border = '1px solid var(--border)';
+        posInfo.style.display = 'block';
+        updateSellPositionInfo();
+    }
+    updateTradeButton();
+    calculateUnifiedEstimate();
+}
+
+function updateSellPositionInfo() {
+    const side = currentTradeSide;
+    const amountEl = document.getElementById('sellPositionAmount');
+    const priceEl = document.getElementById('sellPositionPrice');
+    
+    // Find position for current side from userPositions (fetch from API)
+    fetchCurrentPosition(side).then(pos => {
+        if (pos) {
+            amountEl.textContent = pos.amount.toFixed(2) + ' токенов';
+            priceEl.textContent = pos.avgPrice.toFixed(4);
+        } else {
+            amountEl.textContent = '0 токенов';
+            priceEl.textContent = '—';
+        }
+    });
+}
+
+async function fetchCurrentPosition(side) {
+    if (!wallet) return null;
+    try {
+        const intervalMinutes = getCurrentInterval();
+        const resp = await fetch(`${API_BASE}/api/orders?action=positions&wallet=${wallet}&intervalMinutes=${intervalMinutes}`);
+        const data = await resp.json();
+        if (data.success && data.positions) {
+            return data.positions.find(p => p.side === side) || null;
+        }
+    } catch(e) {}
+    return null;
+}
+
+function updateTradeButton() {
+    const btn = document.getElementById('tradeExecuteBtn');
+    const sideText = currentTradeSide === 'higher' ? 'ВЫШЕ' : 'НИЖЕ';
+    
+    if (currentTradeAction === 'buy') {
+        btn.textContent = 'КУПИТЬ ' + sideText;
+        btn.style.background = currentTradeSide === 'higher' ? 'var(--accent-green)' : 'var(--accent-red)';
+        btn.style.color = currentTradeSide === 'higher' ? '#000' : '#fff';
+    } else {
+        btn.textContent = 'ПРОДАТЬ ' + sideText;
+        btn.style.background = '#FF6B35';
+        btn.style.color = '#fff';
+    }
+}
 
 function switchTradeSide(side) {
     currentTradeSide = side;
     
     const higherBtn = document.getElementById('sideHigherBtn');
     const lowerBtn = document.getElementById('sideLowerBtn');
-    const executeBtn = document.getElementById('tradeExecuteBtn');
     
     if (side === 'higher') {
-        higherBtn.style.background = 'var(--accent-green)';
-        higherBtn.style.color = '#000';
+        higherBtn.style.background = currentTradeAction === 'buy' ? 'var(--accent-green)' : '#FF6B35';
+        higherBtn.style.color = currentTradeAction === 'buy' ? '#000' : '#fff';
         higherBtn.style.border = 'none';
         lowerBtn.style.background = 'var(--bg-tertiary)';
         lowerBtn.style.color = 'var(--text-secondary)';
         lowerBtn.style.border = '1px solid var(--border)';
-        executeBtn.style.background = 'var(--accent-green)';
-        executeBtn.style.color = '#000';
-        executeBtn.textContent = 'КУПИТЬ ВЫШЕ';
     } else {
-        lowerBtn.style.background = 'var(--accent-red)';
+        lowerBtn.style.background = currentTradeAction === 'buy' ? 'var(--accent-red)' : '#FF6B35';
         lowerBtn.style.color = '#fff';
         lowerBtn.style.border = 'none';
         higherBtn.style.background = 'var(--bg-tertiary)';
         higherBtn.style.color = 'var(--text-secondary)';
         higherBtn.style.border = '1px solid var(--border)';
-        executeBtn.style.background = 'var(--accent-red)';
-        executeBtn.style.color = '#fff';
-        executeBtn.textContent = 'КУПИТЬ НИЖЕ';
     }
+    
+    updateTradeButton();
+    if (currentTradeAction === 'sell') updateSellPositionInfo();
     
     // Recalculate estimate
     calculateUnifiedEstimate();
@@ -1806,8 +1876,6 @@ async function calculateUnifiedEstimate() {
 }
 
 async function executeUnifiedTrade() {
-    // Delegate to existing executeTrade with current side
-    // But use unified inputs
     if (!wallet) {
         openModal();
         return;
@@ -1821,6 +1889,66 @@ async function executeUnifiedTrade() {
         return;
     }
     
+    // SELL mode
+    if (currentTradeAction === 'sell') {
+        try {
+            const intervalMinutes = getCurrentInterval();
+            
+            const orderData = {
+                wallet,
+                side,
+                amount,
+                type: selectedOrderType,
+                action: 'sell',
+                intervalMinutes
+            };
+            
+            if (selectedOrderType === 'limit') {
+                const price = parseFloat(document.getElementById('tradePrice').value);
+                if (!price || price <= 0 || price >= 1) {
+                    showNotification('Введите корректную цену (от 0 до 1)', 'error');
+                    return;
+                }
+                orderData.price = price;
+            }
+            
+            const response = await fetch(`${API_BASE}/api/orders`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            });
+            
+            const result = await response.json();
+            console.log('📝 Sell result:', result);
+            
+            if (result.success && result.sell) {
+                const sideText = side === 'higher' ? 'ВЫШЕ' : 'НИЖЕ';
+                const profit = result.sell.profit;
+                const profitText = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
+                showNotification(`✅ Продано ${result.sell.amount.toFixed(2)} ${sideText} по ${result.sell.avgPrice.toFixed(4)}\nВыручка: ${result.sell.proceeds.toFixed(2)} | P&L: ${profitText}`, 'success');
+                
+                document.getElementById('tradeAmount').value = '';
+                document.getElementById('tradeEstimate').innerHTML = '<div style="color: var(--text-dim);">Введите сумму</div>';
+                updateSellPositionInfo();
+                
+                await Promise.all([
+                    fetchOrderBook(),
+                    fetchRecentTrades(),
+                    fetchTokenBalance(),
+                    fetchUserOrders(),
+                    fetchUserPositions()
+                ]);
+            } else {
+                showNotification(result.error || 'Ошибка продажи', 'error');
+            }
+        } catch (error) {
+            console.error('❌ Sell error:', error);
+            showNotification('Ошибка при продаже', 'error');
+        }
+        return;
+    }
+    
+    // BUY mode (existing logic)
     if (amount > tokenBalance) {
         showNotification('Недостаточно токенов', 'error');
         return;
@@ -1930,6 +2058,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Make new functions globally available
 window.switchTradeSide = switchTradeSide;
+window.switchTradeAction = switchTradeAction;
 window.executeUnifiedTrade = executeUnifiedTrade;
 window.openDepositModal = openDepositModal;
 window.closeDepositModal = closeDepositModal;
@@ -2545,23 +2674,6 @@ window.addEventListener('load', async () => {
             : '0.00';
         const capArrow = finalMarketCap > startMarketCap ? '📈' : (finalMarketCap < startMarketCap ? '📉' : '➡️');
         
-        const capBlock = (startMarketCap > 0 || finalMarketCap > 0) 
-            ? '<div class="market-cap-comparison">' +
-                '<div>' +
-                    '<div style="font-size: 0.8em; color: var(--text-dim);">Начальная кап.</div>' +
-                    '<div class="market-cap-value">$' + startMarketCap.toLocaleString() + '</div>' +
-                '</div>' +
-                '<div class="market-cap-arrow">' + capArrow + '</div>' +
-                '<div>' +
-                    '<div style="font-size: 0.8em; color: var(--text-dim);">Финальная кап.</div>' +
-                    '<div class="market-cap-value">$' + finalMarketCap.toLocaleString() + '</div>' +
-                '</div>' +
-                '<div style="padding: 8px 15px; background: var(--bg-tertiary); border-radius: 8px; font-weight: 600;">' +
-                    (capChange > 0 ? '+' : '') + capChange + '%' +
-                '</div>' +
-              '</div>'
-            : '<div style="padding: 12px; text-align: center; color: var(--text-dim); font-size: 0.9em;">Капитализация не была зафиксирована — возврат ставки</div>';
-        
         return `
             <div class="settlement-card ${statusClass}">
                 <div class="settlement-header">
@@ -2579,7 +2691,20 @@ window.addEventListener('load', async () => {
                     </div>
                 </div>
                 
-                ${capBlock}
+                <div class="market-cap-comparison">
+                    <div>
+                        <div style="font-size: 0.8em; color: var(--text-dim);">Начальная кап.</div>
+                        <div class="market-cap-value">$${startMarketCap > 0 ? startMarketCap.toLocaleString() : '—'}</div>
+                    </div>
+                    <div class="market-cap-arrow">${capArrow}</div>
+                    <div>
+                        <div style="font-size: 0.8em; color: var(--text-dim);">Финальная кап.</div>
+                        <div class="market-cap-value">$${finalMarketCap > 0 ? finalMarketCap.toLocaleString() : '—'}</div>
+                    </div>
+                    <div style="padding: 8px 15px; background: var(--bg-tertiary); border-radius: 8px; font-weight: 600;">
+                        ${capChange > 0 ? '+' : ''}${capChange}%
+                    </div>
+                </div>
                 
                 <div class="settlement-details">
                     <div class="settlement-detail">
