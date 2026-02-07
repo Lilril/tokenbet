@@ -782,25 +782,43 @@ async function inlineSettleRound(roundId) {
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
             const TOKEN = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
+            
+            // GeckoTerminal (лоукап)
             try {
                 const ctrl = new AbortController();
-                const t = setTimeout(() => ctrl.abort(), 4000);
-                const resp = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN}`, {
-                    signal: ctrl.signal, headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+                const t = setTimeout(() => ctrl.abort(), 5000);
+                const resp = await fetch(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${TOKEN}`, {
+                    signal: ctrl.signal, headers: { 'Accept': 'application/json' }
                 });
                 clearTimeout(t);
                 if (resp.ok) {
                     const d = await resp.json();
-                    if (d.pairs?.length > 0) {
-                        const solanaPairs = d.pairs.filter(p => p.chainId === 'solana');
-                        const pairsToUse = solanaPairs.length > 0 ? solanaPairs : d.pairs;
-                        const best = pairsToUse.sort((a,b) => (b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0];
-                        const p = parseFloat(best.priceUsd);
-                        if (p > 0) finalMC = p * 1000000000;
+                    const price = parseFloat(d?.data?.attributes?.price_usd);
+                    if (price > 0 && !isNaN(price)) {
+                        finalMC = price * 1000000000;
+                        console.log(`✅ Final MC from GeckoTerminal: $${finalMC.toFixed(2)}`);
                     }
                 }
-            } catch(e) {}
-            if (!finalMC) return; // GitHub cron подхватит
+            } catch(e) {
+                console.log('GeckoTerminal finalMC error:', e.message);
+            }
+            
+            // Fallback: из market_cap_history
+            if (finalMC <= 0) {
+                try {
+                    const capResult = await sql`
+                        SELECT market_cap FROM market_cap_history 
+                        WHERE market_cap > 0 
+                        ORDER BY recorded_at DESC LIMIT 1
+                    `;
+                    if (capResult.rows.length > 0) {
+                        finalMC = parseFloat(capResult.rows[0].market_cap);
+                        console.log(`✅ Final MC from DB history: $${finalMC}`);
+                    }
+                } catch(e) {}
+            }
+            
+            if (!finalMC) return; // Cron подхватит позже
             await sql`UPDATE rounds SET final_market_cap = ${finalMC} WHERE id = ${roundId}`;
         }
         
