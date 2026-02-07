@@ -1278,7 +1278,7 @@ if (action === 'orderbook') {
         // POST - Разместить ордер (С ПРОВЕРКОЙ БАЛАНСА)
         // ============================================
         if (method === 'POST') {
-            const { wallet, side, amount, price, type, roundId, intervalMinutes } = 
+            const { wallet, side, amount, price, type, roundId, intervalMinutes, action } = 
                 typeof body === 'string' ? JSON.parse(body) : body;
             
             if (!wallet || !side || !amount) {
@@ -1318,14 +1318,220 @@ if (action === 'orderbook') {
             }
             
             if (!round) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Round not found'
-                });
+                return res.status(400).json({ success: false, error: 'Round not found' });
+            }
+            
+            // Проверка что раунд активен
+            if (round.status !== 'active') {
+                return res.status(400).json({ success: false, error: 'Раунд уже закрыт' });
             }
             
             const user = await db.getOrCreateUser(wallet);
             
+            // ============================================
+            // SELL — продажа позиции
+            // ============================================
+            if (action === 'sell') {
+                // Проверяем позицию пользователя
+                const positions = await db.getUserPositions(user.id, round.id);
+                const position = positions.find(p => p.side === side);
+                
+                if (!position || parseFloat(position.amount) <= 0) {
+                    return res.status(400).json({ success: false, error: 'У вас нет позиции для продажи' });
+                }
+                
+                const posAmount = parseFloat(position.amount);
+                const sellAmount = Math.min(amt, posAmount);
+                
+                if (sellAmount <= 0) {
+                    return res.status(400).json({ success: false, error: 'Нечего продавать' });
+                }
+                
+                await db.logAction(user.id, 'sell_position', { side, amount: sellAmount, type, price }, clientIP, req.headers['user-agent']);
+                
+                let totalProceeds = 0;
+                let soldAmount = 0;
+                const trades = [];
+                
+                // Продажа по лимитной цене
+                if (type === 'limit') {
+                    const sellPrice = parseFloat(price);
+                    if (!sellPrice || sellPrice <= 0 || sellPrice >= 1 || isNaN(sellPrice)) {
+                        return res.status(400).json({ success: false, error: 'Цена должна быть от 0 до 1' });
+                    }
+                    
+                    // Ищем покупателей на нашей стороне (те кто ставят лимитки на BUY нашей стороны)
+                    // Т.е. opposite side limit orders с price >= (1 - sellPrice)
+                    const oppositeSide = side === 'higher' ? 'lower' : 'higher';
+                    const buyOrders = await sql`
+                        SELECT id, user_id, side, amount, filled, price
+                        FROM limit_orders
+                        WHERE round_id = ${round.id} 
+                        AND side = ${side}
+                        AND status = 'active' 
+                        AND amount > filled
+                        AND price >= ${sellPrice}
+                        ORDER BY price DESC, created_at ASC
+                        LIMIT 50
+                    `;
+                    
+                    for (const buyOrder of buyOrders.rows) {
+                        const remaining = sellAmount - soldAmount;
+                        if (remaining <= 0) break;
+                        
+                        const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
+                        const matchAmount = Math.min(remaining, orderRemaining);
+                        const matchPrice = parseFloat(buyOrder.price);
+                        const proceeds = matchAmount * matchPrice;
+                        
+                        const trade = await db.recordTrade({
+                            roundId: round.id,
+                            buyerId: buyOrder.user_id,
+                            sellerId: user.id,
+                            buyOrderId: buyOrder.id,
+                            sellOrderId: null,
+                            side,
+                            amount: matchAmount,
+                            price: matchPrice,
+                            totalCost: proceeds,
+                            tradeType: 'sell'
+                        });
+                        trades.push(trade);
+                        
+                        await db.updateOrderFilled(buyOrder.id, matchAmount);
+                        // Покупатель получает позицию
+                        await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, matchPrice, proceeds);
+                        // Списываем locked покупателя
+                        await deductLocked(buyOrder.user_id, proceeds);
+                        
+                        totalProceeds += proceeds;
+                        soldAmount += matchAmount;
+                    }
+                    
+                    // Если не всё продано — можно создать лимитный sell-ордер
+                    // Пока просто возвращаем частичное исполнение
+                }
+                
+                // Маркет продажа — продаём в существующие buy-лимитки
+                if (type === 'market') {
+                    const buyOrders = await sql`
+                        SELECT id, user_id, side, amount, filled, price
+                        FROM limit_orders
+                        WHERE round_id = ${round.id} 
+                        AND side = ${side}
+                        AND status = 'active' 
+                        AND amount > filled
+                        ORDER BY price DESC, created_at ASC
+                        LIMIT 50
+                    `;
+                    
+                    for (const buyOrder of buyOrders.rows) {
+                        const remaining = sellAmount - soldAmount;
+                        if (remaining <= 0) break;
+                        
+                        const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
+                        const matchAmount = Math.min(remaining, orderRemaining);
+                        const matchPrice = parseFloat(buyOrder.price);
+                        const proceeds = matchAmount * matchPrice;
+                        
+                        const trade = await db.recordTrade({
+                            roundId: round.id,
+                            buyerId: buyOrder.user_id,
+                            sellerId: user.id,
+                            buyOrderId: buyOrder.id,
+                            sellOrderId: null,
+                            side,
+                            amount: matchAmount,
+                            price: matchPrice,
+                            totalCost: proceeds,
+                            tradeType: 'sell'
+                        });
+                        trades.push(trade);
+                        
+                        await db.updateOrderFilled(buyOrder.id, matchAmount);
+                        await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, matchPrice, proceeds);
+                        await deductLocked(buyOrder.user_id, proceeds);
+                        
+                        totalProceeds += proceeds;
+                        soldAmount += matchAmount;
+                    }
+                    
+                    // Если стакан пуст — продаём по текущей AMM цене (0.5 для обеих сторон при равных резервах)
+                    if (soldAmount < sellAmount) {
+                        const remainSell = sellAmount - soldAmount;
+                        // Получаем текущую AMM цену
+                        const poolResult = await sql`
+                            SELECT higher_reserve, lower_reserve 
+                            FROM pool_snapshots WHERE round_id = ${round.id}
+                            ORDER BY created_at DESC LIMIT 1
+                        `;
+                        if (poolResult.rows.length > 0) {
+                            const pool = poolResult.rows[0];
+                            const hReserve = parseFloat(pool.higher_reserve);
+                            const lReserve = parseFloat(pool.lower_reserve);
+                            const totalReserve = hReserve + lReserve;
+                            // Цена стороны = opposing_reserve / total
+                            const sellAtPrice = side === 'higher' 
+                                ? lReserve / totalReserve 
+                                : hReserve / totalReserve;
+                            const proceeds = remainSell * sellAtPrice;
+                            
+                            totalProceeds += proceeds;
+                            soldAmount += remainSell;
+                        }
+                    }
+                }
+                
+                if (soldAmount <= 0) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'Нет покупателей в стакане. Попробуйте лимитный ордер на продажу.' 
+                    });
+                }
+                
+                // Уменьшаем позицию
+                const newAmount = posAmount - soldAmount;
+                const costReduction = (soldAmount / posAmount) * parseFloat(position.total_cost);
+                
+                if (newAmount <= 0.001) {
+                    // Полная продажа — удаляем позицию
+                    await sql`DELETE FROM user_positions WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}`;
+                } else {
+                    await sql`
+                        UPDATE user_positions 
+                        SET amount = ${newAmount}, 
+                            total_cost = total_cost - ${costReduction}
+                        WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}
+                    `;
+                }
+                
+                // Зачисляем выручку на баланс
+                await creditBalance(user.id, totalProceeds, `Продажа ${soldAmount} ${side} токенов`);
+                
+                const avgSellPrice = totalProceeds / soldAmount;
+                const profit = totalProceeds - costReduction;
+                
+                const orderBook = await db.getAggregatedOrderBook(round.id);
+                
+                return res.status(200).json({
+                    success: true,
+                    sell: {
+                        side,
+                        amount: soldAmount,
+                        requested: amt,
+                        avgPrice: avgSellPrice,
+                        proceeds: totalProceeds,
+                        profit: profit,
+                        remaining: Math.max(0, newAmount),
+                        partialFill: soldAmount < amt
+                    },
+                    orderBook
+                });
+            }
+            
+            // ============================================
+            // BUY — покупка (existing logic below)
+            // ============================================
             await db.logAction(
                 user.id,
                 'place_order',
