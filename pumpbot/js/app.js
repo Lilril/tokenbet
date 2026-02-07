@@ -302,7 +302,7 @@ function updateBalanceDisplay() {
     const lockedEl = document.getElementById('lockedBalance');
     if (lockedEl) {
         if (balanceLocked > 0) {
-            lockedEl.textContent = `🔒 ${balanceLocked.toLocaleString('en-US', { maximumFractionDigits: 2 })} in orders`;
+            lockedEl.textContent = `⌂ ${balanceLocked.toLocaleString('en-US', { maximumFractionDigits: 2 })} in orders`;
         } else {
             lockedEl.textContent = '';
         }
@@ -409,7 +409,7 @@ async function executeDeposit() {
     }
     const btn = document.getElementById('executeDepositBtn');
     btn.disabled = true;
-    btn.textContent = '⏳ Preparing...';
+    btn.textContent = 'Preparing...';
     try {
         const provider = getActiveProvider();
         if (!provider) {
@@ -431,7 +431,7 @@ async function executeDeposit() {
         );
         const transaction = new Transaction();
         transaction.add(transferIx);
-        btn.textContent = '⏳ Preparing transaction...';
+        btn.textContent = 'Preparing transaction...';
         let blockhash = platformDepositInfo.blockhash;
         if (!blockhash) {
             try {
@@ -455,11 +455,11 @@ async function executeDeposit() {
         }
         transaction.recentBlockhash = blockhash;
         transaction.feePayer = senderPubkey;
-        btn.textContent = '⏳ Confirm in wallet...';
+        btn.textContent = 'Confirm in wallet...';
         const { signature } = await provider.signAndSendTransaction(transaction);
-        btn.textContent = '⏳ Awaiting confirmation...';
+        btn.textContent = 'Awaiting confirmation...';
         await new Promise(r => setTimeout(r, 6000));
-        btn.textContent = '⏳ Crediting balance...';
+        btn.textContent = 'Crediting balance...';
         let data = null;
         for (let attempt = 0; attempt < 3; attempt++) {
             try {
@@ -484,7 +484,7 @@ async function executeDeposit() {
         resultEl.style.display = 'block';
         if (data && data.success) {
             resultEl.innerHTML = `
-                <div style="font-size: 3em; margin-bottom: 15px;">✅</div>
+                <div style="font-size: 3em; margin-bottom: 15px;">✓</div>
                 <div style="font-size: 1.3em; font-weight: 700; color: var(--accent-green); margin-bottom: 10px;">
                     Deposit confirmed!
                 </div>
@@ -503,7 +503,7 @@ async function executeDeposit() {
             await fetchTokenBalance();
         } else {
             resultEl.innerHTML = `
-                <div style="font-size: 3em; margin-bottom: 15px;">⚠️</div>
+                <div style="font-size: 3em; margin-bottom: 15px;">!</div>
                 <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-yellow); margin-bottom: 10px;">
                     Tokens sent!
                 </div>
@@ -526,14 +526,14 @@ async function executeDeposit() {
         console.error('❌ Deposit error:', error);
         if (error.message?.includes('User rejected') || error.message?.includes('rejected')) {
             btn.disabled = false;
-            btn.textContent = '✅ DEPOSIT VIA PHANTOM';
+            btn.textContent = 'DEPOSIT VIA PHANTOM';
             return;
         }
         const resultEl = document.getElementById('depositResult');
         document.getElementById('depositStep1').style.display = 'none';
         resultEl.style.display = 'block';
         resultEl.innerHTML = `
-            <div style="font-size: 3em; margin-bottom: 15px;">❌</div>
+            <div style="font-size: 3em; margin-bottom: 15px;">✗</div>
             <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-red); margin-bottom: 10px;">
                 Error
             </div>
@@ -546,7 +546,7 @@ async function executeDeposit() {
         `;
     } finally {
         btn.disabled = false;
-        btn.textContent = '✅ DEPOSIT VIA PHANTOM';
+        btn.textContent = 'DEPOSIT VIA PHANTOM';
     }
 }
 // SPL HELPERS
@@ -616,7 +616,7 @@ async function processWithdraw() {
     }
     const btn = document.getElementById('processWithdrawBtn');
     btn.disabled = true;
-    btn.textContent = '⏳ Sending tokens...';
+    btn.textContent = 'Sending tokens...';
     try {
         const response = await fetch(`${API_BASE}/api/balance`, {
             method: 'POST',
@@ -633,7 +633,7 @@ async function processWithdraw() {
         resultEl.style.display = 'block';
         if (data.success) {
             resultEl.innerHTML = `
-                <div style="font-size: 3em; margin-bottom: 15px;">✅</div>
+                <div style="font-size: 3em; margin-bottom: 15px;">✓</div>
                 <div style="font-size: 1.3em; font-weight: 700; color: var(--accent-green); margin-bottom: 10px;">
                     Withdrawal complete!
                 </div>
@@ -653,7 +653,7 @@ async function processWithdraw() {
             await fetchTokenBalance();
         } else {
             resultEl.innerHTML = `
-                <div style="font-size: 3em; margin-bottom: 15px;">❌</div>
+                <div style="font-size: 3em; margin-bottom: 15px;">✗</div>
                 <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-red); margin-bottom: 10px;">
                     Withdrawal error
                 </div>
@@ -670,7 +670,7 @@ async function processWithdraw() {
         showNotification('Network error. Try again.', 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = '📤 WITHDRAW';
+        btn.textContent = 'WITHDRAW';
     }
 }
 // UI
@@ -939,7 +939,7 @@ function renderTradeHistory() {
     container.innerHTML = recentTrades.map(trade => {
         const time = new Date(trade.time).toLocaleTimeString('ru-RU');
         const sideClass = trade.side === 'higher' ? 'buy' : 'sell';
-        const sideText = trade.side === 'higher' ? '⬆ HIGHER' : '⬇ LOWER';
+        const sideText = trade.side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
         return `
             <div class="trade-item ${sideClass}">
                 <div>
@@ -1016,7 +1016,7 @@ async function cancelOrder(orderId) {
         });
         const result = await response.json();
         if (result.success) {
-            showNotification('✅ Ордер отменен!', 'success');
+            showNotification('Ордер отменен!', 'success');
             // Refresh data
             await Promise.all([
                 fetchUserOrders(),
@@ -1091,7 +1091,7 @@ function updateMyOrdersModalList() {
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                     <div>
                         <span class="${order.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
-                            ${order.side === 'higher' ? '⬆ HIGHER' : '⬇ LOWER'}
+                            ${order.side === 'higher' ? '↑ HIGHER' : '↓ LOWER'}
                         </span>
                         <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
                             ${orderType}
@@ -1161,7 +1161,7 @@ async function fetchUserTrades() {
                         <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                             <div>
                                 <span class="${trade.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
-                                    ${trade.side === 'higher' ? '⬆ HIGHER' : '⬇ LOWER'}
+                                    ${trade.side === 'higher' ? '↑ HIGHER' : '↓ LOWER'}
                                 </span>
                                 <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
                                     ${trade.order_type === 'market' ? 'Market' : 'Limit'}
@@ -1354,33 +1354,33 @@ async function executeTrade(side) {
             const sideText = side === 'higher' ? 'HIGHER' : 'LOWER';
             const typeText = selectedOrderType === 'market' ? 'Market' : 'Limit';
             if (selectedOrderType === 'market' && result.trade) {
-                let message = `✅ ${typeText} ордер на ${sideText} исполнен!\n\n`;
+                let message = `${typeText} ордер на ${sideText} исполнен!\n\n`;
                 message += `Qty: ${amount} tokens\n`;
                 message += `Avg price: ${result.trade.price.toFixed(4)}\n`;
                 if (result.trade.source === 'orderbook') {
-                    message += `\n📊 Исполнено из стакана ордеров`;
+                    message += `\n• Исполнено из стакана ордеров`;
                 } else if (result.trade.source === 'mixed') {
-                    message += `\n📊 Из стакана: ${result.trade.orderbookFilled} tokens`;
-                    message += `\n🏦 From AMM pool: ${result.trade.ammFilled} tokens`;
+                    message += `\n• Из стакана: ${result.trade.orderbookFilled} tokens`;
+                    message += `\n• From AMM pool: ${result.trade.ammFilled} tokens`;
                 } else if (result.trade.source === 'amm') {
-                    message += `\n🏦 Filled from AMM pool`;
+                    message += `\n• Filled from AMM pool`;
                 }
                 showNotification(message, 'error');
             } else if (selectedOrderType === 'limit' && result.order) {
                 const matched = result.matched || 0;
                 const remaining = result.order.amount - matched;
                 if (matched > 0 && remaining > 0) {
-                    showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\n` +
+                    showNotification(`${typeText} ордер на ${sideText} размещен!\n\n` +
                           `Filled immediately: ${matched} tokens\n` +
                           `Remaining in book: ${remaining} tokens`);
                 } else if (matched > 0) {
-                    showNotification(`✅ ${typeText} ордер на ${sideText} полностью исполнен!\n\n` +
+                    showNotification(`${typeText} ордер на ${sideText} полностью исполнен!\n\n` +
                           `Qty: ${matched} tokens`);
                 } else {
-                    showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
+                    showNotification(`${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
                 }
             } else {
-                showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
+                showNotification(`${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
             }
             // Reset form
             amountInput.value = '';
@@ -1595,7 +1595,7 @@ async function executeUnifiedTrade() {
                 const sideText = side === 'higher' ? 'HIGHER' : 'LOWER';
                 const profit = result.sell.profit;
                 const profitText = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
-                showNotification(`✅ Продано ${result.sell.amount.toFixed(2)} ${sideText} по ${result.sell.avgPrice.toFixed(4)}\nВыручка: ${result.sell.proceeds.toFixed(2)} | P&L: ${profitText}`, 'success');
+                showNotification(`Продано ${result.sell.amount.toFixed(2)} ${sideText} по ${result.sell.avgPrice.toFixed(4)}\nВыручка: ${result.sell.proceeds.toFixed(2)} | P&L: ${profitText}`, 'success');
                 document.getElementById('tradeAmount').value = '';
                 document.getElementById('tradeEstimate').innerHTML = '<div style="color: var(--text-dim);">Enter amount</div>';
                 updateSellPositionInfo();
@@ -1647,20 +1647,20 @@ async function executeUnifiedTrade() {
             const sideText = side === 'higher' ? 'HIGHER' : 'LOWER';
             const typeText = selectedOrderType === 'market' ? 'Market' : 'Limit';
             if (selectedOrderType === 'market' && result.trade) {
-                let message = `✅ ${typeText} ордер на ${sideText} исполнен!\n\n`;
+                let message = `${typeText} ордер на ${sideText} исполнен!\n\n`;
                 message += `Qty: ${amount} tokens\n`;
                 message += `Avg price: ${result.trade.price.toFixed(4)}\n`;
                 if (result.trade.source === 'orderbook') {
-                    message += `\n📊 Исполнено из стакана ордеров`;
+                    message += `\n• Исполнено из стакана ордеров`;
                 } else if (result.trade.source === 'mixed') {
-                    message += `\n📊 Из стакана: ${result.trade.orderbookFilled} tokens`;
-                    message += `\n🏦 From AMM pool: ${result.trade.ammFilled} tokens`;
+                    message += `\n• Из стакана: ${result.trade.orderbookFilled} tokens`;
+                    message += `\n• From AMM pool: ${result.trade.ammFilled} tokens`;
                 } else if (result.trade.source === 'amm') {
-                    message += `\n🏦 Filled from AMM pool`;
+                    message += `\n• Filled from AMM pool`;
                 }
                 showNotification(message, 'error');
             } else {
-                showNotification(`✅ ${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
+                showNotification(`${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
             }
             // Reset
             document.getElementById('tradeAmount').value = '';
@@ -1961,7 +1961,7 @@ window.addEventListener('load', async () => {
             });
             const result = await response.json();
             if (result.success) {
-                showNotification(`✅ Выигрыш забран!\n\nПолучено: ${result.payout.toFixed(2)} tokens\nP&L: ${result.profitLoss.toFixed(2)} tokens`, 'success');
+                showNotification(`Выигрыш забран!\n\nПолучено: ${result.payout.toFixed(2)} tokens\nP&L: ${result.profitLoss.toFixed(2)} tokens`, 'success');
                 await Promise.all([
                     fetchUnclaimedSettlements(),
                     fetchTokenBalance()
@@ -1988,7 +1988,7 @@ window.addEventListener('load', async () => {
         if (!countEl) return;
         if (userSettlements.length > 0) {
             // Show badge with unclaimed count
-            countEl.innerHTML = `<span style="color: var(--accent-yellow);">🎁 ${userSettlements.length}</span>`;
+            countEl.innerHTML = `<span style="color: var(--accent-yellow);">● ${userSettlements.length}</span>`;
         } else {
             countEl.innerHTML = `<span style="color: var(--text-dim);">→</span>`;
         }
@@ -2064,7 +2064,7 @@ window.addEventListener('load', async () => {
         if (userSettlements.length === 0) {
             container.innerHTML = `
                 <div style="padding: 40px; text-align: center; color: var(--text-dim);">
-                    <div style="font-size: 3em; margin-bottom: 15px;">🎯</div>
+                    <div style="font-size: 3em; margin-bottom: 15px;">◎</div>
                     <div style="font-size: 1.2em; margin-bottom: 10px;">No unclaimed winnings</div>
                     <div style="font-size: 0.9em;">Participate in rounds to earn payouts!</div>
                 </div>
@@ -2103,7 +2103,7 @@ window.addEventListener('load', async () => {
         if (!data.success || !data.settlements || data.settlements.length === 0) {
             container.innerHTML = `
                 <div style="padding: 40px; text-align: center; color: var(--text-dim);">
-                    <div style="font-size: 3em; margin-bottom: 15px;">📜</div>
+                    <div style="font-size: 3em; margin-bottom: 15px;">≡</div>
                     <div style="font-size: 1.2em;">History is empty</div>
                 </div>
             `;
@@ -2121,13 +2121,13 @@ window.addEventListener('load', async () => {
 }
     function buildTransactionRow(t) {
         const typeMap = {
-            'deposit': { label: '📥 Deposit', color: 'var(--accent-green)' },
-            'withdrawal': { label: '📤 Вывод', color: 'var(--accent-red)' },
-            'trade_credit': { label: '💰 Payout', color: 'var(--accent-green)' },
-            'trade_debit': { label: '🎯 Ставка', color: 'var(--accent-red)' },
-            'order_lock': { label: '🔒 Блокировка', color: 'var(--text-dim)' },
-            'order_unlock': { label: '🔓 Unlock', color: 'var(--text-dim)' },
-            'refund': { label: '🔄 Refund', color: 'var(--accent-yellow)' }
+            'deposit': { label: '↓ Deposit', color: 'var(--accent-green)' },
+            'withdrawal': { label: '↑ Вывод', color: 'var(--accent-red)' },
+            'trade_credit': { label: '$ Payout', color: 'var(--accent-green)' },
+            'trade_debit': { label: '○ Ставка', color: 'var(--accent-red)' },
+            'order_lock': { label: '⌂ Блокировка', color: 'var(--text-dim)' },
+            'order_unlock': { label: '⌂ Unlock', color: 'var(--text-dim)' },
+            'refund': { label: '↔ Refund', color: 'var(--accent-yellow)' }
         };
         const info = typeMap[t.type] || { label: t.type, color: 'var(--text-dim)' };
         const isPositive = t.amount > 0 && (t.type === 'deposit' || t.type === 'trade_credit' || t.type === 'refund' || t.type === 'order_unlock');
@@ -2177,7 +2177,7 @@ window.addEventListener('load', async () => {
             if (!data.success || !data.transactions || data.transactions.length === 0) {
                 container.innerHTML = `
                     <div style="padding: 40px; text-align: center; color: var(--text-dim);">
-                        <div style="font-size: 3em; margin-bottom: 15px;">💳</div>
+                        <div style="font-size: 3em; margin-bottom: 15px;">⊞</div>
                         <div style="font-size: 1.2em;">No transactions</div>
                     </div>
                 `;
@@ -2202,15 +2202,15 @@ window.addEventListener('load', async () => {
         const finalMarketCap = parseFloat(settlement.finalMarketCap) || 0;
         const intervalName = intervalMinutes === 15 ? '15m' : 
                             intervalMinutes === 60 ? '1h' : '4h';
-        const sideName = side === 'higher' ? '⬆ HIGHER' : '⬇ LOWER';
+        const sideName = side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
         const sideColor = side === 'higher' ? 'text-green' : 'text-red';
         const isTie = Math.abs(profitLoss) < 0.01 && won && payout > 0;
         const statusClass = isTie ? 'refund' : (won ? 'won' : 'lost');
-        const statusText = isTie ? '🔄 НИЧЬЯ' : (won ? '🎉 ВЫИГРЫШ' : '😔 ПРОИГРЫШ');
+        const statusText = isTie ? '↔ НИЧЬЯ' : (won ? '▲ ВЫИГРЫШ' : '▼ ПРОИГРЫШ');
         const capChange = startMarketCap > 0 
             ? ((finalMarketCap - startMarketCap) / startMarketCap * 100).toFixed(2)
             : '0.00';
-        const capArrow = finalMarketCap > startMarketCap ? '📈' : (finalMarketCap < startMarketCap ? '📉' : '➡️');
+        const capArrow = finalMarketCap > startMarketCap ? '↗' : (finalMarketCap < startMarketCap ? '↘' : '→');
         return `
             <div class="settlement-card ${statusClass}">
                 <div class="settlement-header">
@@ -2280,7 +2280,7 @@ window.addEventListener('load', async () => {
                     id="claim-btn-${roundId}"
                     onclick="claimSettlement(${roundId})"
                 >
-                    💰 Claim ${payout.toFixed(2)} tokens
+                    Claim ${payout.toFixed(2)} tokens
                 </button>
             </div>
         `;
@@ -2292,7 +2292,7 @@ window.addEventListener('load', async () => {
         const claimDate = new Date(claimedAt).toLocaleString('ru-RU');
         return `
             <div class="settlement-claimed">
-                <strong>✅ Claimed</strong>
+                <strong>✓ Claimed</strong>
                 ${claimDate}
                 ${claimTxHash ? `
                     <br>
