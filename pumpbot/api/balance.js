@@ -1,16 +1,3 @@
-// ============================================
-// BALANCE API — Кастодиальные балансы + Депозит/Вывод
-// ============================================
-// Флоу депозита:
-//   1. POST { action: "deposit-info" }  → Клиент получает адрес платформы + ATA
-//   2. Клиент формирует SPL-transfer в Phantom, подписывает, отправляет on-chain
-//   3. POST { action: "confirm-deposit", wallet, txSignature } → Бэкенд верифицирует:
-//      - Транзакция существует и подтверждена
-//      - SPL-transfer идёт на ATA платформы
-//      - Отправитель = wallet из запроса (ЗАЩИТА ОТ КРАЖИ)
-//      - TX ещё не использовался (дубль-защита)
-// ============================================
-
 import { sql } from '@vercel/postgres';
 import {
     Connection,
@@ -26,7 +13,7 @@ import {
 import bs58 from 'bs58';
 
 // ============================================
-// КОНФИГУРАЦИЯ
+
 // ============================================
 const MINT_ADDRESS = process.env.TOKEN_MINT || 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
 const PLATFORM_WALLET_SECRET = process.env.PLATFORM_WALLET_SECRET;
@@ -134,11 +121,11 @@ async function debitBalance(userId, amount, type, referenceId, referenceType, de
 }
 
 // ============================================
-// DEPOSIT — верификация Phantom-подписанной транзакции
+
 // ============================================
 
 async function verifyAndCreditDeposit(txSignature, walletAddress) {
-    // 1. Дубль-защита: tx уже использовался?
+    
     const existing = await sql`SELECT id, status FROM deposits WHERE tx_signature = ${txSignature}`;
     if (existing.rows.length > 0) {
         if (existing.rows[0].status === 'confirmed') {
@@ -146,7 +133,7 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         }
     }
 
-    // 2. Получаем транзакцию из Solana
+    
     const connection = getConnection();
     let txInfo;
 
@@ -171,7 +158,7 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         return { success: false, error: 'Транзакция завершилась с ошибкой on-chain' };
     }
 
-    // 3. Определяем token program и вычисляем правильный ATA платформы
+    
     let tokenProgramId;
     try {
         const mintInfo = await connection.getParsedAccountInfo(getMintPublicKey());
@@ -184,19 +171,18 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     const tokenProgramPubkey = new PublicKey(tokenProgramId);
     const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
     
-    // Вычисляем ATA платформы с правильной token program
+    
     const [platformAta] = PublicKey.findProgramAddressSync(
         [getPlatformPublicKey().toBuffer(), tokenProgramPubkey.toBuffer(), getMintPublicKey().toBuffer()],
         ATA_PROGRAM
     );
     const platformAtaStr = platformAta.toBase58();
     
-    console.log(`🔍 Verify deposit: tokenProgram=${tokenProgramId}, platformAta=${platformAtaStr}`);
 
     let depositAmount = 0;
     let senderAuthority = null;
 
-    // Собираем ВСЕ инструкции (top-level + inner)
+    
     const allInstructions = [...(txInfo.transaction.message.instructions || [])];
     for (const inner of (txInfo.meta?.innerInstructions || [])) {
         allInstructions.push(...(inner.instructions || []));
@@ -208,7 +194,7 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         
         const programId = ix.programId?.toBase58?.() || ix.programId || '';
 
-        // transferChecked (с проверкой mint) — работает и для SPL и Token-2022
+        
         if (parsed.type === 'transferChecked' && parsed.info?.mint === MINT_ADDRESS) {
             if (parsed.info.destination === platformAtaStr) {
                 depositAmount = parseFloat(parsed.info.tokenAmount?.uiAmount || 0);
@@ -217,7 +203,7 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
             }
         }
 
-        // Обычный transfer — проверяем что программа = наш tokenProgram
+        
         if (parsed.type === 'transfer' && 
             (programId === TOKEN_PROGRAM_ID.toBase58() || programId === TOKEN_2022_ID)) {
             if (parsed.info.destination === platformAtaStr) {
@@ -229,12 +215,12 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         }
     }
     
-    // Fallback: проверяем pre/post token balances
+    
     if (depositAmount <= 0 && txInfo.meta) {
         const preBalances = txInfo.meta.preTokenBalances || [];
         const postBalances = txInfo.meta.postTokenBalances || [];
         
-        // Ищем аккаунт платформы в post balances
+        
         for (const post of postBalances) {
             if (post.mint !== MINT_ADDRESS) continue;
             if (post.owner !== getPlatformPublicKey().toBase58()) continue;
@@ -246,7 +232,7 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
             if (postAmount > preAmount) {
                 depositAmount = postAmount - preAmount;
                 
-                // Ищем отправителя — кто уменьшил баланс
+                
                 for (const preBal of preBalances) {
                     if (preBal.mint !== MINT_ADDRESS) continue;
                     if (preBal.owner === getPlatformPublicKey().toBase58()) continue;
@@ -267,25 +253,25 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         return { success: false, error: 'В этой транзакции не найден перевод токенов на кошелёк платформы' };
     }
 
-    // 4. ✅ ГЛАВНАЯ ЗАЩИТА: отправитель = заявленный кошелёк
+    
     if (senderAuthority !== walletAddress) {
         console.error(`🚫 Sender mismatch! Authority: ${senderAuthority}, Claimed: ${walletAddress}`);
         return { success: false, error: 'Отправитель транзакции не совпадает с вашим кошельком' };
     }
 
-    // 5. Минимум
+    
     if (depositAmount < MIN_DEPOSIT) {
         return { success: false, error: `Минимальный депозит: ${MIN_DEPOSIT} токенов` };
     }
 
-    // 6. Получаем пользователя
+    
     const userResult = await sql`SELECT id FROM users WHERE wallet_address = ${walletAddress}`;
     if (userResult.rows.length === 0) {
         return { success: false, error: 'Сначала подключите кошелёк' };
     }
     const userId = userResult.rows[0].id;
 
-    // 7. Записываем депозит + зачисляем
+    
     const deposit = await sql`
         INSERT INTO deposits (user_id, wallet_address, amount, tx_signature, status, slot, confirmed_at)
         VALUES (${userId}, ${walletAddress}, ${depositAmount}, ${txSignature}, 'confirmed', ${txInfo.slot || 0}, NOW())
@@ -299,7 +285,6 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
         `Deposit ${depositAmount} tokens, tx: ${txSignature.substring(0, 16)}...`
     );
 
-    console.log(`✅ Deposit: +${depositAmount} tokens → user ${userId}, balance: ${newBalance}`);
 
     return {
         success: true,
@@ -310,7 +295,7 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
 }
 
 // ============================================
-// WITHDRAWAL — платформа отправляет SPL-токены пользователю
+
 // ============================================
 
 async function processWithdrawal(userId, walletAddress, amount) {
@@ -329,17 +314,17 @@ async function processWithdrawal(userId, walletAddress, amount) {
     const withdrawalId = withdrawal.rows[0].id;
 
     try {
-        // Списываем баланс
+        
         await debitBalance(userId, amount, 'withdrawal', withdrawalId, 'withdrawals',
             `Withdrawal ${amount} tokens to ${walletAddress.substring(0, 8)}...`);
 
-        // Отправляем on-chain
+        
         const connection = getConnection();
         const platformKeypair = getPlatformKeypair();
         const recipientPubkey = new PublicKey(walletAddress);
         const mintPubkey = getMintPublicKey();
         
-        // Определяем token program (SPL Token vs Token-2022)
+        
         let tokenProgramPubkey = TOKEN_PROGRAM_ID;
         try {
             const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
@@ -350,12 +335,11 @@ async function processWithdrawal(userId, walletAddress, amount) {
             console.error('⚠️ Failed to detect token program for withdrawal, using default');
         }
         
-        console.log(`💸 Withdrawal: tokenProgram=${tokenProgramPubkey.toBase58()}`);
         
         const ATA_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
         const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
         
-        // Вычисляем ATA с правильной token program
+        
         const [platformAtaAddr] = PublicKey.findProgramAddressSync(
             [platformKeypair.publicKey.toBuffer(), tokenProgramPubkey.toBuffer(), mintPubkey.toBuffer()],
             ATA_PROGRAM_ID
@@ -369,7 +353,7 @@ async function processWithdrawal(userId, walletAddress, amount) {
 
         const transaction = new Transaction();
 
-        // Создаём ATA получателя если не существует (ручная инструкция)
+        
         if (!recipientAtaInfo) {
             const createAtaIx = new TransactionInstruction({
                 keys: [
@@ -386,7 +370,7 @@ async function processWithdrawal(userId, walletAddress, amount) {
             transaction.add(createAtaIx);
         }
 
-        // Transfer инструкция вручную (поддерживает любую token program)
+        
         const transferData = Buffer.alloc(9);
         transferData.writeUInt8(3, 0); // Transfer instruction index
         transferData.writeBigUInt64LE(BigInt(toRawAmount(netAmount)), 1);
@@ -411,13 +395,12 @@ async function processWithdrawal(userId, walletAddress, amount) {
             WHERE id = ${withdrawalId}
         `;
 
-        console.log(`✅ Withdrawal: -${netAmount} tokens → ${walletAddress}, tx: ${txSignature}`);
         return { success: true, amount: netAmount, fee: WITHDRAWAL_FEE, txSignature };
 
     } catch (error) {
         console.error(`❌ Withdrawal failed:`, error);
 
-        // Возвращаем баланс
+        
         try {
             await creditBalance(userId, amount, 'refund', withdrawalId, 'withdrawals',
                 `Refund failed withdrawal #${withdrawalId}: ${error.message}`);
@@ -445,7 +428,7 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
-        // GET — Баланс
+        
         if (req.method === 'GET') {
             const { wallet } = req.query;
             if (!wallet) return res.status(400).json({ success: false, error: 'wallet required' });
@@ -462,7 +445,7 @@ export default async function handler(req, res) {
 
             const userId = userResult.rows[0].id;
             
-            // Quick fix: если у пользователя locked > 0, но нет active ордеров в active раундах — вернуть
+            
             try {
                 const hasActiveOrders = await sql`
                     SELECT 1 FROM limit_orders lo
@@ -471,7 +454,7 @@ export default async function handler(req, res) {
                     LIMIT 1
                 `;
                 if (hasActiveOrders.rows.length === 0) {
-                    // Атомарно: locked=0 только если ещё > 0
+                    
                     const fixed = await sql`
                         UPDATE user_balances 
                         SET available = available + locked, locked = 0, updated_at = NOW()
@@ -479,7 +462,6 @@ export default async function handler(req, res) {
                         RETURNING available
                     `;
                     if (fixed.rows.length > 0) {
-                        console.log('Balance API: fixed orphaned lock for user ' + userId);
                     }
                 }
             } catch (e) { /* ignore */ }
@@ -497,12 +479,12 @@ export default async function handler(req, res) {
             });
         }
 
-        // POST — Действия
+        
         if (req.method === 'POST') {
             const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
             const { action, wallet } = body;
 
-            // --- Deposit info (адрес + ATA для фронта) ---
+            
             if (action === 'deposit-info') {
                 if (!PLATFORM_WALLET_SECRET) {
                     return res.status(500).json({ success: false, error: 'Platform wallet not configured' });
@@ -510,7 +492,7 @@ export default async function handler(req, res) {
 
                 const platformAddress = getPlatformPublicKey().toBase58();
                 
-                // Определяем token program (SPL vs Token-2022)
+                
                 const connection = getConnection();
                 let tokenProgramId = TOKEN_PROGRAM_ID.toBase58();
                 
@@ -518,13 +500,12 @@ export default async function handler(req, res) {
                     const mintInfo = await connection.getParsedAccountInfo(getMintPublicKey());
                     if (mintInfo.value?.owner) {
                         tokenProgramId = mintInfo.value.owner.toBase58();
-                        console.log(`✅ Token program: ${tokenProgramId}`);
                     }
                 } catch (e) {
                     console.error('⚠️ Failed to detect token program:', e.message);
                 }
                 
-                // Вычисляем ATA платформы с правильной программой
+                
                 const tokenProgramPubkey = new PublicKey(tokenProgramId);
                 const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
                 
@@ -533,7 +514,7 @@ export default async function handler(req, res) {
                     ATA_PROGRAM
                 );
 
-                // Получаем blockhash
+                
                 let blockhash = null;
                 let rpcDebug = null;
                 try {
