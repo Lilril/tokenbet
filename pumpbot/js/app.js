@@ -120,53 +120,9 @@ const WALLETS = {
     }
 };
 
-// Wallet Standard кошельки (Jupiter и другие)
+// Wallet Standard — не используется, Jupiter wallet не поддерживает подключение к сторонним dApps
 let walletStandardWallets = [];
-let wsListenerAdded = false;
-
-function discoverWalletStandard() {
-    walletStandardWallets = []; // Reset
-    
-    try {
-        // Method 1: navigator.wallets
-        if (window.navigator?.wallets) {
-            const navWallets = window.navigator.wallets;
-            if (typeof navWallets.get === 'function') {
-                const all = navWallets.get();
-                walletStandardWallets = all.filter(w => w.chains?.some(c => c.includes('solana')));
-            } else if (Array.isArray(navWallets)) {
-                walletStandardWallets = navWallets.filter(w => w.chains?.some(c => c.includes('solana')));
-            }
-        }
-        
-        // Method 2: Listen for late-registering wallets (only add listener once)
-        if (!wsListenerAdded) {
-            wsListenerAdded = true;
-            window.addEventListener('wallet-standard:register-wallet', (e) => {
-                const w = e.detail?.wallet || e.detail;
-                if (w?.chains?.some(c => c.includes('solana'))) {
-                    const exists = walletStandardWallets.find(x => x.name === w.name);
-                    if (!exists) walletStandardWallets.push(w);
-                }
-            });
-
-            // Method 3: Trigger app-ready to get existing wallets
-            window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', {
-                detail: {
-                    register: (w) => {
-                        if (w?.chains?.some(c => c.includes('solana'))) {
-                            const exists = walletStandardWallets.find(x => x.name === w.name);
-                            if (!exists) walletStandardWallets.push(w);
-                        }
-                    },
-                    get: () => walletStandardWallets
-                }
-            }));
-        }
-    } catch(e) {
-        console.log('WS discovery:', e.message);
-    }
-}
+function discoverWalletStandard() {}
 
 // Активный провайдер — устанавливается при connectWallet
 let activeProvider = null;
@@ -237,8 +193,10 @@ function renderWallets() {
 }
 
 async function connectWallet(walletType) {
+    const walletInfo = WALLETS[walletType];
+    if (!walletInfo) return;
+    
     try {
-        const walletInfo = WALLETS[walletType];
         const provider = walletInfo.get();
         
         if (!provider) {
@@ -247,7 +205,15 @@ async function connectWallet(walletType) {
         }
         
         const response = await provider.connect();
-        wallet = response.publicKey.toString();
+        
+        // Разные кошельки возвращают publicKey по-разному
+        const pubKey = response?.publicKey || provider.publicKey;
+        if (!pubKey) {
+            showNotification(walletInfo.name + ': не удалось получить адрес кошелька', 'error');
+            return;
+        }
+        
+        wallet = pubKey.toString();
         activeProvider = provider;
         activeWalletType = walletType;
         saveWalletChoice(walletType);
@@ -258,18 +224,18 @@ async function connectWallet(walletType) {
         updateUI(true);
         await fetchTokenBalance();
         
-        provider.on('disconnect', () => {
-            console.log('🔌 Кошелек отключен');
-            disconnect();
-        });
+        try {
+            provider.on('disconnect', () => {
+                console.log('🔌 Кошелек отключен');
+                disconnect();
+            });
+        } catch(e) {} // Некоторые провайдеры не поддерживают .on()
         
     } catch (error) {
         console.error('❌ Ошибка подключения:', error);
         const msg = error.message || '';
         if (msg.includes('User rejected') || msg.includes('rejected')) {
             showNotification('Подключение отменено', 'error');
-        } else if (msg.includes('not found') || msg.includes('not installed')) {
-            showNotification(walletInfo.name + ' не настроен. Откройте расширение и создайте кошелёк.', 'error');
         } else {
             showNotification(walletInfo.name + ': ' + (msg || 'ошибка подключения'), 'error');
         }
