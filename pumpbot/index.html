@@ -14,7 +14,7 @@
             padding: 20px;
             background: var(--bg-secondary);
             border: 1px solid var(--border); 
-            border-radius: 8px;
+            border-radius: 10px;
         }
         
         .round-tab {
@@ -27,19 +27,19 @@
             transition: all 0.2s;
             text-align: center;
             font-weight: 600;
-            border-radius: 6px;
+            border-radius: 8px;
         }
         
         .round-tab:hover {
-            border-color: var(--accent-yellow);
+            border-color: var(--border-bright);
             transform: translateY(-2px);
         }
         
         .round-tab.active {
-            background: var(--accent-green);
+            background: linear-gradient(135deg, var(--accent-green), #00cc88);
             color: #000;
             border-color: var(--accent-green);
-            box-shadow: 0 0 20px rgba(0, 255, 159, 0.3);
+            box-shadow: 0 0 20px rgba(0, 255, 163, 0.2);
         }
         
         .round-tab-title {
@@ -57,17 +57,17 @@
         }
 
         .settlements-alert {
-            background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.1));
-            border: 2px solid var(--accent-yellow);
+            background: linear-gradient(135deg, rgba(255, 208, 0, 0.08), rgba(255, 0, 204, 0.05));
+            border: 1px solid var(--border-bright);
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 20px;
-            animation: pulse 2s infinite;
+            animation: alertPulse 2s infinite;
         }
 
-        @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
-            50% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.5); }
+        @keyframes alertPulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(96, 64, 208, 0.2); }
+            50% { box-shadow: 0 0 30px rgba(96, 64, 208, 0.4); }
         }
 
         .settlements-alert-content {
@@ -119,7 +119,7 @@
             display: flex;
             gap: 10px;
             padding: 20px 20px 0 20px;
-            border-bottom: 2px solid var(--border);
+            border-bottom: 1px solid var(--border);
         }
 
         .settlement-tab {
@@ -135,10 +135,11 @@
 
         .settlement-tab:hover {
             background: var(--bg-secondary);
+            border-color: var(--border-bright);
         }
 
         .settlement-tab.active {
-            background: var(--accent-green);
+            background: linear-gradient(135deg, var(--accent-green), #00cc88);
             color: #000;
             border-color: var(--accent-green);
         }
@@ -160,7 +161,7 @@
 
         .settlement-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0, 255, 159, 0.2);
+            box-shadow: 0 5px 20px rgba(96, 64, 208, 0.15);
         }
 
         .settlement-card.won {
@@ -265,7 +266,7 @@
 
         .settlement-claim-btn:hover {
             transform: scale(1.02);
-            box-shadow: 0 5px 20px rgba(0, 255, 159, 0.4);
+            box-shadow: 0 5px 20px rgba(0, 255, 163, 0.3);
         }
 
         .settlement-claim-btn:disabled {
@@ -324,6 +325,14 @@
     </style>
 </head>
 <body>
+    <!-- Mercury particle effect canvas -->
+    <canvas id="mercuryCanvas"></canvas>
+    
+    <!-- Floating chrome characters -->
+    <img src="assets/image/pharaoh_epstein.png" class="floating-character char-pharaoh-1" alt="" loading="lazy">
+    <img src="assets/image/pharaoh_kirk.png" class="floating-character char-pharaoh-2" alt="" loading="lazy">
+    <img src="assets/image/trans_floyd.png" class="floating-character char-trans" alt="" loading="lazy">
+
     <div class="container">
         <!-- HEADER -->
         <div class="header slide-in">
@@ -575,8 +584,8 @@
         </div>
 
         <!-- INFO BOX -->
-        <div style="border: 1px solid var(--border); padding: 20px; margin-top: 30px; background: var(--bg-secondary); font-size: 0.9em; line-height: 1.8;">
-            <div style="font-weight: 600; margin-bottom: 15px; color: var(--accent-green); font-size: 1.1em;">
+        <div style="border: 1px solid var(--border); padding: 20px; margin-top: 30px; background: var(--bg-secondary); font-size: 0.9em; line-height: 1.8; border-radius: 10px;">
+            <div style="font-weight: 600; margin-bottom: 15px; color: var(--accent-blue); font-size: 1.1em; font-family: 'Orbitron', monospace; letter-spacing: 1px;">
                 🎯 HOW IT WORKS
             </div>
             
@@ -692,6 +701,105 @@
             }
             
         }
+    </script>
+    
+    <!-- Mercury Particle Effect -->
+    <script>
+    (function() {
+        const canvas = document.getElementById('mercuryCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+        
+        class MercuryDrop {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.radius = Math.random() * 3 + 1;
+                this.baseRadius = this.radius;
+                this.vx = (Math.random() - 0.5) * 0.4;
+                this.vy = (Math.random() - 0.5) * 0.3 - 0.15;
+                this.opacity = Math.random() * 0.35 + 0.1;
+                this.phase = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 0.01 + 0.005;
+                // Chrome/mercury colors
+                const colors = [
+                    [192, 207, 224],  // silver
+                    [136, 152, 184],  // darker silver
+                    [224, 232, 244],  // bright chrome
+                    [160, 180, 220],  // blue-silver
+                    [200, 170, 230],  // purple-silver
+                    [170, 220, 230],  // cyan-silver
+                ];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+            update() {
+                this.phase += this.speed;
+                this.x += this.vx + Math.sin(this.phase) * 0.3;
+                this.y += this.vy + Math.cos(this.phase * 0.7) * 0.2;
+                this.radius = this.baseRadius + Math.sin(this.phase * 2) * 0.5;
+                
+                if (this.x < -20 || this.x > canvas.width + 20 || 
+                    this.y < -20 || this.y > canvas.height + 20) {
+                    this.reset();
+                    // Respawn at edges
+                    const side = Math.floor(Math.random() * 4);
+                    if (side === 0) { this.x = -5; this.y = Math.random() * canvas.height; }
+                    else if (side === 1) { this.x = canvas.width + 5; this.y = Math.random() * canvas.height; }
+                    else if (side === 2) { this.y = -5; this.x = Math.random() * canvas.width; }
+                    else { this.y = canvas.height + 5; this.x = Math.random() * canvas.width; }
+                }
+            }
+            draw() {
+                const [r, g, b] = this.color;
+                // Mercury metallic highlight
+                const grad = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3, this.y - this.radius * 0.3, 0,
+                    this.x, this.y, this.radius * 2
+                );
+                grad.addColorStop(0, `rgba(255, 255, 255, ${this.opacity * 0.8})`);
+                grad.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, ${this.opacity})`);
+                grad.addColorStop(0.7, `rgba(${r * 0.6}, ${g * 0.6}, ${b * 0.6}, ${this.opacity * 0.5})`);
+                grad.addColorStop(1, `rgba(${r * 0.3}, ${g * 0.3}, ${b * 0.3}, 0)`);
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+                
+                // Bright specular highlight
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius * 0.2, this.y - this.radius * 0.2, this.radius * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 0.4})`;
+                ctx.fill();
+            }
+        }
+        
+        const drops = [];
+        const count = Math.min(60, Math.floor(window.innerWidth / 25));
+        for (let i = 0; i < count; i++) {
+            drops.push(new MercuryDrop());
+        }
+        
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drops.forEach(d => {
+                d.update();
+                d.draw();
+            });
+            requestAnimationFrame(animate);
+        }
+        animate();
+    })();
     </script>
 </body>
 </html>
