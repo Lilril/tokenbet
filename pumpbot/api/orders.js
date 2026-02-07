@@ -58,8 +58,8 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         if (existing.rows.length > 0) {
             const round = existing.rows[0];
             
-            // Если start_market_cap = 0 — попробуем заполнить из market_cap_history
-            if (parseFloat(round.start_market_cap || 0) <= 0) {
+            // Если target_market_cap = 0 — попробуем заполнить из market_cap_history
+            if (parseFloat(round.target_market_cap || 0) <= 0) {
                 try {
                     const capResult = await sql`
                         SELECT market_cap FROM market_cap_history 
@@ -68,9 +68,9 @@ async function getOrCreateCurrentRound(intervalMinutes) {
                     `;
                     if (capResult.rows.length > 0 && parseFloat(capResult.rows[0].market_cap) > 0) {
                         const cap = parseFloat(capResult.rows[0].market_cap);
-                        await sql`UPDATE rounds SET start_market_cap = ${cap} WHERE id = ${round.id} AND (start_market_cap IS NULL OR start_market_cap = 0)`;
-                        round.start_market_cap = cap;
-                        console.log(`✅ Updated start_market_cap for ${slug}: $${cap}`);
+                        await sql`UPDATE rounds SET target_market_cap = ${cap} WHERE id = ${round.id} AND (target_market_cap IS NULL OR target_market_cap = 0)`;
+                        round.target_market_cap = cap;
+                        console.log(`✅ Updated target_market_cap for ${slug}: $${cap}`);
                     }
                 } catch(e) {
                     console.log('Cap backfill error:', e.message);
@@ -135,10 +135,10 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         const newRound = await sql`
             INSERT INTO rounds (
                 slug, round_number, interval_minutes,
-                start_time, end_time, target_market_cap, start_market_cap, status
+                start_time, end_time, target_market_cap, status
             ) VALUES (
                 ${slug}, ${closeTimestamp}, ${intervalMinutes},
-                ${startTime.toISOString()}, ${endTime.toISOString()}, 0, ${startMarketCap}, 'active'
+                ${startTime.toISOString()}, ${endTime.toISOString()}, ${startMarketCap}, 'active'
             ) RETURNING *
         `;
         
@@ -754,7 +754,7 @@ async function inlineSettleRound(roundId) {
         if (rr.rows.length === 0) return;
         const round = rr.rows[0];
         
-        const startMC = parseFloat(round.start_market_cap) || 0;
+        const startMC = parseFloat(round.target_market_cap) || 0;
         const positions = await sql`SELECT user_id, side, amount, avg_price, total_cost FROM user_positions WHERE round_id = ${roundId}`;
         if (positions.rows.length === 0) {
             await sql`UPDATE rounds SET settlement_status = 'settled', settled_at = NOW() WHERE id = ${roundId}`;
@@ -762,7 +762,7 @@ async function inlineSettleRound(roundId) {
         }
         
         // ============================================
-        // CASE 1: start_market_cap = 0 → рефанд всем (не нужен finalMC!)
+        // CASE 1: target_market_cap = 0 → рефанд всем (не нужен finalMC!)
         // ============================================
         if (startMC <= 0) {
             for (const pos of positions.rows) {
@@ -983,7 +983,7 @@ if (action === 'orderbook') {
         intervalMinutes: round.interval_minutes,
         startTime: round.start_time,
         endTime: round.end_time,
-        startMarketCap: parseFloat(round.start_market_cap) || 0,
+        startMarketCap: parseFloat(round.target_market_cap) || 0,
         roundEndTime: round.end_time,
         poolSnapshot: poolSnapshot ? {
             higher: parseFloat(poolSnapshot.higher_reserve),
