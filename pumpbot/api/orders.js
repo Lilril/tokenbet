@@ -411,33 +411,59 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
         let result;
         
         if (minOppositePrice === null || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
-            // Market order — match all opposite orders (best price first = cheapest for buyer)
-            result = await sql`
-                SELECT id, user_id, side, amount, filled, price
-                FROM limit_orders
-                WHERE round_id = ${roundId} 
-                AND side = ${oppositeSide}
-                ${excludeUserId ? sql`AND user_id != ${excludeUserId}` : sql``}
-                AND status = 'active' 
-                AND amount > filled
-                ORDER BY price DESC, created_at ASC
-                LIMIT 50
-            `;
+            // Market order — match all opposite orders
+            if (excludeUserId) {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND user_id != ${excludeUserId}
+                    AND status = 'active' 
+                    AND amount > filled
+                    ORDER BY price DESC, created_at ASC
+                    LIMIT 50
+                `;
+            } else {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND status = 'active' 
+                    AND amount > filled
+                    ORDER BY price DESC, created_at ASC
+                    LIMIT 50
+                `;
+            }
         } else {
             // Limit order — match only where opposite_price >= (1 - my_price)
-            // Higher opposite_price = cheaper for me (I pay 1 - opp_price)
-            result = await sql`
-                SELECT id, user_id, side, amount, filled, price
-                FROM limit_orders
-                WHERE round_id = ${roundId} 
-                AND side = ${oppositeSide}
-                ${excludeUserId ? sql`AND user_id != ${excludeUserId}` : sql``}
-                AND status = 'active' 
-                AND amount > filled
-                AND price >= ${minOppositePrice}
-                ORDER BY price DESC, created_at ASC
-                LIMIT 50
-            `;
+            if (excludeUserId) {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND user_id != ${excludeUserId}
+                    AND status = 'active' 
+                    AND amount > filled
+                    AND price >= ${minOppositePrice}
+                    ORDER BY price DESC, created_at ASC
+                    LIMIT 50
+                `;
+            } else {
+                result = await sql`
+                    SELECT id, user_id, side, amount, filled, price
+                    FROM limit_orders
+                    WHERE round_id = ${roundId} 
+                    AND side = ${oppositeSide}
+                    AND status = 'active' 
+                    AND amount > filled
+                    AND price >= ${minOppositePrice}
+                    ORDER BY price DESC, created_at ASC
+                    LIMIT 50
+                `;
+            }
         }
         
         return result.rows;
