@@ -111,9 +111,9 @@ body::before {
    CONTAINER
    ============================================ */
 .container {
-    max-width: 1500px;
+    max-width: 1560px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 20px 40px;
     position: relative;
     z-index: 5;
 }
@@ -371,59 +371,48 @@ button:disabled:hover {
     transition: border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
-/* Gold shimmer band — sweeps across on hover */
+/* Gold shimmer that follows cursor — positioned via JS custom properties */
 .price-display::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: -120%;
-    width: 60%;
-    height: 100%;
-    background: linear-gradient(
-        105deg,
-        transparent 20%,
-        rgba(255, 215, 80, 0.03) 35%,
-        rgba(255, 230, 120, 0.08) 45%,
-        rgba(255, 245, 180, 0.12) 50%,
-        rgba(255, 230, 120, 0.08) 55%,
-        rgba(255, 215, 80, 0.03) 65%,
+    width: 250px;
+    height: 250px;
+    top: var(--gold-y, 50%);
+    left: var(--gold-x, 50%);
+    transform: translate(-50%, -50%);
+    background: radial-gradient(
+        circle,
+        rgba(255, 245, 180, 0.18) 0%,
+        rgba(255, 230, 120, 0.10) 20%,
+        rgba(255, 215, 80, 0.05) 40%,
+        rgba(200, 160, 40, 0.02) 60%,
         transparent 80%
     );
     pointer-events: none;
-    transition: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .price-display:hover::before {
-    animation: goldSweep 1s ease-in-out forwards;
+    opacity: 1;
 }
 
-@keyframes goldSweep {
-    0% { left: -120%; }
-    100% { left: 160%; }
-}
-
-/* Warm golden ambient glow on hover */
 .price-display:hover {
     border-color: rgba(240, 200, 60, 0.6);
     box-shadow:
-        0 0 20px rgba(240, 192, 48, 0.08),
-        0 0 50px rgba(240, 192, 48, 0.04),
-        inset 0 0 30px rgba(240, 192, 48, 0.03);
+        0 0 20px rgba(240, 192, 48, 0.06),
+        inset 0 0 30px rgba(240, 192, 48, 0.02);
 }
 
-/* Subtle golden reflection at bottom */
+/* Bottom golden reflection */
 .price-display::after {
     content: '';
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 40%;
-    background: linear-gradient(
-        to top,
-        rgba(200, 160, 40, 0.04) 0%,
-        transparent 100%
-    );
+    height: 35%;
+    background: linear-gradient(to top, rgba(200, 160, 40, 0.03) 0%, transparent 100%);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.4s ease;
@@ -1160,4 +1149,3 @@ input:focus-visible {
         gap: 12px;
     }
 }
-
