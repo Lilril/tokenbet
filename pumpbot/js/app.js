@@ -106,6 +106,24 @@ const WALLETS = {
             return null;
         }
     },
+    jupiter: {
+        name: 'Jupiter',
+        icon: '🪐',
+        color: '#C7F284',
+        get: () => {
+            // Jupiter registers via multiple possible globals
+            if (window.jupiterWallet) return window.jupiterWallet;
+            if (window.jupiter?.solana) return window.jupiter.solana;
+            // Check providers map (EIP-6963 style)
+            if (window.providerMap?.get?.('Jupiter')) return window.providerMap.get('Jupiter');
+            // Check solana providers array
+            if (window.solana?.providers) {
+                const jup = window.solana.providers.find(p => p.isJupiter);
+                if (jup) return jup;
+            }
+            return null;
+        }
+    },
     solflare: {
         name: 'Solflare',
         icon: '🔥',
@@ -125,27 +143,47 @@ let walletStandardWallets = [];
 
 function discoverWalletStandard() {
     try {
-        // Wallet Standard API
-        const walletsApi = window.navigator?.wallets || window._dependencies?.get?.('wallet-standard:app-ready');
-        if (walletsApi?.get) {
-            const wallets = walletsApi.get();
-            walletStandardWallets = wallets.filter(w => 
-                w.chains?.some(c => c.startsWith('solana'))
-            );
+        // Wallet Standard uses a global registry pattern
+        // Wallets register via window['wallet-standard:register-wallet'] or similar
+        const register = window['wallet-standard:register-wallet'];
+        
+        // Method 1: Check if getWallets exists (from @wallet-standard/app)
+        if (typeof window.getWallets === 'function') {
+            const api = window.getWallets();
+            if (api?.get) {
+                walletStandardWallets = api.get().filter(w => 
+                    w.chains?.some(c => c.includes('solana'))
+                );
+                return;
+            }
         }
-    } catch(e) {}
-    
-    // Also listen for register events
-    try {
-        if (window.addEventListener) {
-            window.addEventListener('wallet-standard:register-wallet', (e) => {
-                if (e.detail?.wallet?.chains?.some(c => c.startsWith('solana'))) {
-                    const exists = walletStandardWallets.find(w => w.name === e.detail.wallet.name);
-                    if (!exists) walletStandardWallets.push(e.detail.wallet);
-                }
+        
+        // Method 2: Use the register callback pattern  
+        // Wallets add themselves to a callbacks array on window
+        const callbacks = window['wallet-standard:app-ready'];
+        if (Array.isArray(callbacks)) {
+            for (const cb of callbacks) {
+                try {
+                    if (typeof cb === 'function') cb({ register: (w) => {
+                        if (w.chains?.some(c => c.includes('solana'))) {
+                            walletStandardWallets.push(w);
+                        }
+                    }});
+                } catch(e) {}
+            }
+        }
+        
+        // Method 3: Check window.providerMap or known Jupiter globals
+        if (window.jupiterWallet) {
+            walletStandardWallets.push({ 
+                name: 'Jupiter', 
+                icon: '🪐',
+                provider: window.jupiterWallet 
             });
         }
-    } catch(e) {}
+    } catch(e) {
+        console.log('WS discovery error:', e);
+    }
 }
 
 // Активный провайдер — устанавливается при connectWallet
@@ -1246,10 +1284,6 @@ async function cancelOrder(orderId) {
         return;
     }
     
-    if (!confirm('Отменить этот ордер?')) {
-        return;
-    }
-    
     try {
         const response = await fetch(`${API_BASE}/api/orders?orderId=${orderId}&wallet=${wallet}`, {
             method: 'DELETE'
@@ -2150,17 +2184,16 @@ window.addEventListener('load', async () => {
     
     console.log('📊 Загрузка данных рынка...');
     
-    // FIXED: Load all rounds data first
-    await loadRoundData();
-    
+    // Load everything in parallel - don't block
     await Promise.all([
+        loadRoundData(),
         updateMarketCap(),
         fetchOrderBook(),
         fetchRecentTrades(),
         fetchUserOrders(),
         fetchUserPositions(),
         fetchUnclaimedSettlements() 
-    ]);
+    ]).catch(e => console.error('Init error:', e));
     
     console.log('✅ Раунд инициализирован');
     
@@ -2236,16 +2269,6 @@ window.addEventListener('load', async () => {
             const settlement = userSettlements.find(s => s.roundId === roundId);
             if (!settlement) {
                 showNotification('Settlement не найден', 'error');
-                return;
-            }
-            
-            const confirmMsg = `Вы собираетесь забрать выигрыш:\n\n` +
-                             `Раунд: ${settlement.roundSlug}\n` +
-                             `Сторона: ${settlement.side === 'higher' ? '⬆ ВЫШЕ' : '⬇ НИЖЕ'}\n` +
-                             `Выплата: ${settlement.payout.toFixed(2)} токенов\n` +
-                             `Прибыль: ${settlement.profitLoss.toFixed(2)} токенов`;
-            
-            if (!confirm(confirmMsg)) {
                 return;
             }
             
