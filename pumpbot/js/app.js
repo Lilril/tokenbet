@@ -2139,16 +2139,20 @@ window.addEventListener('load', async () => {
     
     console.log('📊 Загрузка данных рынка...');
     
-    // Load everything in parallel - don't block
+    // Капу и раунды грузим параллельно — они от разных API
     await Promise.all([
         loadRoundData(),
-        updateMarketCap(),
+        updateMarketCap()
+    ]).catch(e => console.error('Init error:', e));
+    
+    // Остальное — фоном, не блокируя UI
+    Promise.all([
         fetchOrderBook(),
         fetchRecentTrades(),
         fetchUserOrders(),
         fetchUserPositions(),
         fetchUnclaimedSettlements() 
-    ]).catch(e => console.error('Init error:', e));
+    ]).catch(e => console.error('Init bg error:', e));
     
     console.log('✅ Раунд инициализирован');
     
@@ -2541,6 +2545,23 @@ window.addEventListener('load', async () => {
             : '0.00';
         const capArrow = finalMarketCap > startMarketCap ? '📈' : (finalMarketCap < startMarketCap ? '📉' : '➡️');
         
+        const capBlock = (startMarketCap > 0 || finalMarketCap > 0) 
+            ? '<div class="market-cap-comparison">' +
+                '<div>' +
+                    '<div style="font-size: 0.8em; color: var(--text-dim);">Начальная кап.</div>' +
+                    '<div class="market-cap-value">$' + startMarketCap.toLocaleString() + '</div>' +
+                '</div>' +
+                '<div class="market-cap-arrow">' + capArrow + '</div>' +
+                '<div>' +
+                    '<div style="font-size: 0.8em; color: var(--text-dim);">Финальная кап.</div>' +
+                    '<div class="market-cap-value">$' + finalMarketCap.toLocaleString() + '</div>' +
+                '</div>' +
+                '<div style="padding: 8px 15px; background: var(--bg-tertiary); border-radius: 8px; font-weight: 600;">' +
+                    (capChange > 0 ? '+' : '') + capChange + '%' +
+                '</div>' +
+              '</div>'
+            : '<div style="padding: 12px; text-align: center; color: var(--text-dim); font-size: 0.9em;">Капитализация не была зафиксирована — возврат ставки</div>';
+        
         return `
             <div class="settlement-card ${statusClass}">
                 <div class="settlement-header">
@@ -2558,20 +2579,7 @@ window.addEventListener('load', async () => {
                     </div>
                 </div>
                 
-                <div class="market-cap-comparison">
-                    <div>
-                        <div style="font-size: 0.8em; color: var(--text-dim);">Начальная кап.</div>
-                        <div class="market-cap-value">$${startMarketCap.toLocaleString()}</div>
-                    </div>
-                    <div class="market-cap-arrow">${capArrow}</div>
-                    <div>
-                        <div style="font-size: 0.8em; color: var(--text-dim);">Финальная кап.</div>
-                        <div class="market-cap-value">$${finalMarketCap.toLocaleString()}</div>
-                    </div>
-                    <div style="padding: 8px 15px; background: var(--bg-tertiary); border-radius: 8px; font-weight: 600;">
-                        ${capChange > 0 ? '+' : ''}${capChange}%
-                    </div>
-                </div>
+                ${capBlock}
                 
                 <div class="settlement-details">
                     <div class="settlement-detail">
