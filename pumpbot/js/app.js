@@ -1,4 +1,4 @@
-const TOKEN_ADDRESS = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
+const TOKEN_ADDRESS = 'HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump';
 const API_BASE = '';
 // HELPER FUNCTIONS FOR SAFE API CALLS
 // Safe JSON parse with content-type check
@@ -2310,3 +2310,4 @@ window.addEventListener('load', async () => {
     window.closeSettlementsModal = closeSettlementsModal;
     window.switchSettlementTab = switchSettlementTab;
 });
+
