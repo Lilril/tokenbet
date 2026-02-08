@@ -32,9 +32,11 @@ function calculateRoundCloseTime(intervalMinutes) {
     }
     
     if (intervalMinutes === 60) {
+        // Always round up to the next full hour
+        // At 22:00:00 through 22:59:59 → close at 23:00
         const closeTime = new Date(Date.UTC(
             now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
-            now.getUTCHours() + (now.getUTCMinutes() > 0 ? 1 : 0), 0, 0, 0
+            now.getUTCHours() + 1, 0, 0, 0
         ));
         return Math.floor(closeTime.getTime() / 1000);
     }
