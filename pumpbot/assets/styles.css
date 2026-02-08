@@ -92,7 +92,7 @@ body::before {
 /* trans_floyd — positioned near wallet/header area */
 .floating-character.char-trans {
     position: absolute;
-    top: 15px;
+    top: 20px;
     left: 10px;
     width: 500px;
     opacity: 0.25;
@@ -1159,6 +1159,7 @@ input:focus-visible {
         gap: 12px;
     }
 }
+
 
 
 
