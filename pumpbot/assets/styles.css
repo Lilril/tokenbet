@@ -111,9 +111,9 @@ body::before {
 /* trans_floyd — positioned in header */
 .header-character {
     position: absolute;
-    top: 50px;
+    top: 0;
     left: 30px;
-    width: 180px;
+    width: 280px;
     opacity: 0.25;
     z-index: 2;
     pointer-events: none;
