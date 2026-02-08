@@ -97,7 +97,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
-        const TOKEN_ADDR = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
+        const TOKEN_ADDR = 'HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump';
         
         try {
             const controller = new AbortController();
