@@ -94,7 +94,7 @@ body::before {
     position: absolute;
     top: 60px;
     left: 10px;
-    width: 450px;
+    width: 500px;
     opacity: 0.25;
     z-index: 4;
 }
@@ -1159,5 +1159,6 @@ input:focus-visible {
         gap: 12px;
     }
 }
+
 
 
