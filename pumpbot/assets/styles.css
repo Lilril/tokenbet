@@ -108,36 +108,26 @@ body::before {
     animation: levitate-reverse 5s ease-in-out infinite;
 }
 
-/* trans_floyd — positioned in header, blended naturally */
+/* trans_floyd — positioned in header */
 .header-character {
     position: absolute;
-    top: -15px;
-    left: 15px;
-    width: 200px;
-    opacity: 0.15;
+    top: 50px;
+    left: 30px;
+    width: 180px;
+    opacity: 0.25;
     z-index: 2;
     pointer-events: none;
-    filter: brightness(1.1) contrast(1.1);
-    mask-image: linear-gradient(to bottom, 
-        rgba(0,0,0,1) 0%, 
-        rgba(0,0,0,0.9) 60%, 
-        rgba(0,0,0,0.5) 85%, 
-        rgba(0,0,0,0) 100%);
-    -webkit-mask-image: linear-gradient(to bottom, 
-        rgba(0,0,0,1) 0%, 
-        rgba(0,0,0,0.9) 60%, 
-        rgba(0,0,0,0.5) 85%, 
-        rgba(0,0,0,0) 100%);
+    filter: brightness(1.2) contrast(1.05);
 }
 
 @media (max-width: 1200px) {
     .floating-character { opacity: 0.04 !important; }
-    .header-character { opacity: 0.1 !important; width: 160px; }
+    .header-character { opacity: 0.08 !important; }
 }
 
 @media (max-width: 768px) {
     .floating-character { display: none; }
-    .header-character { width: 100px; left: 5px; opacity: 0.12 !important; }
+    .header-character { width: 120px; left: 10px; opacity: 0.15 !important; }
 }
 
 /* ============================================
