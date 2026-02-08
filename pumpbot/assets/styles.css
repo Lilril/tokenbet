@@ -71,13 +71,32 @@ body::before {
     filter: brightness(1.2) contrast(1.05);
 }
 
+/* Levitating animation for pharaohs */
+@keyframes levitate {
+    0%, 100% {
+        transform: translateY(0) rotate(4deg);
+    }
+    50% {
+        transform: translateY(-15px) rotate(4deg);
+    }
+}
+
+@keyframes levitate-reverse {
+    0%, 100% {
+        transform: translateY(0) rotate(-6deg);
+    }
+    50% {
+        transform: translateY(-12px) rotate(-6deg);
+    }
+}
+
 .floating-character.char-pharaoh-1 {
     position: fixed;
     bottom: -40px;
     left: -20px;
     width: 260px;
     opacity: 0.09;
-    transform: rotate(4deg);
+    animation: levitate 4s ease-in-out infinite;
 }
 
 .floating-character.char-pharaoh-2 {
@@ -86,26 +105,29 @@ body::before {
     right: -30px;
     width: 220px;
     opacity: 0.07;
-    transform: rotate(-6deg);
+    animation: levitate-reverse 5s ease-in-out infinite;
 }
 
-/* trans_floyd — positioned near wallet/header area */
-.floating-character.char-trans {
+/* trans_floyd — positioned in header */
+.header-character {
     position: absolute;
-    top: 20px;
-    left: 60px;
-    width: 240px;
+    top: 10px;
+    left: 30px;
+    width: 180px;
     opacity: 0.25;
-    z-index: 4;
+    z-index: 2;
+    pointer-events: none;
+    filter: brightness(1.2) contrast(1.05);
 }
 
 @media (max-width: 1200px) {
     .floating-character { opacity: 0.04 !important; }
-    .floating-character.char-trans { opacity: 0.06 !important; }
+    .header-character { opacity: 0.08 !important; }
 }
 
 @media (max-width: 768px) {
     .floating-character { display: none; }
+    .header-character { width: 120px; left: 10px; opacity: 0.15 !important; }
 }
 
 /* ============================================
@@ -374,30 +396,27 @@ button:disabled:hover {
     transition: border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
-/* Gold shimmer that follows cursor — like light reflecting off gold ingot surface */
+/* FIXED: Gold shimmer that follows cursor — now doesn't clip */
 .price-display::before {
     content: '';
     position: absolute;
-    width: 350px;
-    height: 180px;
+    width: 400px;
+    height: 250px;
     top: var(--gold-y, 50%);
     left: var(--gold-x, 50%);
-    transform: translate(-50%, -50%) rotate(-15deg);
+    transform: translate(-50%, -50%);
     background:
-        radial-gradient(ellipse at 50% 40%,
-            rgba(255, 248, 200, 0.22) 0%,
-            rgba(255, 235, 150, 0.14) 15%,
-            rgba(240, 200, 80, 0.08) 30%,
-            rgba(200, 165, 50, 0.04) 50%,
-            transparent 70%
-        ),
-        radial-gradient(ellipse at 55% 55%,
-            rgba(180, 140, 30, 0.06) 0%,
-            transparent 50%
+        radial-gradient(ellipse at 50% 50%,
+            rgba(255, 248, 200, 0.18) 0%,
+            rgba(255, 235, 150, 0.12) 20%,
+            rgba(240, 200, 80, 0.08) 40%,
+            rgba(200, 165, 50, 0.04) 60%,
+            transparent 80%
         );
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s ease;
+    border-radius: 50%;
 }
 
 .price-display:hover::before {
@@ -855,30 +874,27 @@ input[type="number"]:focus {
     overflow: hidden;
 }
 
-/* Gold shimmer follows cursor — gold ingot surface reflection */
+/* FIXED: Gold shimmer follows cursor — now doesn't clip */
 .countdown-section::before {
     content: '';
     position: absolute;
-    width: 300px;
-    height: 150px;
+    width: 350px;
+    height: 200px;
     top: var(--gold-y, 50%);
     left: var(--gold-x, 50%);
-    transform: translate(-50%, -50%) rotate(-15deg);
+    transform: translate(-50%, -50%);
     background:
-        radial-gradient(ellipse at 50% 40%,
-            rgba(255, 248, 200, 0.22) 0%,
-            rgba(255, 235, 150, 0.14) 15%,
-            rgba(240, 200, 80, 0.08) 30%,
-            rgba(200, 165, 50, 0.04) 50%,
-            transparent 70%
-        ),
-        radial-gradient(ellipse at 55% 55%,
-            rgba(180, 140, 30, 0.06) 0%,
-            transparent 50%
+        radial-gradient(ellipse at 50% 50%,
+            rgba(255, 248, 200, 0.18) 0%,
+            rgba(255, 235, 150, 0.12) 20%,
+            rgba(240, 200, 80, 0.08) 40%,
+            rgba(200, 165, 50, 0.04) 60%,
+            transparent 80%
         );
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s ease;
+    border-radius: 50%;
 }
 
 .countdown-section:hover::before {
@@ -1159,11 +1175,3 @@ input:focus-visible {
         gap: 12px;
     }
 }
-
-
-
-
-
-
-
-
