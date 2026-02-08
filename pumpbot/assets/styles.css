@@ -108,26 +108,36 @@ body::before {
     animation: levitate-reverse 5s ease-in-out infinite;
 }
 
-/* trans_floyd — positioned in header */
+/* trans_floyd — positioned in header, blended naturally */
 .header-character {
     position: absolute;
-    top: 10px;
-    left: 30px;
-    width: 180px;
-    opacity: 0.25;
+    top: -15px;
+    left: 15px;
+    width: 200px;
+    opacity: 0.15;
     z-index: 2;
     pointer-events: none;
-    filter: brightness(1.2) contrast(1.05);
+    filter: brightness(1.1) contrast(1.1);
+    mask-image: linear-gradient(to bottom, 
+        rgba(0,0,0,1) 0%, 
+        rgba(0,0,0,0.9) 60%, 
+        rgba(0,0,0,0.5) 85%, 
+        rgba(0,0,0,0) 100%);
+    -webkit-mask-image: linear-gradient(to bottom, 
+        rgba(0,0,0,1) 0%, 
+        rgba(0,0,0,0.9) 60%, 
+        rgba(0,0,0,0.5) 85%, 
+        rgba(0,0,0,0) 100%);
 }
 
 @media (max-width: 1200px) {
     .floating-character { opacity: 0.04 !important; }
-    .header-character { opacity: 0.08 !important; }
+    .header-character { opacity: 0.1 !important; width: 160px; }
 }
 
 @media (max-width: 768px) {
     .floating-character { display: none; }
-    .header-character { width: 120px; left: 10px; opacity: 0.15 !important; }
+    .header-character { width: 100px; left: 5px; opacity: 0.12 !important; }
 }
 
 /* ============================================
@@ -396,27 +406,32 @@ button:disabled:hover {
     transition: border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
-/* FIXED: Gold shimmer that follows cursor — now doesn't clip */
+/* FIXED: Static spectral gold gradient that shifts based on cursor position */
 .price-display::before {
     content: '';
     position: absolute;
-    width: 400px;
-    height: 250px;
-    top: var(--gold-y, 50%);
-    left: var(--gold-x, 50%);
-    transform: translate(-50%, -50%);
-    background:
-        radial-gradient(ellipse at 50% 50%,
-            rgba(255, 248, 200, 0.18) 0%,
-            rgba(255, 235, 150, 0.12) 20%,
-            rgba(240, 200, 80, 0.08) 40%,
-            rgba(200, 165, 50, 0.04) 60%,
-            transparent 80%
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at var(--gold-x, 50%) var(--gold-y, 50%), 
+            rgba(255, 248, 200, 0.15) 0%,
+            rgba(255, 235, 150, 0.08) 15%,
+            rgba(240, 200, 80, 0.04) 30%,
+            transparent 50%
+        ),
+        linear-gradient(135deg,
+            rgba(255, 248, 200, 0.03) 0%,
+            rgba(240, 210, 100, 0.05) 25%,
+            rgba(200, 165, 50, 0.04) 50%,
+            rgba(180, 140, 30, 0.03) 75%,
+            rgba(255, 235, 150, 0.02) 100%
         );
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s ease;
-    border-radius: 50%;
+    transition: opacity 0.4s ease;
+    border-radius: 2px;
 }
 
 .price-display:hover::before {
@@ -874,27 +889,32 @@ input[type="number"]:focus {
     overflow: hidden;
 }
 
-/* FIXED: Gold shimmer follows cursor — now doesn't clip */
+/* FIXED: Static spectral gold gradient that shifts based on cursor position */
 .countdown-section::before {
     content: '';
     position: absolute;
-    width: 350px;
-    height: 200px;
-    top: var(--gold-y, 50%);
-    left: var(--gold-x, 50%);
-    transform: translate(-50%, -50%);
-    background:
-        radial-gradient(ellipse at 50% 50%,
-            rgba(255, 248, 200, 0.18) 0%,
-            rgba(255, 235, 150, 0.12) 20%,
-            rgba(240, 200, 80, 0.08) 40%,
-            rgba(200, 165, 50, 0.04) 60%,
-            transparent 80%
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at var(--gold-x, 50%) var(--gold-y, 50%), 
+            rgba(255, 248, 200, 0.15) 0%,
+            rgba(255, 235, 150, 0.08) 15%,
+            rgba(240, 200, 80, 0.04) 30%,
+            transparent 50%
+        ),
+        linear-gradient(135deg,
+            rgba(255, 248, 200, 0.03) 0%,
+            rgba(240, 210, 100, 0.05) 25%,
+            rgba(200, 165, 50, 0.04) 50%,
+            rgba(180, 140, 30, 0.03) 75%,
+            rgba(255, 235, 150, 0.02) 100%
         );
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s ease;
-    border-radius: 50%;
+    transition: opacity 0.4s ease;
+    border-radius: 2px;
 }
 
 .countdown-section:hover::before {
