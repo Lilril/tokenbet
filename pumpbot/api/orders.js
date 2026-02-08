@@ -591,72 +591,75 @@ async function getOrCreateBalance(userId) {
 }
 
 async function lockBalance(userId, amount) {
-    
-    const balance = await getOrCreateBalance(userId);
-    const available = parseFloat(balance.available);
-    
-    if (available < amount) {
-        throw new Error(`Недостаточно средств. Доступно: ${available.toFixed(2)}, нужно: ${amount.toFixed(2)}. Пополните баланс.`);
-    }
-    
-    await sql`
+    // Atomic lock: read + check + update in one query, prevents race conditions
+    const result = await sql`
         UPDATE user_balances 
         SET available = available - ${amount},
             locked = locked + ${amount},
             updated_at = NOW()
-        WHERE user_id = ${userId}
+        WHERE user_id = ${userId} AND available >= ${amount}
+        RETURNING available, locked
     `;
     
+    if (result.rows.length === 0) {
+        const balance = await getOrCreateBalance(userId);
+        const available = parseFloat(balance.available);
+        throw new Error(`Недостаточно средств. Доступно: ${available.toFixed(2)}, нужно: ${amount.toFixed(2)}. Пополните баланс.`);
+    }
     
+    const newAvail = parseFloat(result.rows[0].available);
     await sql`
         INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
-        VALUES (${userId}, 'order_lock', ${-amount}, ${available}, ${available - amount}, ${'Lock for order'})
+        VALUES (${userId}, 'order_lock', ${-amount}, ${newAvail + amount}, ${newAvail}, 'Lock for order')
     `;
 }
 
 async function unlockBalance(userId, amount) {
-    
-    await sql`
+    // Atomic unlock: update and return new values in one query
+    const result = await sql`
         UPDATE user_balances 
         SET available = available + ${amount},
-            locked = locked - ${amount},
+            locked = GREATEST(locked - ${amount}, 0),
             updated_at = NOW()
         WHERE user_id = ${userId}
+        RETURNING available
     `;
     
-    const balance = await getOrCreateBalance(userId);
-    await sql`
-        INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
-        VALUES (${userId}, 'order_unlock', ${amount}, ${parseFloat(balance.available) - amount}, ${parseFloat(balance.available)}, ${'Unlock from order'})
-    `;
+    if (result.rows.length > 0) {
+        const newAvail = parseFloat(result.rows[0].available);
+        await sql`
+            INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+            VALUES (${userId}, 'order_unlock', ${amount}, ${newAvail - amount}, ${newAvail}, 'Unlock from order')
+        `;
+    }
 }
 
 async function deductLocked(userId, amount) {
-    
     await sql`
         UPDATE user_balances 
-        SET locked = locked - ${amount},
+        SET locked = GREATEST(locked - ${amount}, 0),
             updated_at = NOW()
         WHERE user_id = ${userId}
     `;
 }
 
 async function creditBalance(userId, amount, description) {
-    
-    const balance = await getOrCreateBalance(userId);
-    const before = parseFloat(balance.available);
-    
-    await sql`
+    // Atomic credit: update and get new balance in one query
+    const result = await sql`
         UPDATE user_balances 
         SET available = available + ${amount},
             updated_at = NOW()
         WHERE user_id = ${userId}
+        RETURNING available
     `;
     
-    await sql`
-        INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
-        VALUES (${userId}, 'trade_credit', ${amount}, ${before}, ${before + amount}, ${description})
-    `;
+    if (result.rows.length > 0) {
+        const newAvail = parseFloat(result.rows[0].available);
+        await sql`
+            INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+            VALUES (${userId}, 'trade_credit', ${amount}, ${newAvail - amount}, ${newAvail}, ${description})
+        `;
+    }
 }
 
 // ============================================
@@ -699,6 +702,11 @@ async function inlineSettlementCheck() {
         // ============================================
         if (now - lastHeavyCheck < 60000) return;
         lastHeavyCheck = now;
+        
+        // Cleanup old rate_limits entries (older than 1 hour)
+        try {
+            await sql`DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 hour'`;
+        } catch(e) {}
         
         
         await sql`
@@ -751,7 +759,14 @@ async function cancelExpiredOrders() {
 
 async function fixOrphanedLocks() {
     try {
+        // Fix negative locked balances (critical bug)
+        await sql`
+            UPDATE user_balances 
+            SET locked = 0, updated_at = NOW()
+            WHERE locked < 0
+        `;
         
+        // Fix positive orphaned locks (locked > 0 but no active orders)
         const orphaned = await sql`
             SELECT ub.user_id, ub.locked
             FROM user_balances ub
@@ -767,19 +782,14 @@ async function fixOrphanedLocks() {
         
         if (orphaned.rows.length === 0) return;
         
-        
         for (const row of orphaned.rows) {
             const amt = parseFloat(row.locked);
             if (amt > 0.001) {
-                
-                const result = await sql`
+                await sql`
                     UPDATE user_balances 
                     SET available = available + locked, locked = 0, updated_at = NOW()
                     WHERE user_id = ${row.user_id} AND locked > 0
-                    RETURNING user_id, available
                 `;
-                if (result.rows.length > 0) {
-                }
             }
         }
     } catch (e) {
@@ -810,6 +820,8 @@ async function inlineSettleRound(roundId) {
                     VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
                     ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
             }
+            // Mark positions as settled
+            await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
             await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
             return;
         }
@@ -868,6 +880,8 @@ async function inlineSettleRound(roundId) {
                     VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
                     ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
             }
+            // Mark positions as settled
+            await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
             await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
             return;
         }
@@ -901,6 +915,8 @@ async function inlineSettleRound(roundId) {
         }
         
         await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side=${winningSide} WHERE id=${roundId}`;
+        // Mark all positions in this round as settled
+        await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
     } catch (e) {
         console.error(`⚠️ Settle round ${roundId}:`, e.message);
     }
@@ -964,6 +980,125 @@ export default async function handler(req, res) {
                 return res.status(200).json({
                     success: true,
                     rounds
+                });
+            }
+            
+            // ============================================
+            // ROUND DETAIL — trades, positions, settlements per round
+            // ============================================
+            if (action === 'round-detail') {
+                const detailRoundId = parseInt(query.roundId);
+                if (!detailRoundId) {
+                    return res.status(400).json({ success: false, error: 'roundId required' });
+                }
+                
+                const roundResult = await sql`SELECT * FROM rounds WHERE id = ${detailRoundId}`;
+                if (roundResult.rows.length === 0) {
+                    return res.status(404).json({ success: false, error: 'Round not found' });
+                }
+                const roundInfo = roundResult.rows[0];
+                
+                // Get all trades for this round with user wallets
+                const trades = await sql`
+                    SELECT t.*, 
+                           bu.wallet_address as buyer_wallet,
+                           su.wallet_address as seller_wallet
+                    FROM trades t
+                    LEFT JOIN users bu ON bu.id = t.buyer_id
+                    LEFT JOIN users su ON su.id = t.seller_id
+                    WHERE t.round_id = ${detailRoundId}
+                    ORDER BY t.created_at ASC
+                `;
+                
+                // Get all positions for this round
+                const positions = await sql`
+                    SELECT up.*, u.wallet_address
+                    FROM user_positions up
+                    JOIN users u ON u.id = up.user_id
+                    WHERE up.round_id = ${detailRoundId}
+                    ORDER BY up.side, up.created_at ASC
+                `;
+                
+                // Get settlements for this round
+                const settlements = await sql`
+                    SELECT us.*, u.wallet_address
+                    FROM user_settlements us
+                    JOIN users u ON u.id = us.user_id
+                    WHERE us.round_id = ${detailRoundId}
+                    ORDER BY us.side, us.created_at ASC
+                `;
+                
+                // Get limit orders for this round
+                const orders = await sql`
+                    SELECT lo.*, u.wallet_address
+                    FROM limit_orders lo
+                    JOIN users u ON u.id = lo.user_id
+                    WHERE lo.round_id = ${detailRoundId}
+                    ORDER BY lo.created_at ASC
+                `;
+                
+                return res.status(200).json({
+                    success: true,
+                    round: {
+                        id: roundInfo.id,
+                        slug: roundInfo.slug,
+                        interval_minutes: roundInfo.interval_minutes,
+                        start_time: roundInfo.start_time,
+                        end_time: roundInfo.end_time,
+                        status: roundInfo.status,
+                        settlement_status: roundInfo.settlement_status,
+                        target_market_cap: roundInfo.target_market_cap,
+                        final_market_cap: roundInfo.final_market_cap,
+                        start_market_cap: roundInfo.start_market_cap,
+                        winning_side: roundInfo.winning_side,
+                        settled_at: roundInfo.settled_at
+                    },
+                    trades: trades.rows.map(t => ({
+                        id: t.id,
+                        buyer_wallet: t.buyer_wallet,
+                        seller_wallet: t.seller_wallet,
+                        side: t.side,
+                        amount: parseFloat(t.amount),
+                        price: parseFloat(t.price),
+                        total_cost: parseFloat(t.total_cost),
+                        trade_type: t.trade_type,
+                        created_at: t.created_at
+                    })),
+                    positions: positions.rows.map(p => ({
+                        user_wallet: p.wallet_address,
+                        side: p.side,
+                        amount: parseFloat(p.amount),
+                        avg_price: parseFloat(p.avg_price),
+                        total_cost: parseFloat(p.total_cost),
+                        settled: p.settled,
+                        created_at: p.created_at
+                    })),
+                    settlements: settlements.rows.map(s => ({
+                        user_wallet: s.wallet_address,
+                        side: s.side,
+                        amount: parseFloat(s.amount),
+                        total_cost: parseFloat(s.total_cost),
+                        won: s.won,
+                        payout: parseFloat(s.payout),
+                        profit_loss: parseFloat(s.profit_loss),
+                        claimed: s.claimed,
+                        claimed_at: s.claimed_at
+                    })),
+                    orders: orders.rows.map(o => ({
+                        id: o.id,
+                        user_wallet: o.wallet_address,
+                        side: o.side,
+                        amount: parseFloat(o.amount),
+                        price: parseFloat(o.price),
+                        filled: parseFloat(o.filled),
+                        status: o.status,
+                        created_at: o.created_at
+                    })),
+                    summary: {
+                        total_trades: trades.rows.length,
+                        total_positions: positions.rows.length,
+                        total_volume: trades.rows.reduce((s, t) => s + parseFloat(t.total_cost), 0)
+                    }
                 });
             }
             
