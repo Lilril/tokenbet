@@ -66,13 +66,13 @@ body::before {
    FLOATING CHARACTER IMAGES
    ============================================ */
 .floating-character {
-    position: absolute;
     pointer-events: none;
     z-index: 3;
     filter: brightness(1.2) contrast(1.05);
 }
 
 .floating-character.char-pharaoh-1 {
+    position: fixed;
     bottom: -40px;
     left: -20px;
     width: 260px;
@@ -81,6 +81,7 @@ body::before {
 }
 
 .floating-character.char-pharaoh-2 {
+    position: fixed;
     top: 30px;
     right: -30px;
     width: 220px;
@@ -111,9 +112,11 @@ body::before {
    CONTAINER
    ============================================ */
 .container {
-    max-width: 1560px;
-    margin: 0 auto;
-    padding: 20px 40px;
+    max-width: 1500px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 20px 30px;
     position: relative;
     z-index: 5;
 }
@@ -371,23 +374,27 @@ button:disabled:hover {
     transition: border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
-/* Gold shimmer that follows cursor — positioned via JS custom properties */
+/* Gold shimmer that follows cursor — like light reflecting off gold ingot surface */
 .price-display::before {
     content: '';
     position: absolute;
-    width: 250px;
-    height: 250px;
+    width: 350px;
+    height: 180px;
     top: var(--gold-y, 50%);
     left: var(--gold-x, 50%);
-    transform: translate(-50%, -50%);
-    background: radial-gradient(
-        circle,
-        rgba(255, 245, 180, 0.18) 0%,
-        rgba(255, 230, 120, 0.10) 20%,
-        rgba(255, 215, 80, 0.05) 40%,
-        rgba(200, 160, 40, 0.02) 60%,
-        transparent 80%
-    );
+    transform: translate(-50%, -50%) rotate(-15deg);
+    background:
+        radial-gradient(ellipse at 50% 40%,
+            rgba(255, 248, 200, 0.22) 0%,
+            rgba(255, 235, 150, 0.14) 15%,
+            rgba(240, 200, 80, 0.08) 30%,
+            rgba(200, 165, 50, 0.04) 50%,
+            transparent 70%
+        ),
+        radial-gradient(ellipse at 55% 55%,
+            rgba(180, 140, 30, 0.06) 0%,
+            transparent 50%
+        );
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -848,48 +855,51 @@ input[type="number"]:focus {
     overflow: hidden;
 }
 
-/* Gold shimmer band */
+/* Gold shimmer follows cursor — gold ingot surface reflection */
 .countdown-section::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: -120%;
-    width: 60%;
-    height: 100%;
-    background: linear-gradient(
-        105deg,
-        transparent 20%,
-        rgba(255, 215, 80, 0.03) 35%,
-        rgba(255, 230, 120, 0.08) 45%,
-        rgba(255, 245, 180, 0.12) 50%,
-        rgba(255, 230, 120, 0.08) 55%,
-        rgba(255, 215, 80, 0.03) 65%,
-        transparent 80%
-    );
+    width: 300px;
+    height: 150px;
+    top: var(--gold-y, 50%);
+    left: var(--gold-x, 50%);
+    transform: translate(-50%, -50%) rotate(-15deg);
+    background:
+        radial-gradient(ellipse at 50% 40%,
+            rgba(255, 248, 200, 0.22) 0%,
+            rgba(255, 235, 150, 0.14) 15%,
+            rgba(240, 200, 80, 0.08) 30%,
+            rgba(200, 165, 50, 0.04) 50%,
+            transparent 70%
+        ),
+        radial-gradient(ellipse at 55% 55%,
+            rgba(180, 140, 30, 0.06) 0%,
+            transparent 50%
+        );
     pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .countdown-section:hover::before {
-    animation: goldSweep 1s ease-in-out forwards;
+    opacity: 1;
 }
 
 .countdown-section:hover {
     border-color: rgba(240, 200, 60, 0.6);
     box-shadow:
-        0 0 20px rgba(240, 192, 48, 0.08),
-        0 0 50px rgba(240, 192, 48, 0.04),
-        inset 0 0 30px rgba(240, 192, 48, 0.03);
+        0 0 20px rgba(240, 192, 48, 0.06),
+        inset 0 0 30px rgba(240, 192, 48, 0.02);
 }
 
-/* Bottom golden reflection */
 .countdown-section::after {
     content: '';
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 40%;
-    background: linear-gradient(to top, rgba(200, 160, 40, 0.04) 0%, transparent 100%);
+    height: 35%;
+    background: linear-gradient(to top, rgba(200, 160, 40, 0.03) 0%, transparent 100%);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.4s ease;
@@ -922,7 +932,7 @@ input[type="number"]:focus {
 
 /* RESPONSIVE — MOBILE */
 @media (max-width: 768px) {
-    .container { padding: 10px; }
+    .container { padding: 10px 12px; }
     .header { padding: 15px; margin-bottom: 15px; }
     .header h1 { font-size: 1.4em; letter-spacing: 1px; }
     .header p { font-size: 0.75em; }
