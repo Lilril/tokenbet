@@ -326,19 +326,29 @@
     <!-- Mercury blob effect canvas -->
     <canvas id="mercuryCanvas"></canvas>
     
-    <!-- Floating chrome characters — fixed background decor with levitation -->
+    <!-- Floating chrome characters — fixed background decor -->
     <img src="assets/image/pharaoh_epstein.png" class="floating-character char-pharaoh-1" alt="" loading="lazy">
     <img src="assets/image/pharaoh_kirk.png" class="floating-character char-pharaoh-2" alt="" loading="lazy">
 
     <div class="container" style="position: relative;">
-        <!-- HEADER with integrated trans_floyd character -->
+        <!-- trans_floyd — positioned near header/wallet, inside container flow -->
+        <img src="assets/image/trans_floyd.png" class="floating-character char-trans" alt="" loading="lazy">
+        <!-- HEADER -->
         <div class="header slide-in">
-            <img src="assets/image/trans_floyd.png" class="header-character" alt="" loading="lazy">
-            <h1><span class="icon" style="color: var(--accent-green); filter: drop-shadow(0 0 8px rgba(0,232,157,0.5));"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> MERCUROME PREDICTION MARKET</h1>
+            <h1><span class="icon" style="color: var(--accent-green); filter: drop-shadow(0 0 8px rgba(0,232,157,0.5));"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> TOKEN PREDICTION MARKET</h1>
             <p>Advanced Trading Terminal • Order Book • AMM</p>
             <div id="contractRow" style="margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 2px; cursor: pointer; transition: all 0.2s;" onclick="copyContract()" onmouseover="this.style.borderColor='var(--border-bright)'" onmouseout="this.style.borderColor='var(--border)'">
                 <span style="font-size: 0.72em; color: var(--text-dim); letter-spacing: 0.5px; font-family: 'JetBrains Mono', monospace;" id="contractAddr">HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump</span>
                 <svg id="copyIcon" style="width: 14px; height: 14px; color: var(--text-dim); flex-shrink: 0; transition: color 0.2s;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </div>
+            <div style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 12px;">
+                <a href="https://x.com/mercurome" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 50%; color: var(--text-secondary); transition: all 0.2s; text-decoration: none;" onmouseover="this.style.borderColor='var(--text-primary)';this.style.color='var(--text-primary)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </a>
+                <a href="https://pump.fun/coin/HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump" target="_blank" rel="noopener" id="buyMercLink" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px; background: var(--accent-green); color: #0b0b0f; font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 0.85em; letter-spacing: 0.5px; border-radius: 50px; text-decoration: none; transition: all 0.2s; border: none;" onmouseover="this.style.filter='brightness(1.15)';this.style.transform='translateY(-1px)'" onmouseout="this.style.filter='';this.style.transform=''">
+                    Buy $MERC
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+                </a>
             </div>
         </div>
 
@@ -959,4 +969,5 @@
     </script>
 </body>
 </html>
+
 
