@@ -110,7 +110,6 @@ body::before {
 
 /* trans_floyd — positioned in header */
 .header-character {
-    position: absolute;
     left: 30px;
     width: 230px;
     opacity: 0.25;
@@ -1184,6 +1183,7 @@ input:focus-visible {
         gap: 12px;
     }
 }
+
 
 
 
