@@ -831,7 +831,7 @@ async function inlineSettleRound(roundId) {
         // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
-            const TOKEN = 'DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump';
+            const TOKEN = 'HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump';
             
             
             try {
