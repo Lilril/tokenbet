@@ -65,6 +65,36 @@ jobs:
           psql --dbname="$POSTGRES_URL" -c "DELETE FROM user_settlements; DELETE FROM trades; DELETE FROM limit_orders; DELETE FROM user_positions; DELETE FROM pool_snapshots; DELETE FROM rounds; DELETE FROM balance_transactions; DELETE FROM deposits; DELETE FROM withdrawals; DELETE FROM audit_log; DELETE FROM rate_limits; DELETE FROM market_cap_history; UPDATE user_balances SET available=0, locked=0, total_deposited=0, total_withdrawn=0, updated_at=NOW();"
           echo "Database wiped"
 
+      - name: Update Vercel env TOKEN_MINT
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEW_TOKEN: ${{ steps.cfg.outputs.token }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "Vercel secrets not set, skip"
+            exit 0
+          fi
+          echo "Updating TOKEN_MINT in Vercel..."
+          ENV_ID=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env" \
+            | jq -r '.envs[] | select(.key=="TOKEN_MINT") | .id')
+          if [ -n "$ENV_ID" ] && [ "$ENV_ID" != "null" ]; then
+            curl -s -X PATCH \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"value\":\"$NEW_TOKEN\"}" \
+              "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env/$ENV_ID"
+            echo "TOKEN_MINT updated"
+          else
+            curl -s -X POST \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"TOKEN_MINT\",\"value\":\"$NEW_TOKEN\",\"type\":\"encrypted\",\"target\":[\"production\",\"preview\"]}" \
+              "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env"
+            echo "TOKEN_MINT created"
+          fi
+
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
