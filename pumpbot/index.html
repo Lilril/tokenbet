@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mercurome</title>
     <link rel="stylesheet" href="assets/styles.css?v=20260208v1">
-    <link rel="icon" type="image/png" href="assets/image/merc_coin.png">
+    <link rel="icon" type="image/png" href="assets/image/mercurome.png">
     <style>
         /* Обновленная анимация для pharaoh_kirk с отзеркаливанием и меньшим углом */
         @keyframes levitate-reverse {
@@ -25,6 +25,7 @@
             position: relative;
             margin-right: 15px;
             vertical-align: middle;
+            transform: translateY(-5px); /* Поднята на 5px вверх */
         }
         
         .coin-icon {
@@ -32,58 +33,88 @@
             height: 1.5em;
             position: relative;
             z-index: 2;
-            filter: drop-shadow(0 0 10px rgba(0,232,157,0.4));
+            filter: drop-shadow(0 0 12px rgba(0,232,157,0.5));
+            animation: coinFloat 3s ease-in-out infinite;
         }
         
-        /* Простое пульсирующее сияние вокруг монеты */
+        /* Легкое покачивание монеты */
+        @keyframes coinFloat {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-3px);
+            }
+        }
+        
+        /* Внутреннее яркое сияние */
         .coin-icon-wrapper::before {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 100%;
-            height: 100%;
+            width: 110%;
+            height: 110%;
             transform: translate(-50%, -50%);
             border-radius: 50%;
             background: radial-gradient(
                 circle,
-                rgba(150, 255, 200, 0.6) 0%,
-                rgba(100, 240, 180, 0.4) 30%,
-                rgba(0, 232, 157, 0.2) 60%,
+                rgba(180, 255, 220, 0.8) 0%,
+                rgba(120, 245, 190, 0.5) 25%,
+                rgba(60, 235, 170, 0.3) 50%,
+                rgba(0, 232, 157, 0.15) 75%,
                 transparent 100%
             );
-            animation: glowPulse 2s ease-in-out infinite;
+            animation: glowPulseInner 2.5s ease-in-out infinite;
             z-index: 1;
         }
         
-        /* Внешнее мягкое сияние */
+        /* Внешнее мягкое сияние с волнами */
         .coin-icon-wrapper::after {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 140%;
-            height: 140%;
+            width: 150%;
+            height: 150%;
             transform: translate(-50%, -50%);
             border-radius: 50%;
             background: radial-gradient(
                 circle,
-                rgba(150, 255, 200, 0.3) 0%,
-                rgba(100, 240, 180, 0.15) 40%,
-                transparent 70%
+                rgba(150, 255, 200, 0.4) 0%,
+                rgba(100, 240, 180, 0.25) 30%,
+                rgba(50, 225, 160, 0.12) 60%,
+                transparent 100%
             );
-            animation: glowPulse 2s ease-in-out infinite reverse;
+            animation: glowPulseOuter 3s ease-in-out infinite;
             z-index: 0;
         }
         
-        @keyframes glowPulse {
+        /* Внутреннее сияние - быстрее и интенсивнее */
+        @keyframes glowPulseInner {
             0%, 100% {
-                opacity: 0.5;
-                transform: translate(-50%, -50%) scale(1);
+                opacity: 0.6;
+                transform: translate(-50%, -50%) scale(0.95);
             }
             50% {
                 opacity: 1;
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+        }
+        
+        /* Внешнее сияние - медленнее и плавнее */
+        @keyframes glowPulseOuter {
+            0%, 100% {
+                opacity: 0.3;
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+            33% {
+                opacity: 0.6;
                 transform: translate(-50%, -50%) scale(1.15);
+            }
+            66% {
+                opacity: 0.4;
+                transform: translate(-50%, -50%) scale(1.05);
             }
         }
         
