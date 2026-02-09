@@ -1,4 +1,4 @@
-name: 🚀 Switch Token
+name: Switch Token
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Read config
         id: cfg
         run: |
@@ -18,41 +18,19 @@ jobs:
           PUMP=$(jq -r '.pump_url' pumpbot/token-config.json)
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
           echo "pump=$PUMP" >> $GITHUB_OUTPUT
-          echo "🔄 Token: $TOKEN"
-          echo "🔗 Pump:  $PUMP"
+          echo "Token: $TOKEN"
+          echo "Pump:  $PUMP"
 
       - name: Replace contract in all files
         run: |
           NEW="${{ steps.cfg.outputs.token }}"
           PUMP="${{ steps.cfg.outputs.pump }}"
-          
-          # Get current values
           CURRENT=$(grep -oP "const TOKEN_ADDRESS = '\K[^']+" pumpbot/js/app.js || echo "")
           CURRENT_PUMP=$(grep -oP 'id="buyMercLink"[^>]*href="\K[^"]+' pumpbot/index.html || echo "")
-          
           echo "Current token: $CURRENT"
           echo "New token:     $NEW"
-          echo "Current pump:  $CURRENT_PUMP"
-          echo "New pump:      $PUMP"
-          
-          # All known old token addresses
-          OLD_TOKENS=(
-            "$CURRENT"
-            "DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump"
-            "HiNkp9CdKqTgPtB6WnncrUAu9YwQqnrvT6Ceuxoypump"
-            "HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump"
-          )
-          
-          # Replace token address in all code files
-          FILES=(
-            "pumpbot/js/app.js"
-            "pumpbot/index.html"
-            "pumpbot/api/orders.js"
-            "pumpbot/api/balance.js"
-            "pumpbot/api/marketcap.js"
-            "pumpbot/api/cron/settle-rounds.js"
-          )
-          
+          OLD_TOKENS=("$CURRENT" "DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump" "HiNkp9CdKqTgPtB6WnncrUAu9YwQqnrvT6Ceuxoypump" "HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump")
+          FILES=("pumpbot/js/app.js" "pumpbot/index.html" "pumpbot/api/orders.js" "pumpbot/api/balance.js" "pumpbot/api/marketcap.js" "pumpbot/api/cron/settle-rounds.js")
           TOTAL=0
           for FILE in "${FILES[@]}"; do
             [ ! -f "$FILE" ] && continue
@@ -64,43 +42,28 @@ jobs:
                 COUNT=$((COUNT + C))
               fi
             done
-            [ "$COUNT" -gt 0 ] && echo "✅ $FILE — $COUNT" && TOTAL=$((TOTAL + COUNT))
+            if [ "$COUNT" -gt 0 ]; then
+              echo "$FILE -- $COUNT replacements"
+              TOTAL=$((TOTAL + COUNT))
+            fi
           done
-          
-          # Replace pump.fun link in index.html
           if [ -n "$PUMP" ] && [ "$PUMP" != "null" ] && [ -n "$CURRENT_PUMP" ] && [ "$CURRENT_PUMP" != "$PUMP" ]; then
             sed -i "s|$CURRENT_PUMP|$PUMP|g" pumpbot/index.html
-            echo "✅ Pump link updated"
+            echo "Pump link updated"
           fi
-          
-          echo "📝 Total: $TOTAL replacements"
+          echo "Total: $TOTAL replacements"
 
-- name: Full database wipe
+      - name: Full database wipe
         env:
           POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
         run: |
           if [ -z "$POSTGRES_URL" ]; then
-            echo "⚠️  POSTGRES_URL not set, skip DB"
+            echo "POSTGRES_URL not set, skip DB"
             exit 0
           fi
-          
-          echo "🗄️ Full database wipe..."
-          psql "${POSTGRES_URL}" -c "
-            DELETE FROM user_settlements;
-            DELETE FROM trades;
-            DELETE FROM limit_orders;
-            DELETE FROM user_positions;
-            DELETE FROM pool_snapshots;
-            DELETE FROM rounds;
-            DELETE FROM balance_transactions;
-            DELETE FROM deposits;
-            DELETE FROM withdrawals;
-            DELETE FROM audit_log;
-            DELETE FROM rate_limits;
-            DELETE FROM market_cap_history;
-            UPDATE user_balances SET available=0, locked=0, total_deposited=0, total_withdrawn=0, updated_at=NOW();
-          "
-          echo "✅ Database wiped"
+          echo "Wiping database..."
+          psql "${POSTGRES_URL}" -c "DELETE FROM user_settlements; DELETE FROM trades; DELETE FROM limit_orders; DELETE FROM user_positions; DELETE FROM pool_snapshots; DELETE FROM rounds; DELETE FROM balance_transactions; DELETE FROM deposits; DELETE FROM withdrawals; DELETE FROM audit_log; DELETE FROM rate_limits; DELETE FROM market_cap_history; UPDATE user_balances SET available=0, locked=0, total_deposited=0, total_withdrawn=0, updated_at=NOW();"
+          echo "Database wiped"
 
       - name: Commit and push
         run: |
@@ -108,5 +71,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "🚀 Launch: ${{ steps.cfg.outputs.token }}"
+          git commit -m "Launch ${{ steps.cfg.outputs.token }}"
           git push
