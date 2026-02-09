@@ -1,5 +1,6 @@
 const TOKEN_ADDRESS = '3TJUekjVmyvvGazbohcWZm89f6QwYkSS1SahFNmvpump';
 const API_BASE = '';
+const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length < 30;
 // HELPER FUNCTIONS FOR SAFE API CALLS
 // Safe JSON parse with content-type check
 async function safeJsonParse(response) {
@@ -424,10 +425,12 @@ async function executeDeposit() {
         const rawAmount = Math.floor(amount * Math.pow(10, platformDepositInfo.decimals || 6));
         const transferIx = createTransferInstructionJS(
             senderAta,       // source ATA
-            recipientAta,    
-            senderPubkey,    
+            recipientAta,    // destination ATA
+            senderPubkey,    // owner/authority
             rawAmount,
-            tokenProgramId   
+            tokenProgramId,
+            mintPubkey,      // mint (required for TransferChecked)
+            platformDepositInfo.decimals || 6  // decimals
         );
         const transaction = new Transaction();
         transaction.add(transferIx);
@@ -561,24 +564,25 @@ async function getAssociatedTokenAddressJS(mint, owner, tokenProgramId) {
     );
     return address;
 }
-function createTransferInstructionJS(source, destination, owner, amount, tokenProgramId) {
+function createTransferInstructionJS(source, destination, owner, amount, tokenProgramId, mint, decimals) {
     const { PublicKey, TransactionInstruction } = solanaWeb3;
     const SPL_TOKEN_DEFAULT = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
     const tokenProgram = new PublicKey(tokenProgramId || SPL_TOKEN_DEFAULT);
-    // SPL Token Transfer instruction layout:
-    // byte 0: instruction index (3 = Transfer)
-    // bytes 1-8: amount (u64 little-endian)
-    const data = new Uint8Array(9);
-    data[0] = 3; // Transfer instruction
-    // Write u64 little-endian
+    // Use TransferChecked (instruction 12) — works for BOTH Token Program and Token 2022
+    // Layout: [1 byte ix][8 bytes amount u64 LE][1 byte decimals]
+    const data = new Uint8Array(10);
+    data[0] = 12; // TransferChecked instruction
     let amt = BigInt(amount);
     for (let i = 1; i < 9; i++) {
         data[i] = Number(amt & 0xFFn);
         amt >>= 8n;
     }
+    data[9] = decimals || 6;
+    const mintPubkey = (typeof mint === 'string') ? new PublicKey(mint) : mint;
     return new TransactionInstruction({
         keys: [
             { pubkey: source, isSigner: false, isWritable: true },
+            { pubkey: mintPubkey, isSigner: false, isWritable: false },
             { pubkey: destination, isSigner: false, isWritable: true },
             { pubkey: owner, isSigner: true, isWritable: false },
         ],
@@ -1808,6 +1812,27 @@ async function waitForWallets(maxWait = 3000) {
     return false;
 }
 window.addEventListener('load', async () => {
+    // Set contract address in header
+    const contractEl = document.getElementById('contractAddr');
+    if (contractEl) {
+        contractEl.textContent = PLATFORM_PAUSED ? 'Awaiting token launch...' : TOKEN_ADDRESS;
+    }
+    
+    // If paused, show waiting state everywhere
+    if (PLATFORM_PAUSED) {
+        document.getElementById('currentCap').textContent = '—';
+        document.getElementById('targetCap').textContent = '—';
+        document.getElementById('countdown').textContent = '--:--';
+        document.getElementById('statHigherPrice').textContent = '—';
+        document.getElementById('statLowerPrice').textContent = '—';
+        [1, 2, 3].forEach(i => {
+            const el = document.getElementById(`round-${i}-time`);
+            if (el) el.textContent = 'Paused';
+        });
+        document.getElementById('tradeHistory').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Awaiting token launch...</div>';
+        return; // Don't start any intervals or fetches
+    }
+    
     await waitForWallets(3000);
     discoverWalletStandard();
     const savedWallet = getSavedWalletChoice();
@@ -2313,5 +2338,3 @@ window.addEventListener('load', async () => {
     window.closeSettlementsModal = closeSettlementsModal;
     window.switchSettlementTab = switchSettlementTab;
 });
-
-
