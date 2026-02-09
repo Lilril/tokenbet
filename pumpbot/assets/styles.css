@@ -1,896 +1,1187 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mercurome</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20260208v1">
-    <link rel="icon" type="image/png" href="assets/image/mercurome.png">
-    <style>
-        /* Обновленная анимация для pharaoh_kirk с отзеркаливанием и меньшим углом */
-        @keyframes levitate-reverse {
-            0%, 100% {
-                transform: translateY(0) scaleX(-1) rotate(-2deg);
-            }
-            50% {
-                transform: translateY(-12px) scaleX(-1) rotate(-2deg);
-            }
-        }
-        
-        /* Стили для монеты в заголовке - БЕЗ ЛЕВИТАЦИИ */
-        .coin-icon-wrapper {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            margin-right: 15px;
-            vertical-align: middle;
-            transform: translateY(-5px);
-        }
-        
-        .coin-icon {
-            width: 1.5em;
-            height: 1.5em;
-            position: relative;
-            z-index: 2;
-            filter: drop-shadow(0 0 15px rgba(0,232,157,0.7));
-        }
-        
-        /* Внутреннее ЯРКОЕ сияние с вращением */
-        .coin-icon-wrapper::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 130%;
-            height: 130%;
-            transform: translate(-50%, -50%);
-            border-radius: 50%;
-            background: radial-gradient(
-                circle,
-                rgba(220, 255, 240, 1) 0%,
-                rgba(180, 255, 220, 0.9) 15%,
-                rgba(120, 245, 190, 0.7) 35%,
-                rgba(60, 235, 170, 0.5) 55%,
-                rgba(0, 232, 157, 0.25) 75%,
-                transparent 100%
-            );
-            animation: glowRotate 3s linear infinite, glowPulseInner 2s ease-in-out infinite;
-            z-index: 1;
-        }
-        
-        /* Внешнее сияние с волнами */
-        .coin-icon-wrapper::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 180%;
-            height: 180%;
-            transform: translate(-50%, -50%);
-            border-radius: 50%;
-            background: radial-gradient(
-                circle,
-                rgba(180, 255, 220, 0.7) 0%,
-                rgba(120, 245, 190, 0.5) 25%,
-                rgba(60, 235, 170, 0.3) 50%,
-                rgba(0, 232, 157, 0.15) 70%,
-                transparent 100%
-            );
-            animation: glowPulseOuter 3.5s ease-in-out infinite, glowWave 4s ease-in-out infinite;
-            z-index: 0;
-        }
-        
-        /* Вращение свечения */
-        @keyframes glowRotate {
-            0% {
-                filter: hue-rotate(0deg) brightness(1);
-            }
-            50% {
-                filter: hue-rotate(15deg) brightness(1.2);
-            }
-            100% {
-                filter: hue-rotate(0deg) brightness(1);
-            }
-        }
-        
-        /* Внутреннее сияние - быстрее и интенсивнее */
-        @keyframes glowPulseInner {
-            0%, 100% {
-                opacity: 0.8;
-                transform: translate(-50%, -50%) scale(0.95);
-            }
-            50% {
-                opacity: 1;
-                transform: translate(-50%, -50%) scale(1.15);
-            }
-        }
-        
-        /* Внешнее сияние с волновым эффектом */
-        @keyframes glowPulseOuter {
-            0%, 100% {
-                opacity: 0.5;
-                transform: translate(-50%, -50%) scale(0.9);
-            }
-            33% {
-                opacity: 0.8;
-                transform: translate(-50%, -50%) scale(1.2);
-            }
-            66% {
-                opacity: 0.6;
-                transform: translate(-50%, -50%) scale(1.1);
-            }
-        }
-        
-        /* Волновое расширение */
-        @keyframes glowWave {
-            0%, 100% {
-                box-shadow: 0 0 20px rgba(0, 232, 157, 0.3);
-            }
-            50% {
-                box-shadow: 0 0 40px rgba(0, 232, 157, 0.6);
-            }
-        }
-        
-        /* ROUND SELECTOR STYLES */
-        .round-selector {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            padding: 20px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border); 
-            border-radius: 2px;
-        }
-        
-        .round-tab {
-            flex: 1;
-            padding: 15px 20px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: center;
-            font-weight: 600;
-            border-radius: 2px;
-        }
-        
-        .round-tab:hover {
-            border-color: var(--border-bright);
-            transform: translateY(-1px);
-        }
-        
-        .round-tab.active {
-            background: var(--accent-green);
-            color: #000;
-            border-color: var(--accent-green);
-            box-shadow: 0 0 12px rgba(0, 232, 157, 0.15);
-        }
-        
-        .round-tab-title {
-            font-size: 1.2em;
-            margin-bottom: 5px;
-        }
-        
-        .round-tab-info {
-            font-size: 0.8em;
-            opacity: 0.7;
-        }
-        
-        .round-tab.active .round-tab-info {
-            opacity: 0.9;
-        }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
-        .settlements-alert {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-bright);
-            border-radius: 2px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
+:root {
+    --bg-primary: #0b0b0f;
+    --bg-secondary: #111116;
+    --bg-tertiary: #1a1a22;
+    --text-primary: #e8e8f0;
+    --text-secondary: #8a8a9a;
+    --text-dim: #55556a;
+    --accent-green: #00e89d;
+    --accent-red: #ff3860;
+    --accent-yellow: #f0c030;
+    --accent-blue: #40a0ff;
+    --accent-magenta: #c840ff;
+    --border: #252530;
+    --border-bright: #3a3a50;
+    --shadow: rgba(0, 232, 157, 0.12);
+    --glass: rgba(255, 255, 255, 0.03);
+}
 
-        @keyframes alertPulse {
-            0%, 100% { box-shadow: 0 0 20px rgba(96, 64, 208, 0.2); }
-            50% { box-shadow: 0 0 30px rgba(96, 64, 208, 0.4); }
-        }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
 
-        .settlements-alert-content {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
+body {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', 'Courier New', monospace;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    overflow-x: hidden;
+    position: relative;
+}
 
-        .settlements-alert-icon {
-            font-size: 3em;
-            animation: bounce 1s infinite;
-        }
+/* Subtle warm ambient — NOT cosmic, more like studio lighting */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(ellipse at 15% 10%, rgba(200, 64, 255, 0.04) 0%, transparent 40%),
+        radial-gradient(ellipse at 85% 90%, rgba(0, 232, 157, 0.03) 0%, transparent 40%),
+        radial-gradient(ellipse at 50% 50%, rgba(240, 192, 48, 0.02) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+}
 
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
+/* ============================================
+   MERCURY BLOBS CANVAS
+   ============================================ */
+#mercuryCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
 
-        .settlements-alert-text {
-            flex: 1;
-            color: var(--text-primary);
-        }
+/* ============================================
+   FLOATING CHARACTER IMAGES
+   ============================================ */
+.floating-character {
+    pointer-events: none;
+    z-index: 3;
+    filter: brightness(1.2) contrast(1.05);
+}
 
-        .settlements-alert-text strong {
-            display: block;
-            font-size: 1.2em;
-            margin-bottom: 5px;
-            color: var(--accent-yellow);
-        }
+/* Levitating animation for pharaohs */
+@keyframes levitate {
+    0%, 100% {
+        transform: translateY(0) rotate(4deg);
+    }
+    50% {
+        transform: translateY(-15px) rotate(4deg);
+    }
+}
 
-        .settlements-alert-btn {
-            padding: 12px 30px;
-            background: var(--accent-yellow);
-            color: #000;
-            border: none;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-            font-size: 1em;
-            transition: all 0.3s;
-        }
+@keyframes levitate-reverse {
+    0%, 100% {
+        transform: translateY(0) rotate(-6deg);
+    }
+    50% {
+        transform: translateY(-12px) rotate(-6deg);
+    }
+}
 
-        .settlements-alert-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.4);
-        }
+.floating-character.char-pharaoh-1 {
+    position: fixed;
+    bottom: -40px;
+    left: -20px;
+    width: 260px;
+    opacity: 0.09;
+    animation: levitate 4s ease-in-out infinite;
+}
 
-        .settlements-tabs {
-            display: flex;
-            gap: 10px;
-            padding: 20px 20px 0 20px;
-            border-bottom: 1px solid var(--border);
-        }
+.floating-character.char-pharaoh-2 {
+    position: fixed;
+    top: 30px;
+    right: -20px;
+    width: 230px;
+    opacity: 0.09;
+    animation: levitate-reverse 5s ease-in-out infinite;
+}
 
-        .settlement-tab {
-            padding: 12px 24px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            cursor: pointer;
-            border-radius: 2px 2px 0 0;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
+/* trans_floyd — positioned in header */
+.header-character {
+    position: absolute;
+    top: 0;
+    left: 30px;
+    width: 280px;
+    opacity: 0.25;
+    z-index: 2;
+    pointer-events: none;
+    filter: brightness(1.2) contrast(1.05);
+}
 
-        .settlement-tab:hover {
-            background: var(--bg-secondary);
-            border-color: var(--border-bright);
-        }
+@media (max-width: 1200px) {
+    .floating-character { opacity: 0.04 !important; }
+    .header-character { opacity: 0.08 !important; }
+}
 
-        .settlement-tab.active {
-            background: var(--accent-green);
-            color: #000;
-            border-color: var(--accent-green);
-        }
+@media (max-width: 768px) {
+    .floating-character { display: none; }
+    .header-character { width: 120px; left: 10px; opacity: 0.15 !important; }
+}
 
-        .settlements-list {
-            max-height: 60vh;
-            overflow-y: auto;
-            padding: 20px;
-        }
+/* ============================================
+   CONTAINER
+   ============================================ */
+.container {
+    max-width: 1500px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 20px 30px;
+    position: relative;
+    z-index: 5;
+}
 
-        .settlement-card {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            padding: 20px;
-            margin-bottom: 15px;
-            transition: all 0.2s;
-        }
+/* ============================================
+   SVG ICON BASE
+   ============================================ */
+.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+}
 
-        .settlement-card:hover {
-            border-color: var(--border-bright);
-        }
+.icon svg {
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+}
 
-        .settlement-card.won {
-            border-left: 4px solid var(--accent-green);
-        }
+.icon-lg {
+    width: 1.3em;
+    height: 1.3em;
+}
 
-        .settlement-card.lost {
-            border-left: 4px solid var(--accent-red);
-        }
+/* ============================================
+   HEADER
+   ============================================ */
+.header {
+    text-align: center;
+    border: 1px solid var(--border-bright);
+    padding: 30px;
+    margin-bottom: 30px;
+    background: var(--bg-secondary);
+    position: relative;
+    overflow: hidden;
+    border-radius: 2px;
+}
 
-        .settlement-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
+/* Subtle gradient sweep — mercurome palette accent */
+.header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, 
+        transparent 0%, 
+        var(--accent-green) 20%, 
+        var(--accent-blue) 35%,
+        var(--accent-magenta) 50%, 
+        var(--accent-yellow) 65%,
+        var(--accent-green) 80%, 
+        transparent 100%);
+    opacity: 0.5;
+}
 
-        .settlement-round-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
+.header::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.015), transparent);
+    animation: headerSweep 6s ease-in-out infinite;
+}
 
-        .settlement-round-badge {
-            background: var(--bg-secondary);
-            padding: 5px 12px;
-            border-radius: 6px;
-            font-size: 0.9em;
-            font-weight: 600;
-        }
+@keyframes headerSweep {
+    0% { left: -40%; }
+    100% { left: 140%; }
+}
 
-        .settlement-status {
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: 700;
-        }
+.header h1 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 2.6em;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: 4px;
+    position: relative;
+    z-index: 1;
+    text-transform: uppercase;
+}
 
-        .settlement-status.won {
-            background: var(--accent-green);
-            color: #000;
-        }
+.header h1 .icon {
+    color: var(--accent-green);
+    font-size: 0.85em;
+    margin-right: 8px;
+    filter: drop-shadow(0 0 8px rgba(0, 232, 157, 0.5));
+}
 
-        .settlement-status.lost {
-            background: var(--accent-red);
-            color: #000;
-        }
+.header p {
+    color: var(--text-dim);
+    font-size: 0.95em;
+    position: relative;
+    z-index: 1;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 8px;
+}
 
-        .settlement-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
-        }
+/* ============================================
+   WALLET SECTION
+   ============================================ */
+.wallet-section {
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-bottom: 20px;
+    background: var(--bg-secondary);
+    border-radius: 2px;
+}
 
-        .settlement-detail {
-            text-align: center;
-            padding: 10px;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-        }
+.wallet-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
 
-        .settlement-detail-label {
-            font-size: 0.8em;
-            color: var(--text-dim);
-            margin-bottom: 5px;
-        }
+.balance-display {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
 
-        .settlement-detail-value {
-            font-size: 1.1em;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
+.balance-item {
+    padding: 15px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    transition: all 0.25s ease;
+}
 
-        .settlement-payout {
-            font-size: 1.5em !important;
-            color: var(--accent-green) !important;
-        }
+.balance-item:hover {
+    border-color: var(--border-bright);
+    background: rgba(26, 26, 34, 0.9);
+}
 
-        .settlement-loss {
-            color: var(--accent-red) !important;
-        }
+.balance-label {
+    font-size: 0.8em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    letter-spacing: 0.5px;
+}
 
-        .settlement-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
+.balance-value {
+    font-size: 1.5em;
+    font-weight: 600;
+    color: var(--accent-green);
+}
 
-        .settlement-claim-btn {
-            flex: 1;
-            padding: 15px;
-            background: var(--accent-green);
-            color: #000;
-            border: none;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 1em;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
+/* ============================================
+   BUTTONS
+   ============================================ */
+button {
+    background: var(--accent-green);
+    color: var(--bg-primary);
+    border: none;
+    padding: 12px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 2px;
+}
 
-        .settlement-claim-btn:hover {
-            transform: scale(1.02);
-            box-shadow: 0 5px 20px rgba(0, 255, 163, 0.3);
-        }
+button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.5s, height 0.5s;
+}
 
-        .settlement-claim-btn:disabled {
-            background: var(--bg-secondary);
-            color: var(--text-dim);
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
+button:hover::before {
+    width: 300px;
+    height: 300px;
+}
 
-        .settlement-claimed {
-            background: var(--bg-secondary);
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            color: var(--text-dim);
-            font-size: 0.9em;
-        }
+button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--shadow);
+}
 
-        .settlement-claimed strong {
-            color: var(--accent-green);
-            display: block;
-            font-size: 1.1em;
-            margin-bottom: 5px;
-        }
+button:active {
+    transform: translateY(0);
+}
 
-        .settlement-tx-link {
-            color: var(--accent-yellow);
-            text-decoration: none;
-            font-size: 0.85em;
-        }
+button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
 
-        .settlement-tx-link:hover {
-            text-decoration: underline;
-        }
+button:disabled:hover {
+    box-shadow: none;
+}
 
-        .market-cap-comparison {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
-            padding: 15px;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            margin: 15px 0;
-        }
+.btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--accent-green);
+}
 
-        .market-cap-value {
-            font-weight: 700;
-            font-size: 1.1em;
-        }
+.btn-danger {
+    background: var(--accent-red);
+    color: white;
+}
 
-        .market-cap-arrow {
-            font-size: 1.5em;
-            color: var(--accent-yellow);
-        }
-    </style>
-</head>
-<body>
-    <!-- Mercury blob effect canvas -->
-    <canvas id="mercuryCanvas"></canvas>
-    
-    <!-- Floating chrome characters — fixed background decor with levitation -->
-    <img src="assets/image/pharaoh_epstein.png" class="floating-character char-pharaoh-1" alt="" loading="lazy">
-    <img src="assets/image/pharaoh_kirk.png" class="floating-character char-pharaoh-2" alt="" loading="lazy">
+/* ============================================
+   MAIN GRID LAYOUT
+   ============================================ */
+.trading-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+    margin-bottom: 20px;
+}
 
-    <div class="container" style="position: relative;">
-        <!-- HEADER with integrated trans_floyd character -->
-        <div class="header slide-in">
-            <img src="assets/image/trans_floyd.png" class="header-character" alt="" loading="lazy">
-            <h1>
-                <span class="coin-icon-wrapper">
-                    <img src="assets/image/merc_coin.png" class="coin-icon" alt="MERC">
-                </span>
-                MERCUROME PREDICTION MARKET
-            </h1>
-            <p>Advanced Trading Terminal • Order Book • AMM</p>
-            <div style="margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
-                <div id="contractRow" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 2px; cursor: pointer; transition: all 0.2s;" onclick="copyContract()" onmouseover="this.style.borderColor='var(--border-bright)'" onmouseout="this.style.borderColor='var(--border)'">
-                    <span style="font-size: 0.72em; color: var(--text-dim); letter-spacing: 0.5px; font-family: 'JetBrains Mono', monospace;" id="contractAddr">HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump</span>
-                    <svg id="copyIcon" style="width: 14px; height: 14px; color: var(--text-dim); flex-shrink: 0; transition: color 0.2s;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </div>
-                <a href="https://x.com/mercurome" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 50%; color: var(--text-secondary); transition: all 0.2s; text-decoration: none;" onmouseover="this.style.borderColor='var(--text-primary)';this.style.color='var(--text-primary)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                </a>
-                <a href="https://pump.fun/coin/HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump" target="_blank" rel="noopener" id="buyMercLink" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px; background: var(--accent-green); color: #0b0b0f; font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 0.85em; letter-spacing: 0.5px; border-radius: 50px; text-decoration: none; transition: all 0.2s; border: none;" onmouseover="this.style.filter='brightness(1.15)';this.style.transform='translateY(-1px)'" onmouseout="this.style.filter='';this.style.transform=''">
-                    Buy $MERC
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
-                </a>
-            </div>
-        </div>
+.main-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
 
-        <!-- MASTER GRID: 3 rows x 2 columns, blocks aligned per row -->
-        <div class="main-grid">
+/* ============================================
+   PRICE DISPLAY
+   ============================================ */
+.price-display {
+    border: 1px solid rgba(200, 160, 40, 0.4);
+    border-left: 3px solid var(--accent-yellow);
+    padding: 30px;
+    text-align: center;
+    background: var(--bg-secondary);
+    position: relative;
+    border-radius: 2px;
+    overflow: hidden;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
 
-            <!-- ROW 1 LEFT: WALLET SECTION -->
-            <div class="wallet-section slide-in" style="margin-bottom: 0;">
-                <div class="wallet-status">
-                    <div>
-                        <span class="status-dot status-disconnected" id="statusDot"></span>
-                        <span id="walletStatus">NOT CONNECTED</span>
-                    </div>
-                    <button id="connectBtn">CONNECT</button>
-                </div>
-                <div class="balance-display">
-                    <div class="balance-item">
-                        <div class="balance-label">Balance $TOKEN</div>
-                        <div class="balance-value" id="tokenBalance">0</div>
-                        <div style="font-size: 0.7em; color: var(--text-dim); margin-top: 2px;" id="lockedBalance"></div>
-                        <div style="display: flex; gap: 6px; margin-top: 6px;">
-                            <button onclick="openDepositModal()" style="flex:1; padding: 5px 0; background: var(--accent-green); color: #000; border: none; border-radius: 4px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.75em;">DEPOSIT</button>
-                            <button onclick="openWithdrawModal()" style="flex:1; padding: 5px 0; background: var(--accent-red); color: #fff; border: none; border-radius: 4px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.75em;">WITHDRAW</button>
-                        </div>
-                    </div>
-                    <div class="balance-item" onclick="openMyOrdersModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                        <div class="balance-label">My Orders</div>
-                        <div class="balance-value text-yellow" id="activeOrdersCount">0</div>
-                    </div>
-                    <div class="balance-item" onclick="openMyTradesModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                        <div class="balance-label">My Trades</div>
-                        <div class="balance-value text-green" id="openPositionsCount">1</div>
-                    </div>
-                    <div class="balance-item" id="settlementsAlert" onclick="openSettlementsModal()" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                        <div class="balance-label"><svg style="width:12px;height:12px;vertical-align:-1px;color:var(--text-dim);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg> History</div>
-                        <div class="balance-value" id="settlementsCount" style="font-size: 0.85em; color: var(--text-dim);">→</div>
-                    </div>
-                </div>
-            </div>
+/* FIXED: Static spectral gold gradient that shifts based on cursor position */
+.price-display::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at var(--gold-x, 50%) var(--gold-y, 50%), 
+            rgba(255, 248, 200, 0.15) 0%,
+            rgba(255, 235, 150, 0.08) 15%,
+            rgba(240, 200, 80, 0.04) 30%,
+            transparent 50%
+        ),
+        linear-gradient(135deg,
+            rgba(255, 248, 200, 0.03) 0%,
+            rgba(240, 210, 100, 0.05) 25%,
+            rgba(200, 165, 50, 0.04) 50%,
+            rgba(180, 140, 30, 0.03) 75%,
+            rgba(255, 235, 150, 0.02) 100%
+        );
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    border-radius: 2px;
+}
 
-            <!-- ROW 1 RIGHT: PRICE DISPLAY -->
-            <div class="price-display slide-in" style="padding: 15px; align-self: stretch;">
-                <div class="price-label" style="font-size: 0.75em; margin-bottom: 5px;">CURRENT MARKET CAP</div>
-                <div class="price-value" id="currentCap" style="font-size: 2em;">Loading...</div>
-                <div class="price-stats" style="gap: 5px; margin-top: 8px; padding-top: 8px;">
-                    <div class="stat-item">
-                        <div class="stat-label"><svg style="width:12px;height:12px;vertical-align:-1px;color:var(--accent-green);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Higher</div>
-                        <div class="stat-value text-green" id="statHigherPrice">0.500</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label">Target Cap</div>
-                        <div class="stat-value text-yellow" id="targetCap">$---</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label"><svg style="width:12px;height:12px;vertical-align:-1px;color:var(--accent-red);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Lower</div>
-                        <div class="stat-value text-red" id="statLowerPrice">0.500</div>
-                    </div>
-                </div>
-            </div>
+.price-display:hover::before {
+    opacity: 1;
+}
 
-            <!-- ROW 2 LEFT: ROUND SELECTOR -->
-            <div class="round-selector slide-in" style="margin-bottom: 0; align-self: stretch;">
-                <div class="round-tab active" data-round-id="1" data-interval="15" onclick="selectRound(1, 15)">
-                    <div class="round-tab-title">15m</div>
-                    <div class="round-tab-info" id="round-1-time">Loading...</div>
-                </div>
-                <div class="round-tab" data-round-id="2" data-interval="60" onclick="selectRound(2, 60)">
-                    <div class="round-tab-title">1h</div>
-                    <div class="round-tab-info" id="round-2-time">Loading...</div>
-                </div>
-                <div class="round-tab" data-round-id="3" data-interval="240" onclick="selectRound(3, 240)">
-                    <div class="round-tab-title">4h</div>
-                    <div class="round-tab-info" id="round-3-time">Loading...</div>
-                </div>
-            </div>
+.price-display:hover {
+    border-color: rgba(240, 200, 60, 0.6);
+    box-shadow:
+        0 0 20px rgba(240, 192, 48, 0.06),
+        inset 0 0 30px rgba(240, 192, 48, 0.02);
+}
 
-            <!-- ROW 2 RIGHT: COUNTDOWN -->
-            <div class="countdown-section slide-in" style="padding: 10px 15px; align-self: stretch; display: flex; flex-direction: column; justify-content: center;">
-                <div class="countdown-label" style="font-size: 0.7em; margin-bottom: 3px;">ROUND CLOSES IN</div>
-                <div class="countdown-value" id="countdown" style="font-size: 1.8em;">--:--</div>
-            </div>
+/* Bottom golden reflection */
+.price-display::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 35%;
+    background: linear-gradient(to top, rgba(200, 160, 40, 0.03) 0%, transparent 100%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
 
-            <!-- ROW 3 LEFT: ORDER BOOK -->
-            <div class="orderbook-panel slide-in" style="max-height: none; align-self: start;">
-                <div class="orderbook-header"><svg style="width:16px;height:16px;color:var(--text-dim);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> ORDER BOOK</div>
-                <div class="orderbook-content">
-                    <div class="orderbook-side">
-                        <div class="orderbook-side-header">
-                            <span>Price</span>
-                            <span>Tokens</span>
-                        </div>
-                        <div id="orderBookHigher">
-                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">No orders</div>
-                        </div>
-                    </div>
-                    <div style="padding: 12px; text-align: center; border: 1px dashed var(--border); margin: 10px 0; background: var(--bg-tertiary);">
-                        <div style="font-size: 0.75em; color: var(--text-dim); margin-bottom: 3px;">SPREAD</div>
-                        <div style="font-size: 1.1em; font-weight: 600; color: var(--accent-yellow);" id="spreadDisplay">0.00%</div>
-                    </div>
-                    <div class="orderbook-side">
-                        <div class="orderbook-side-header">
-                            <span>Price</span>
-                            <span>Tokens</span>
-                        </div>
-                        <div id="orderBookLower">
-                            <div style="padding: 20px; text-align: center; color: var(--text-dim);">No orders</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+.price-display:hover::after {
+    opacity: 1;
+}
 
-            <!-- ROW 3 RIGHT: POLYMARKET-STYLE TRADE PANEL -->
-            <div style="background: var(--bg-secondary); border: 1px solid var(--border); padding: 15px; align-self: start; border-radius: 2px;" class="slide-in">
-                <!-- BUY/SELL toggle -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
-                    <button id="tradeBuyBtn" onclick="switchTradeAction('buy')" style="padding: 10px; background: var(--accent-green); color: #000; border: none; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">BUY</button>
-                    <button id="tradeSellBtn" onclick="switchTradeAction('sell')" style="padding: 10px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">SELL</button>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;">
-                    <button id="sideHigherBtn" onclick="switchTradeSide('higher')" style="padding: 12px; background: var(--accent-green); color: #000; border: none; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;"><svg style="width:12px;height:12px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Higher <span id="sideHigherOdds" style="opacity:0.8">0.500</span></button>
-                    <button id="sideLowerBtn" onclick="switchTradeSide('lower')" style="padding: 12px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;"><svg style="width:12px;height:12px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Lower <span id="sideLowerOdds" style="opacity:0.8">0.500</span></button>
-                </div>
-                <!-- Position info for sell mode -->
-                <div id="sellPositionInfo" style="display: none; padding: 8px 12px; background: var(--bg-tertiary); border-radius: 6px; margin-bottom: 12px; font-size: 0.85em;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: var(--text-dim);">Your position:</span>
-                        <span id="sellPositionAmount" style="color: var(--text-primary); font-weight: 600;">0</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-                        <span style="color: var(--text-dim);">Avg buy price:</span>
-                        <span id="sellPositionPrice" style="color: var(--text-primary);">0.000</span>
-                    </div>
-                </div>
-                <div class="order-type-selector" style="margin-bottom: 15px;">
-                    <button class="order-type-btn active" data-type="market" onclick="switchOrderType('market')">Market</button>
-                    <button class="order-type-btn" data-type="limit" onclick="switchOrderType('limit')">Limit</button>
-                </div>
-                <div class="input-group limit-price-group" style="display: none;">
-                    <label class="input-label">Price (0-1)</label>
-                    <input type="number" id="tradePrice" placeholder="0.01 - 0.99" min="0" max="1" step="0.001">
-                </div>
-                <div class="input-group">
-                    <label class="input-label">Quantity (tokens)</label>
-                    <input type="number" id="tradeAmount" placeholder="min. 500" min="0" step="1">
-                </div>
-                <div class="estimate-display" id="tradeEstimate">
-                    <div style="color: var(--text-dim);">Enter amount</div>
-                </div>
-                <button id="tradeExecuteBtn" onclick="executeUnifiedTrade()" style="width: 100%; padding: 14px; background: var(--accent-green); color: #000; border: none; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 1.1em; margin-top: 10px; border-radius: 6px;">
-                    BUY HIGHER
-                </button>
-            </div>
+.price-label {
+    color: var(--accent-yellow);
+    font-size: 0.9em;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
 
-        </div>
+.price-value {
+    font-family: 'Outfit', sans-serif;
+    font-size: 3.5em;
+    font-weight: 700;
+    color: var(--accent-yellow);
+    font-variant-numeric: tabular-nums;
+}
 
-        <!-- Rest of the HTML remains the same - modals, trade history, etc. -->
-        <!-- ... (keeping all modals and remaining content) ... -->
+.price-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
 
-    </div>
+.stat-item {
+    text-align: center;
+}
 
-    <script src="https://unpkg.com/@solana/web3.js@1.95.0/lib/index.iife.min.js"></script>
-    <script src="js/app.js?v=20260208v1"></script>
-    <script>
-        // Global variable for current round
-        window.currentRoundId = 1;
-        
-        function selectRound(roundId, intervalMinutes) {
-            window.currentRoundId = roundId;
-            document.querySelectorAll('.round-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            const selectedTab = document.querySelector(`[data-round-id="${roundId}"]`);
-            if (selectedTab) {
-                selectedTab.classList.add('active');
-            }
-            if (typeof window.loadMarketData === 'function') {
-                window.loadMarketData();
-            }
-        }
+.stat-label {
+    font-size: 0.75em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+}
 
-        function copyContract() {
-            const addr = document.getElementById('contractAddr').textContent;
-            navigator.clipboard.writeText(addr).then(() => {
-                const row = document.getElementById('contractRow');
-                const icon = document.getElementById('copyIcon');
-                const addrEl = document.getElementById('contractAddr');
-                const origColor = addrEl.style.color;
-                addrEl.style.color = 'var(--accent-green)';
-                icon.style.color = 'var(--accent-green)';
-                icon.innerHTML = '<polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2" fill="none"/>';
-                setTimeout(() => {
-                    addrEl.style.color = origColor || 'var(--text-dim)';
-                    icon.style.color = 'var(--text-dim)';
-                    icon.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
-                }, 1500);
-            });
-        }
-    </script>
-    
-    <script>
-    (function() {
-        const panels = document.querySelectorAll('.price-display, .countdown-section');
-        panels.forEach(panel => {
-            panel.addEventListener('mousemove', (e) => {
-                const rect = panel.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                panel.style.setProperty('--gold-x', x + 'px');
-                panel.style.setProperty('--gold-y', y + 'px');
-            });
-        });
-    })();
-    </script>
+.stat-value {
+    font-size: 1.2em;
+    font-weight: 600;
+    margin-top: 5px;
+}
 
-    <script>
-    (function() {
-        const canvas = document.getElementById('mercuryCanvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        
-        let W, H;
-        function resize() {
-            W = canvas.width = window.innerWidth;
-            H = canvas.height = window.innerHeight;
-        }
-        resize();
-        window.addEventListener('resize', resize);
-        
-        class MercuryBlob {
-            constructor() {
-                this.x = Math.random() * W;
-                this.y = Math.random() * H;
-                this.baseR = 10 + Math.random() * 28;
-                this.r = this.baseR;
-                this.vx = (Math.random() - 0.5) * 0.3;
-                this.vy = (Math.random() - 0.5) * 0.3;
-                this.ax = 0; this.ay = 0;
-                this.phase = Math.random() * Math.PI * 2;
-                this.wobbleSpeed = 0.006 + Math.random() * 0.01;
-                this.opacity = 0.07 + Math.random() * 0.11;
-                this.points = 7 + Math.floor(Math.random() * 5);
-                this.offsets = [];
-                for (let i = 0; i < this.points; i++) {
-                    this.offsets.push({
-                        phase: Math.random() * Math.PI * 2,
-                        speed: 0.008 + Math.random() * 0.018,
-                        amp: 0.12 + Math.random() * 0.2
-                    });
-                }
-                this.specAngle = Math.random() * Math.PI * 2;
-                this.specTargetAngle = this.specAngle;
-                this.envPhase = Math.random() * Math.PI * 2;
-            }
-            
-            update() {
-                this.phase += this.wobbleSpeed;
-                this.envPhase += 0.003;
-                
-                if (Math.random() < 0.01) {
-                    this.ax = (Math.random() - 0.5) * 0.003;
-                    this.ay = (Math.random() - 0.5) * 0.003;
-                }
-                
-                this.vx += this.ax + Math.sin(this.phase * 0.7) * 0.002;
-                this.vy += this.ay + Math.cos(this.phase * 0.5) * 0.002;
-                
-                this.vx *= 0.998;
-                this.vy *= 0.998;
-                
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > 0.5) {
-                    this.vx = (this.vx / speed) * 0.5;
-                    this.vy = (this.vy / speed) * 0.5;
-                }
-                
-                this.x += this.vx;
-                this.y += this.vy;
-                
-                this.r = this.baseR * (1 + Math.sin(this.phase) * 0.06);
-                
-                for (let o of this.offsets) {
-                    o.phase += o.speed;
-                }
-                
-                if (speed > 0.02) {
-                    this.specTargetAngle = Math.atan2(-this.vy, -this.vx) - 0.5;
-                }
-                let diff = this.specTargetAngle - this.specAngle;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                this.specAngle += diff * 0.03;
-                
-                const margin = this.r * 3;
-                if (this.x < -margin) this.x = W + margin * 0.5;
-                if (this.x > W + margin) this.x = -margin * 0.5;
-                if (this.y < -margin) this.y = H + margin * 0.5;
-                if (this.y > H + margin) this.y = -margin * 0.5;
-            }
-            
-            getPoints() {
-                const pts = [];
-                for (let i = 0; i < this.points; i++) {
-                    const angle = (i / this.points) * Math.PI * 2;
-                    const o = this.offsets[i];
-                    const wobble = 1 + Math.sin(o.phase) * o.amp;
-                    const rr = this.r * wobble;
-                    pts.push({
-                        x: Math.cos(angle) * rr,
-                        y: Math.sin(angle) * rr
-                    });
-                }
-                return pts;
-            }
-            
-            drawBlobPath(pts) {
-                ctx.beginPath();
-                for (let i = 0; i < pts.length; i++) {
-                    const curr = pts[i];
-                    const next = pts[(i + 1) % pts.length];
-                    const cpx = (curr.x + next.x) / 2;
-                    const cpy = (curr.y + next.y) / 2;
-                    if (i === 0) {
-                        const prev = pts[pts.length - 1];
-                        ctx.moveTo((prev.x + curr.x) / 2, (prev.y + curr.y) / 2);
-                    }
-                    ctx.quadraticCurveTo(curr.x, curr.y, cpx, cpy);
-                }
-                ctx.closePath();
-            }
-            
-            draw() {
-                ctx.save();
-                ctx.translate(this.x, this.y);
-                
-                const pts = this.getPoints();
-                
-                this.drawBlobPath(pts);
-                const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.r * 1.3);
-                grad.addColorStop(0, `rgba(180, 195, 215, ${this.opacity * 1.3})`);
-                grad.addColorStop(0.4, `rgba(140, 155, 180, ${this.opacity})`);
-                grad.addColorStop(0.7, `rgba(100, 110, 135, ${this.opacity * 0.7})`);
-                grad.addColorStop(1, `rgba(50, 55, 75, ${this.opacity * 0.15})`);
-                ctx.fillStyle = grad;
-                ctx.fill();
-                
-                this.drawBlobPath(pts);
-                const shadowAngle = this.specAngle + Math.PI;
-                const edgeGrad = ctx.createLinearGradient(
-                    Math.cos(shadowAngle) * this.r * 0.8,
-                    Math.sin(shadowAngle) * this.r * 0.8,
-                    Math.cos(this.specAngle) * this.r * 0.8,
-                    Math.sin(this.specAngle) * this.r * 0.8
-                );
-                edgeGrad.addColorStop(0, `rgba(30, 35, 50, ${this.opacity * 0.5})`);
-                edgeGrad.addColorStop(0.5, `rgba(30, 35, 50, 0)`);
-                edgeGrad.addColorStop(1, `rgba(30, 35, 50, 0)`);
-                ctx.fillStyle = edgeGrad;
-                ctx.fill();
-                
-                const specDist = this.r * 0.35;
-                const sx = Math.cos(this.specAngle) * specDist;
-                const sy = Math.sin(this.specAngle) * specDist;
-                
-                ctx.beginPath();
-                ctx.ellipse(sx, sy, this.r * 0.38, this.r * 0.2, this.specAngle + 0.3, 0, Math.PI * 2);
-                const specGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, this.r * 0.4);
-                specGrad.addColorStop(0, `rgba(255, 255, 255, ${this.opacity * 1.5})`);
-                specGrad.addColorStop(0.3, `rgba(230, 240, 255, ${this.opacity * 0.8})`);
-                specGrad.addColorStop(0.7, `rgba(200, 215, 240, ${this.opacity * 0.2})`);
-                specGrad.addColorStop(1, `rgba(200, 215, 240, 0)`);
-                ctx.fillStyle = specGrad;
-                ctx.fill();
-                
-                ctx.beginPath();
-                const pinX = sx + Math.cos(this.specAngle) * this.r * 0.05;
-                const pinY = sy + Math.sin(this.specAngle) * this.r * 0.05;
-                ctx.arc(pinX, pinY, this.r * 0.08, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 2})`;
-                ctx.fill();
-                
-                const envX = Math.cos(this.specAngle + Math.PI + 0.8) * this.r * 0.4;
-                const envY = Math.sin(this.specAngle + Math.PI + 0.8) * this.r * 0.4;
-                ctx.beginPath();
-                ctx.ellipse(envX, envY, this.r * 0.15, this.r * 0.1, this.envPhase, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(180, 200, 230, ${this.opacity * 0.35})`;
-                ctx.fill();
-                
-                this.drawBlobPath(pts);
-                ctx.strokeStyle = `rgba(200, 220, 250, ${this.opacity * 0.3})`;
-                ctx.lineWidth = 0.5;
-                ctx.stroke();
-                
-                ctx.restore();
-            }
-        }
-        
-        const blobs = [];
-        const blobCount = Math.min(16, Math.max(7, Math.floor(W / 130)));
-        for (let i = 0; i < blobCount; i++) {
-            blobs.push(new MercuryBlob());
-        }
-        
-        function animate() {
-            ctx.clearRect(0, 0, W, H);
-            for (const b of blobs) {
-                b.update();
-                b.draw();
-            }
-            requestAnimationFrame(animate);
-        }
-        animate();
-    })();
-    </script>
-</body>
-</html>
+/* ============================================
+   ORDER BOOK
+   ============================================ */
+.orderbook-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    max-height: 600px;
+    border-radius: 2px;
+}
+
+.orderbook-header {
+    padding: 15px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.9em;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.orderbook-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.orderbook-side {
+    margin-bottom: 20px;
+}
+
+.orderbook-side-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+}
+
+.orderbook-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 8px;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+    position: relative;
+}
+
+.orderbook-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: currentColor;
+    opacity: 0.06;
+    transition: width 0.3s;
+}
+
+.orderbook-row.buy {
+    color: var(--accent-green);
+}
+
+.orderbook-row.sell {
+    color: var(--accent-red);
+}
+
+.orderbook-row:hover {
+    background: var(--bg-tertiary);
+}
+
+/* ============================================
+   TRADING INTERFACE
+   ============================================ */
+.trading-interface {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.trade-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 20px;
+    border-radius: 2px;
+}
+
+.trade-panel.buy {
+    border-top: 3px solid var(--accent-green);
+}
+
+.trade-panel.sell {
+    border-top: 3px solid var(--accent-red);
+}
+
+.trade-panel-header {
+    font-size: 1.2em;
+    font-weight: 600;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+}
+
+.trade-panel.buy .trade-panel-header {
+    color: var(--accent-green);
+}
+
+.trade-panel.sell .trade-panel-header {
+    color: var(--accent-red);
+}
+
+.order-type-selector {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.order-type-btn {
+    flex: 1;
+    padding: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    border-radius: 2px;
+}
+
+.order-type-btn.active {
+    background: var(--accent-green);
+    color: var(--bg-primary);
+    border-color: var(--accent-green);
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-label {
+    display: block;
+    font-size: 0.85em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+input[type="number"] {
+    width: 100%;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1em;
+    transition: border-color 0.2s;
+    border-radius: 2px;
+}
+
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent-green);
+    box-shadow: 0 0 0 2px rgba(0, 232, 157, 0.08);
+}
+
+.estimate-display {
+    background: var(--bg-tertiary);
+    padding: 15px;
+    border-radius: 2px;
+    margin: 15px 0;
+    font-size: 0.9em;
+}
+
+.estimate-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.estimate-row:last-child {
+    margin-bottom: 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.trade-btn {
+    width: 100%;
+    padding: 16px;
+    font-size: 1.1em;
+    margin-top: 15px;
+}
+
+.trade-btn.buy {
+    background: var(--accent-green);
+}
+
+.trade-btn.sell {
+    background: var(--accent-red);
+}
+
+/* ============================================
+   TRADE HISTORY
+   ============================================ */
+.trade-history {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 20px;
+    border-radius: 2px;
+}
+
+.trade-history-header {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.9em;
+    margin-bottom: 15px;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.trade-history-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.trade-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: var(--bg-tertiary);
+    font-size: 0.85em;
+    border-left: 3px solid transparent;
+}
+
+.trade-item.buy {
+    border-left-color: var(--accent-green);
+}
+
+.trade-item.sell {
+    border-left-color: var(--accent-red);
+}
+
+.trade-time {
+    color: var(--text-dim);
+    font-size: 0.9em;
+}
+
+/* ============================================
+   MODAL
+   ============================================ */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-bright);
+    padding: 30px;
+    max-width: 450px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 4px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.modal-header {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.4em;
+    margin-bottom: 20px;
+    text-align: center;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.wallet-option {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 2px;
+}
+
+.wallet-option:hover {
+    background: var(--bg-primary);
+    border-color: var(--accent-green);
+    transform: translateX(4px);
+}
+
+.wallet-icon {
+    width: 40px;
+    height: 40px;
+    margin-right: 15px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.close-modal {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 2em;
+    cursor: pointer;
+    color: var(--text-dim);
+    transition: color 0.2s;
+}
+
+.close-modal:hover {
+    color: var(--accent-red);
+}
+
+/* ============================================
+   STATUS INDICATORS
+   ============================================ */
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: blink 2s ease-in-out infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-connected {
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
+}
+
+.status-disconnected {
+    background: var(--accent-red);
+    box-shadow: 0 0 8px var(--accent-red);
+}
+
+/* ============================================
+   COUNTDOWN
+   ============================================ */
+.countdown-section {
+    background: var(--bg-secondary);
+    border: 1px solid rgba(200, 160, 40, 0.4);
+    border-left: 3px solid var(--accent-yellow);
+    padding: 20px;
+    text-align: center;
+    border-radius: 2px;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+/* FIXED: Static spectral gold gradient that shifts based on cursor position */
+.countdown-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at var(--gold-x, 50%) var(--gold-y, 50%), 
+            rgba(255, 248, 200, 0.15) 0%,
+            rgba(255, 235, 150, 0.08) 15%,
+            rgba(240, 200, 80, 0.04) 30%,
+            transparent 50%
+        ),
+        linear-gradient(135deg,
+            rgba(255, 248, 200, 0.03) 0%,
+            rgba(240, 210, 100, 0.05) 25%,
+            rgba(200, 165, 50, 0.04) 50%,
+            rgba(180, 140, 30, 0.03) 75%,
+            rgba(255, 235, 150, 0.02) 100%
+        );
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    border-radius: 2px;
+}
+
+.countdown-section:hover::before {
+    opacity: 1;
+}
+
+.countdown-section:hover {
+    border-color: rgba(240, 200, 60, 0.6);
+    box-shadow:
+        0 0 20px rgba(240, 192, 48, 0.06),
+        inset 0 0 30px rgba(240, 192, 48, 0.02);
+}
+
+.countdown-section::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 35%;
+    background: linear-gradient(to top, rgba(200, 160, 40, 0.03) 0%, transparent 100%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.countdown-section:hover::after {
+    opacity: 1;
+}
+
+.countdown-label {
+    font-size: 0.8em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.countdown-value {
+    font-family: 'Outfit', sans-serif;
+    font-size: 2.5em;
+    font-weight: 700;
+    color: var(--accent-yellow);
+    font-variant-numeric: tabular-nums;
+}
+
+/* RESPONSIVE — TABLET */
+@media (max-width: 1200px) {
+    .trading-grid { grid-template-columns: 1fr; }
+    .orderbook-panel { max-height: 400px; }
+}
+
+/* RESPONSIVE — MOBILE */
+@media (max-width: 768px) {
+    .container { padding: 10px 12px; }
+    .header { padding: 15px; margin-bottom: 15px; }
+    .header h1 { font-size: 1.4em; letter-spacing: 1px; }
+    .header p { font-size: 0.75em; }
+    .wallet-section { padding: 12px; }
+    .wallet-status button { padding: 8px 14px; font-size: 0.8em; }
+    .balance-display { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .balance-item { padding: 10px; }
+    .balance-label { font-size: 0.7em; }
+    .balance-value { font-size: 1.1em; }
+    .price-value { font-size: 1.6em; }
+    .price-stats { gap: 8px; margin-top: 10px; padding-top: 10px; }
+    .stat-value { font-size: 1em; }
+    .round-selector { gap: 6px; padding: 10px; }
+    .round-tab { padding: 10px 8px; }
+    .round-tab-title { font-size: 1em; }
+    .round-tab-info { font-size: 0.7em; }
+    .countdown-value { font-size: 1.5em; }
+    .orderbook-panel { max-height: none; }
+    .orderbook-header { padding: 10px; font-size: 0.8em; }
+    .order-type-btn { padding: 8px; font-size: 0.8em; }
+    .input-label { font-size: 0.75em; }
+    input[type="number"] { padding: 10px; font-size: 0.9em; }
+    .trading-interface { grid-template-columns: 1fr; }
+    .price-stats { grid-template-columns: repeat(3, 1fr); }
+    .modal-content { width: 95%; padding: 20px; max-height: 90vh; }
+    .modal-header { font-size: 1.1em; letter-spacing: 0; }
+    .trade-history { padding: 12px; }
+    .settlement-card { padding: 12px; }
+    .settlement-details { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+}
+
+@media (max-width: 420px) {
+    .header h1 { font-size: 1.1em; }
+    .price-value { font-size: 1.3em; }
+    .countdown-value { font-size: 1.3em; }
+}
+
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--border-bright);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.slide-in {
+    animation: slideIn 0.5s ease-out;
+}
+
+/* ============================================
+   UTILITIES
+   ============================================ */
+.text-green { color: var(--accent-green); }
+.text-red { color: var(--accent-red); }
+.text-yellow { color: var(--accent-yellow); }
+.text-dim { color: var(--text-dim); }
+.text-center { text-align: center; }
+.mt-20 { margin-top: 20px; }
+.mb-20 { margin-bottom: 20px; }
+
+/* ============================================
+   MICRO-INTERACTIONS & POLISH
+   ============================================ */
+
+/* Wallet status text glow */
+.wallet-status span {
+    letter-spacing: 0.5px;
+}
+
+/* Balance items — subtle left accent on hover */
+.balance-item {
+    border-left: 2px solid transparent;
+    transition: all 0.25s ease;
+}
+.balance-item:hover {
+    border-left-color: var(--accent-green);
+    border-color: var(--border-bright);
+    background: rgba(26, 26, 34, 0.9);
+}
+
+/* Round tabs — more interactive feel */
+.round-tab {
+    position: relative;
+    overflow: hidden;
+}
+.round-tab::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: var(--accent-green);
+    transition: all 0.3s ease;
+    transform: translateX(-50%);
+}
+.round-tab:hover::after {
+    width: 60%;
+}
+.round-tab.active::after {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+/* Orderbook rows — smooth highlight */
+.orderbook-row {
+    transition: all 0.15s ease;
+    border-radius: 1px;
+}
+.orderbook-row:hover {
+    background: rgba(255, 255, 255, 0.025);
+    padding-left: 12px;
+}
+
+/* Trade items — accent bar animation */
+.trade-item {
+    transition: all 0.2s ease;
+}
+.trade-item:hover {
+    background: rgba(255, 255, 255, 0.02);
+    transform: translateX(3px);
+}
+
+/* Countdown — subtle pulse when low */
+@keyframes countdownPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Modal backdrop shimmer */
+.modal.active .modal-content {
+    animation: modalIn 0.25s ease-out;
+}
+@keyframes modalIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Settlement cards — side stripe glow */
+.settlement-card.won {
+    border-left: 3px solid var(--accent-green);
+}
+.settlement-card.lost {
+    border-left: 3px solid var(--accent-red);
+}
+.settlement-card.refund {
+    border-left: 3px solid var(--accent-yellow);
+}
+
+/* Spread display — subtle border treatment */
+.spread-display {
+    border: 1px dashed var(--border);
+    border-radius: 2px;
+    transition: border-color 0.3s;
+}
+.spread-display:hover {
+    border-color: var(--border-bright);
+}
+
+/* Stat values — tabular nums for alignment */
+.stat-value {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Selection color */
+::selection {
+    background: rgba(0, 232, 157, 0.2);
+    color: var(--text-primary);
+}
+
+/* Focus visible for accessibility */
+button:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--accent-green);
+    outline-offset: 2px;
+}
+
+/* Notification styling */
+.notification {
+    border-radius: 2px !important;
+    border-left: 3px solid var(--accent-green) !important;
+}
+
+/* Main grid layout */
+.main-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    grid-template-rows: auto auto 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+@media (max-width: 768px) {
+    .main-grid {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto !important;
+        gap: 12px;
+    }
+}
