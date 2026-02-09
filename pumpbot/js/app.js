@@ -429,8 +429,8 @@ async function executeDeposit() {
             senderPubkey,    // owner/authority
             rawAmount,
             tokenProgramId,
-            mintPubkey,      // mint (required for TransferChecked)
-            platformDepositInfo.decimals || 6  // decimals
+            mintPubkey,                          // mint account for TransferChecked
+            platformDepositInfo.decimals || 6    // decimals for TransferChecked
         );
         const transaction = new Transaction();
         transaction.add(transferIx);
@@ -568,10 +568,10 @@ function createTransferInstructionJS(source, destination, owner, amount, tokenPr
     const { PublicKey, TransactionInstruction } = solanaWeb3;
     const SPL_TOKEN_DEFAULT = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
     const tokenProgram = new PublicKey(tokenProgramId || SPL_TOKEN_DEFAULT);
-    // Use TransferChecked (instruction 12) — works for BOTH Token Program and Token 2022
-    // Layout: [1 byte ix][8 bytes amount u64 LE][1 byte decimals]
+    // TransferChecked (instruction 12) — works for BOTH Token Program and Token 2022
+    // Layout: [1 byte instruction_index][8 bytes amount u64 LE][1 byte decimals]
     const data = new Uint8Array(10);
-    data[0] = 12; // TransferChecked instruction
+    data[0] = 12; // TransferChecked
     let amt = BigInt(amount);
     for (let i = 1; i < 9; i++) {
         data[i] = Number(amt & 0xFFn);
@@ -581,10 +581,10 @@ function createTransferInstructionJS(source, destination, owner, amount, tokenPr
     const mintPubkey = (typeof mint === 'string') ? new PublicKey(mint) : mint;
     return new TransactionInstruction({
         keys: [
-            { pubkey: source, isSigner: false, isWritable: true },
-            { pubkey: mintPubkey, isSigner: false, isWritable: false },
-            { pubkey: destination, isSigner: false, isWritable: true },
-            { pubkey: owner, isSigner: true, isWritable: false },
+            { pubkey: source, isSigner: false, isWritable: true },       // source ATA
+            { pubkey: mintPubkey, isSigner: false, isWritable: false },   // mint (required for TransferChecked)
+            { pubkey: destination, isSigner: false, isWritable: true },   // destination ATA
+            { pubkey: owner, isSigner: true, isWritable: false },        // authority
         ],
         programId: tokenProgram,
         data,
@@ -1812,13 +1812,13 @@ async function waitForWallets(maxWait = 3000) {
     return false;
 }
 window.addEventListener('load', async () => {
-    // Set contract address in header
+    // Set contract address in header from TOKEN_ADDRESS
     const contractEl = document.getElementById('contractAddr');
     if (contractEl) {
         contractEl.textContent = PLATFORM_PAUSED ? 'Awaiting token launch...' : TOKEN_ADDRESS;
     }
-    
-    // If paused, show waiting state everywhere
+
+    // If paused — show waiting state, don't start anything
     if (PLATFORM_PAUSED) {
         document.getElementById('currentCap').textContent = '—';
         document.getElementById('targetCap').textContent = '—';
@@ -1829,10 +1829,11 @@ window.addEventListener('load', async () => {
             const el = document.getElementById(`round-${i}-time`);
             if (el) el.textContent = 'Paused';
         });
-        document.getElementById('tradeHistory').innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Awaiting token launch...</div>';
-        return; // Don't start any intervals or fetches
+        document.getElementById('tradeHistory').innerHTML =
+            '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Awaiting token launch...</div>';
+        return; // Stop — no API calls, no intervals
     }
-    
+
     await waitForWallets(3000);
     discoverWalletStandard();
     const savedWallet = getSavedWalletChoice();
