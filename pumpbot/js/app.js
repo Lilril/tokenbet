@@ -421,18 +421,49 @@ async function executeDeposit() {
         const senderPubkey = new PublicKey(wallet);
         const recipientAta = new PublicKey(platformDepositInfo.depositAta);
         const tokenProgramId = platformDepositInfo.tokenProgramId || 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+        const tokenProgramPubkey = new PublicKey(tokenProgramId);
         const senderAta = await getAssociatedTokenAddressJS(mintPubkey, senderPubkey, tokenProgramId);
         const rawAmount = Math.floor(amount * Math.pow(10, platformDepositInfo.decimals || 6));
-        const transferIx = createTransferInstructionJS(
-            senderAta,       // source ATA
-            recipientAta,    // destination ATA
-            senderPubkey,    // owner/authority
-            rawAmount,
-            tokenProgramId,
-            mintPubkey,                          // mint account for TransferChecked
-            platformDepositInfo.decimals || 6    // decimals for TransferChecked
-        );
+
         const transaction = new Transaction();
+
+        // Create destination ATA if it doesn't exist (idempotent — won't fail if exists)
+        const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+        const SYSTEM_PROGRAM = new PublicKey('11111111111111111111111111111111');
+        const createAtaIx = new TransactionInstruction({
+            keys: [
+                { pubkey: senderPubkey, isSigner: true, isWritable: true },       // payer
+                { pubkey: recipientAta, isSigner: false, isWritable: true },      // ATA to create
+                { pubkey: new PublicKey(platformDepositInfo.depositAddress), isSigner: false, isWritable: false }, // wallet owner
+                { pubkey: mintPubkey, isSigner: false, isWritable: false },       // mint
+                { pubkey: SYSTEM_PROGRAM, isSigner: false, isWritable: false },   // system program
+                { pubkey: tokenProgramPubkey, isSigner: false, isWritable: false }, // token program
+            ],
+            programId: ATA_PROGRAM,
+            data: new Uint8Array([1]), // 1 = CreateIdempotent instruction
+        });
+        transaction.add(createAtaIx);
+
+        // TransferChecked — works for both Token Program and Token 2022
+        const transferData = new Uint8Array(10);
+        transferData[0] = 12; // TransferChecked instruction index
+        let amt = BigInt(rawAmount);
+        for (let i = 1; i < 9; i++) {
+            transferData[i] = Number(amt & 0xFFn);
+            amt >>= 8n;
+        }
+        transferData[9] = platformDepositInfo.decimals || 6;
+
+        const transferIx = new TransactionInstruction({
+            keys: [
+                { pubkey: senderAta, isSigner: false, isWritable: true },        // source
+                { pubkey: mintPubkey, isSigner: false, isWritable: false },       // mint
+                { pubkey: recipientAta, isSigner: false, isWritable: true },     // destination
+                { pubkey: senderPubkey, isSigner: true, isWritable: false },     // authority
+            ],
+            programId: tokenProgramPubkey,
+            data: transferData,
+        });
         transaction.add(transferIx);
         btn.textContent = 'Preparing transaction...';
         let blockhash = platformDepositInfo.blockhash;
@@ -564,27 +595,26 @@ async function getAssociatedTokenAddressJS(mint, owner, tokenProgramId) {
     );
     return address;
 }
-function createTransferInstructionJS(source, destination, owner, amount, tokenProgramId, mint, decimals) {
+function createTransferInstructionJS(source, destination, owner, amount, tokenProgramId) {
     const { PublicKey, TransactionInstruction } = solanaWeb3;
     const SPL_TOKEN_DEFAULT = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
     const tokenProgram = new PublicKey(tokenProgramId || SPL_TOKEN_DEFAULT);
-    // TransferChecked (instruction 12) — works for BOTH Token Program and Token 2022
-    // Layout: [1 byte instruction_index][8 bytes amount u64 LE][1 byte decimals]
-    const data = new Uint8Array(10);
-    data[0] = 12; // TransferChecked
+    // SPL Token Transfer instruction layout:
+    // byte 0: instruction index (3 = Transfer)
+    // bytes 1-8: amount (u64 little-endian)
+    const data = new Uint8Array(9);
+    data[0] = 3; // Transfer instruction
+    // Write u64 little-endian
     let amt = BigInt(amount);
     for (let i = 1; i < 9; i++) {
         data[i] = Number(amt & 0xFFn);
         amt >>= 8n;
     }
-    data[9] = decimals || 6;
-    const mintPubkey = (typeof mint === 'string') ? new PublicKey(mint) : mint;
     return new TransactionInstruction({
         keys: [
-            { pubkey: source, isSigner: false, isWritable: true },       // source ATA
-            { pubkey: mintPubkey, isSigner: false, isWritable: false },   // mint (required for TransferChecked)
-            { pubkey: destination, isSigner: false, isWritable: true },   // destination ATA
-            { pubkey: owner, isSigner: true, isWritable: false },        // authority
+            { pubkey: source, isSigner: false, isWritable: true },
+            { pubkey: destination, isSigner: false, isWritable: true },
+            { pubkey: owner, isSigner: true, isWritable: false },
         ],
         programId: tokenProgram,
         data,
@@ -1831,7 +1861,7 @@ window.addEventListener('load', async () => {
         });
         document.getElementById('tradeHistory').innerHTML =
             '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Awaiting token launch...</div>';
-        return; // Stop — no API calls, no intervals
+        return;
     }
 
     await waitForWallets(3000);
