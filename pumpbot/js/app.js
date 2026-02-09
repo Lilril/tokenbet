@@ -1872,6 +1872,9 @@ window.addEventListener('load', async () => {
     } else {
         updateUI(false);
     }
+    // Set contract address in header from TOKEN_ADDRESS
+    document.getElementById('contractAddr').textContent = TOKEN_ADDRESS;
+    
     await Promise.all([
         loadRoundData(),
         updateMarketCap()
@@ -2310,4 +2313,5 @@ window.addEventListener('load', async () => {
     window.closeSettlementsModal = closeSettlementsModal;
     window.switchSettlementTab = switchSettlementTab;
 });
+
 
