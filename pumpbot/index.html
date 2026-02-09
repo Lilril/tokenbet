@@ -28,78 +28,62 @@
         }
         
         .coin-icon {
-            width: 1.3em;  /* Увеличено с 0.85em */
-            height: 1.3em;
+            width: 1.5em;
+            height: 1.5em;
             position: relative;
             z-index: 2;
-            filter: drop-shadow(0 0 8px rgba(0,232,157,0.3));
+            filter: drop-shadow(0 0 10px rgba(0,232,157,0.4));
         }
         
-        /* Анимированное сияние по гурту монеты - более светлое и меньшее */
+        /* Простое пульсирующее сияние вокруг монеты */
         .coin-icon-wrapper::before {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 1.1em;  /* Уменьшено с 1.1em */
-            height: 1.1em;
+            width: 100%;
+            height: 100%;
             transform: translate(-50%, -50%);
             border-radius: 50%;
-            background: conic-gradient(
-                from 0deg,
-                transparent 0deg,
-                rgba(150, 255, 200, 0.9) 30deg,
-                rgba(180, 255, 220, 1) 60deg,
-                rgba(150, 255, 200, 0.9) 90deg,
-                transparent 120deg,
-                transparent 240deg,
-                rgba(150, 255, 200, 0.9) 270deg,
-                rgba(180, 255, 220, 1) 300deg,
-                rgba(150, 255, 200, 0.9) 330deg,
-                transparent 360deg
+            background: radial-gradient(
+                circle,
+                rgba(150, 255, 200, 0.6) 0%,
+                rgba(100, 240, 180, 0.4) 30%,
+                rgba(0, 232, 157, 0.2) 60%,
+                transparent 100%
             );
-            animation: rotateCoinGlow 3s linear infinite;
+            animation: glowPulse 2s ease-in-out infinite;
             z-index: 1;
-            opacity: 0.8;  /* Увеличено с 0.6 */
         }
         
-        /* Дополнительный внутренний слой сияния - более светлый */
+        /* Внешнее мягкое сияние */
         .coin-icon-wrapper::after {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 1.15em;  /* Уменьшено с 1.25em */
-            height: 1.15em;
+            width: 140%;
+            height: 140%;
             transform: translate(-50%, -50%);
             border-radius: 50%;
             background: radial-gradient(
                 circle,
-                transparent 40%,
-                rgba(150, 255, 200, 0.25) 45%,
-                transparent 50%
+                rgba(150, 255, 200, 0.3) 0%,
+                rgba(100, 240, 180, 0.15) 40%,
+                transparent 70%
             );
-            animation: pulseCoinGlow 2s ease-in-out infinite;
+            animation: glowPulse 2s ease-in-out infinite reverse;
             z-index: 0;
         }
         
-        @keyframes rotateCoinGlow {
-            0% {
-                transform: translate(-50%, -50%) rotate(0deg);
-            }
-            100% {
-                transform: translate(-50%, -50%) rotate(360deg);
-            }
-        }
-        
-        @keyframes pulseCoinGlow {
+        @keyframes glowPulse {
             0%, 100% {
-                opacity: 0.4;
+                opacity: 0.5;
                 transform: translate(-50%, -50%) scale(1);
             }
             50% {
-                opacity: 0.7;
-                transform: translate(-50%, -50%) scale(1.08);
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.15);
             }
         }
         
@@ -1070,9 +1054,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
