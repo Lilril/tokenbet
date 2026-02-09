@@ -75,7 +75,7 @@ jobs:
           
           echo "📝 Total: $TOTAL replacements"
 
-      - name: Full database wipe
+- name: Full database wipe
         env:
           POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
         run: |
@@ -85,8 +85,7 @@ jobs:
           fi
           
           echo "🗄️ Full database wipe..."
-          psql "$POSTGRES_URL" << 'SQL'
-            -- Full wipe — clean slate for new token
+          psql "${POSTGRES_URL}" -c "
             DELETE FROM user_settlements;
             DELETE FROM trades;
             DELETE FROM limit_orders;
@@ -100,7 +99,7 @@ jobs:
             DELETE FROM rate_limits;
             DELETE FROM market_cap_history;
             UPDATE user_balances SET available=0, locked=0, total_deposited=0, total_withdrawn=0, updated_at=NOW();
-          SQL
+          "
           echo "✅ Database wiped"
 
       - name: Commit and push
