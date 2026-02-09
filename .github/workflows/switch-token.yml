@@ -62,7 +62,7 @@ jobs:
             exit 0
           fi
           echo "Wiping database..."
-          psql "${POSTGRES_URL}" -c "DELETE FROM user_settlements; DELETE FROM trades; DELETE FROM limit_orders; DELETE FROM user_positions; DELETE FROM pool_snapshots; DELETE FROM rounds; DELETE FROM balance_transactions; DELETE FROM deposits; DELETE FROM withdrawals; DELETE FROM audit_log; DELETE FROM rate_limits; DELETE FROM market_cap_history; UPDATE user_balances SET available=0, locked=0, total_deposited=0, total_withdrawn=0, updated_at=NOW();"
+          psql --dbname="$POSTGRES_URL" -c "DELETE FROM user_settlements; DELETE FROM trades; DELETE FROM limit_orders; DELETE FROM user_positions; DELETE FROM pool_snapshots; DELETE FROM rounds; DELETE FROM balance_transactions; DELETE FROM deposits; DELETE FROM withdrawals; DELETE FROM audit_log; DELETE FROM rate_limits; DELETE FROM market_cap_history; UPDATE user_balances SET available=0, locked=0, total_deposited=0, total_withdrawn=0, updated_at=NOW();"
           echo "Database wiped"
 
       - name: Commit and push
