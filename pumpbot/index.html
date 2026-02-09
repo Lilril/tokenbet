@@ -28,55 +28,55 @@
         }
         
         .coin-icon {
-            width: 0.85em;
-            height: 0.85em;
+            width: 1em;  /* Увеличено с 0.85em */
+            height: 1em;
             position: relative;
             z-index: 2;
             filter: drop-shadow(0 0 8px rgba(0,232,157,0.3));
         }
         
-        /* Анимированное сияние по гурту монеты */
+        /* Анимированное сияние по гурту монеты - более светлое и меньшее */
         .coin-icon-wrapper::before {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 1.1em;
-            height: 1.1em;
+            width: 1.05em;  /* Уменьшено с 1.1em */
+            height: 1.05em;
             transform: translate(-50%, -50%);
             border-radius: 50%;
             background: conic-gradient(
                 from 0deg,
                 transparent 0deg,
-                rgba(0, 232, 157, 0.8) 30deg,
-                rgba(0, 255, 163, 1) 60deg,
-                rgba(0, 232, 157, 0.8) 90deg,
+                rgba(150, 255, 200, 0.9) 30deg,
+                rgba(180, 255, 220, 1) 60deg,
+                rgba(150, 255, 200, 0.9) 90deg,
                 transparent 120deg,
                 transparent 240deg,
-                rgba(0, 232, 157, 0.8) 270deg,
-                rgba(0, 255, 163, 1) 300deg,
-                rgba(0, 232, 157, 0.8) 330deg,
+                rgba(150, 255, 200, 0.9) 270deg,
+                rgba(180, 255, 220, 1) 300deg,
+                rgba(150, 255, 200, 0.9) 330deg,
                 transparent 360deg
             );
             animation: rotateCoinGlow 3s linear infinite;
             z-index: 1;
-            opacity: 0.6;
+            opacity: 0.7;  /* Увеличено с 0.6 */
         }
         
-        /* Дополнительный внутренний слой сияния */
+        /* Дополнительный внутренний слой сияния - более светлый */
         .coin-icon-wrapper::after {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 1.25em;
-            height: 1.25em;
+            width: 1.15em;  /* Уменьшено с 1.25em */
+            height: 1.15em;
             transform: translate(-50%, -50%);
             border-radius: 50%;
             background: radial-gradient(
                 circle,
                 transparent 40%,
-                rgba(0, 232, 157, 0.15) 45%,
+                rgba(150, 255, 200, 0.25) 45%,
                 transparent 50%
             );
             animation: pulseCoinGlow 2s ease-in-out infinite;
@@ -94,12 +94,12 @@
         
         @keyframes pulseCoinGlow {
             0%, 100% {
-                opacity: 0.3;
+                opacity: 0.4;
                 transform: translate(-50%, -50%) scale(1);
             }
             50% {
-                opacity: 0.6;
-                transform: translate(-50%, -50%) scale(1.1);
+                opacity: 0.7;
+                transform: translate(-50%, -50%) scale(1.08);
             }
         }
         
