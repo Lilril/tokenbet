@@ -212,7 +212,7 @@ async function settleRound(roundId) {
 }
 
 async function fetchFinalMarketCap(round) {
-    const TOKEN_ADDRESS = 'HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump';
+    const TOKEN_ADDRESS = 'HsxcpQ8QNmwHSmmHkqKVbUZaFWBdEwwMNxuSQv7ppump';
     const TOTAL_SUPPLY = 1000000000;
     
     // Метод 1: DexScreener

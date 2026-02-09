@@ -1,4 +1,4 @@
-const TOKEN_ADDRESS = 'HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump';
+const TOKEN_ADDRESS = 'HsxcpQ8QNmwHSmmHkqKVbUZaFWBdEwwMNxuSQv7ppump';
 const API_BASE = '';
 // HELPER FUNCTIONS FOR SAFE API CALLS
 // Safe JSON parse with content-type check
