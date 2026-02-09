@@ -5,7 +5,104 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mercurome</title>
     <link rel="stylesheet" href="assets/styles.css?v=20260208v1">
+    <link rel="icon" type="image/png" href="assets/image/merc_coin.png">
     <style>
+        /* Обновленная анимация для pharaoh_kirk с отзеркаливанием и меньшим углом */
+        @keyframes levitate-reverse {
+            0%, 100% {
+                transform: translateY(0) scaleX(-1) rotate(-2deg);
+            }
+            50% {
+                transform: translateY(-12px) scaleX(-1) rotate(-2deg);
+            }
+        }
+        
+        /* Стили для монеты в заголовке */
+        .coin-icon-wrapper {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            margin-right: 15px;
+            vertical-align: middle;
+        }
+        
+        .coin-icon {
+            width: 0.85em;
+            height: 0.85em;
+            position: relative;
+            z-index: 2;
+            filter: drop-shadow(0 0 8px rgba(0,232,157,0.3));
+        }
+        
+        /* Анимированное сияние по гурту монеты */
+        .coin-icon-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 1.1em;
+            height: 1.1em;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: conic-gradient(
+                from 0deg,
+                transparent 0deg,
+                rgba(0, 232, 157, 0.8) 30deg,
+                rgba(0, 255, 163, 1) 60deg,
+                rgba(0, 232, 157, 0.8) 90deg,
+                transparent 120deg,
+                transparent 240deg,
+                rgba(0, 232, 157, 0.8) 270deg,
+                rgba(0, 255, 163, 1) 300deg,
+                rgba(0, 232, 157, 0.8) 330deg,
+                transparent 360deg
+            );
+            animation: rotateCoinGlow 3s linear infinite;
+            z-index: 1;
+            opacity: 0.6;
+        }
+        
+        /* Дополнительный внутренний слой сияния */
+        .coin-icon-wrapper::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 1.25em;
+            height: 1.25em;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: radial-gradient(
+                circle,
+                transparent 40%,
+                rgba(0, 232, 157, 0.15) 45%,
+                transparent 50%
+            );
+            animation: pulseCoinGlow 2s ease-in-out infinite;
+            z-index: 0;
+        }
+        
+        @keyframes rotateCoinGlow {
+            0% {
+                transform: translate(-50%, -50%) rotate(0deg);
+            }
+            100% {
+                transform: translate(-50%, -50%) rotate(360deg);
+            }
+        }
+        
+        @keyframes pulseCoinGlow {
+            0%, 100% {
+                opacity: 0.3;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            50% {
+                opacity: 0.6;
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+        }
+        
         /* ROUND SELECTOR STYLES */
         .round-selector {
             display: flex;
@@ -328,13 +425,18 @@
     
     <!-- Floating chrome characters — fixed background decor with levitation -->
     <img src="assets/image/pharaoh_epstein.png" class="floating-character char-pharaoh-1" alt="" loading="lazy">
-    <img src="assets/image/pharaoh_kirk.png" class="floating-character char-pharaoh-2" alt="" loading="lazy" style="transform: scaleX(-1) rotate(-6deg) !important;">
+    <img src="assets/image/pharaoh_kirk.png" class="floating-character char-pharaoh-2" alt="" loading="lazy">
 
     <div class="container" style="position: relative;">
         <!-- HEADER with integrated trans_floyd character -->
         <div class="header slide-in">
             <img src="assets/image/trans_floyd.png" class="header-character" alt="" loading="lazy">
-            <h1><span class="icon" style="color: var(--accent-green); filter: drop-shadow(0 0 8px rgba(0,232,157,0.5));"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> MERCUROME PREDICTION MARKET</h1>
+            <h1>
+                <span class="coin-icon-wrapper">
+                    <img src="assets/image/merc_coin.png" class="coin-icon" alt="MERC">
+                </span>
+                MERCUROME PREDICTION MARKET
+            </h1>
             <p>Advanced Trading Terminal • Order Book • AMM</p>
             <div style="margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
                 <div id="contractRow" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 2px; cursor: pointer; transition: all 0.2s;" onclick="copyContract()" onmouseover="this.style.borderColor='var(--border-bright)'" onmouseout="this.style.borderColor='var(--border)'">
