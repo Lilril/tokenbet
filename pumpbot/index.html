@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="assets/styles.css?v=20260208v1">
     <link rel="icon" type="image/png" href="assets/image/mercurome.png">
     <style>
-        /* Обновленная анимация для pharaoh_kirk с отзеркаливанием и меньшим углом */
+        /* Updated animation for pharaoh_kirk with mirroring and smaller angle */
         @keyframes levitate-reverse {
             0%, 100% {
                 transform: translateY(0) scaleX(-1) rotate(-2deg);
@@ -17,7 +17,7 @@
             }
         }
         
-        /* Стили для монеты в заголовке */
+        /* Styles for header coin */
         .coin-icon-wrapper {
             display: inline-flex;
             align-items: center;
@@ -25,7 +25,7 @@
             position: relative;
             margin-right: 15px;
             vertical-align: middle;
-            transform: translateY(-5px); /* Поднята на 5px вверх */
+            transform: translateY(-5px); /* Raised 5px up */
         }
         
         .coin-icon {
@@ -37,7 +37,7 @@
             animation: coinFloat 3s ease-in-out infinite;
         }
         
-        /* Легкое покачивание монеты */
+        /* Gentle coin wobble */
         @keyframes coinFloat {
             0%, 100% {
                 transform: translateY(0px);
@@ -47,7 +47,7 @@
             }
         }
         
-        /* Внутреннее яркое сияние */
+        /* Inner bright glow */
         .coin-icon-wrapper::before {
             content: '';
             position: absolute;
@@ -69,7 +69,7 @@
             z-index: 1;
         }
         
-        /* Внешнее мягкое сияние с волнами */
+        /* Outer soft glow with waves */
         .coin-icon-wrapper::after {
             content: '';
             position: absolute;
@@ -90,7 +90,7 @@
             z-index: 0;
         }
         
-        /* Внутреннее сияние - быстрее и интенсивнее */
+        /* Inner glow - faster and more intense */
         @keyframes glowPulseInner {
             0%, 100% {
                 opacity: 0.6;
@@ -102,7 +102,7 @@
             }
         }
         
-        /* Внешнее сияние - медленнее и плавнее */
+        /* Outer glow - slower and smoother */
         @keyframes glowPulseOuter {
             0%, 100% {
                 opacity: 0.3;
@@ -1085,4 +1085,3 @@
     </script>
 </body>
 </html>
-
