@@ -1,6 +1,6 @@
 const TOKEN_ADDRESS = '51PMG6dcDJcbxstHzebVC2z2t6zQ2pbP26tncSGDpump';
 const API_BASE = '';
-const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === '51PMG6dcDJcbxstHzebVC2z2t6zQ2pbP26tncSGDpump' || TOKEN_ADDRESS.length < 30;
+const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length < 30;
 // HELPER FUNCTIONS FOR SAFE API CALLS
 // Safe JSON parse with content-type check
 async function safeJsonParse(response) {
@@ -2369,3 +2369,4 @@ window.addEventListener('load', async () => {
     window.closeSettlementsModal = closeSettlementsModal;
     window.switchSettlementTab = switchSettlementTab;
 });
+
