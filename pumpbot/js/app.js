@@ -1,6 +1,6 @@
-const TOKEN_ADDRESS = 'AWAITING_TOKEN';
+const TOKEN_ADDRESS = '8KvoBfxiPiVp9b9mxSFZHpJdX9NUtbmNFhAGggLDpump';
 const API_BASE = '';
-const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length < 30;
+const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === '8KvoBfxiPiVp9b9mxSFZHpJdX9NUtbmNFhAGggLDpump' || TOKEN_ADDRESS.length < 30;
 // HELPER FUNCTIONS FOR SAFE API CALLS
 // Safe JSON parse with content-type check
 async function safeJsonParse(response) {
