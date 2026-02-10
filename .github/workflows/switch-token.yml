@@ -54,30 +54,21 @@ jobs:
             echo "No replacement needed (tokens are the same or current token is empty)"
           fi
           
-            # Обновляем pump_url если он изменился
+          # Обновляем pump_url - используем perl для безопасности
           if [ -n "$PUMP" ] && [ "$PUMP" != "null" ] && [ "$PUMP" != "" ]; then
-          if [ -n "$CURRENT_PUMP" ] && [ "$CURRENT_PUMP" != "$PUMP" ]; then
-            # Экранируем специальные символы для sed
-          PUMP_ESCAPED=$(printf '%s\n' "$PUMP" | sed 's:[][\/.^$*]:\\&:g')
-          CURRENT_PUMP_ESCAPED=$(printf '%s\n' "$CURRENT_PUMP" | sed 's:[][\/.^$*]:\\&:g')
-                  sed -i "s|$CURRENT_PUMP_ESCAPED|$PUMP_ESCAPED|g" pumpbot/index.html
-            echo "Pump link updated from $CURRENT_PUMP to $PUMP"
-          else
-            echo "Pump URL already up to date or empty"
-          fi
+            if [ -n "$CURRENT_PUMP" ] && [ "$CURRENT_PUMP" != "$PUMP" ]; then
+              perl -i -pe "s#\Q$CURRENT_PUMP\E#$PUMP#g" pumpbot/index.html
+              echo "Pump link updated from $CURRENT_PUMP to $PUMP"
+            else
+              echo "Pump URL already up to date or empty"
+            fi
           else
             echo "No pump URL to update (empty or null)"
           fi
-            # Обновляем проверку PLATFORM_PAUSED если нужно
-          if [ "$NEW" = "AWAITING_TOKEN" ]; then
-            # Ставим на паузу - обновляем проверку на AWAITING_TOKEN
-            sed -i "s|TOKEN_ADDRESS === '[^']*' \|\| TOKEN_ADDRESS.length|TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length|g" pumpbot/js/app.js
-            echo "Platform paused (AWAITING_TOKEN mode)"
-          else
-            # Запускаем - убираем проверку на конкретный токен, оставляем только AWAITING_TOKEN
-            sed -i "s|TOKEN_ADDRESS === '[^']*' \|\| TOKEN_ADDRESS.length|TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length|g" pumpbot/js/app.js
-            echo "Platform active"
-          fi
+          
+          # Обновляем PLATFORM_PAUSED - заменяем всю строку 3
+          sed -i "3s/.*/const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length < 30;/" pumpbot/js/app.js
+          echo "PLATFORM_PAUSED check updated"
           
       - name: Full database wipe
         env:
