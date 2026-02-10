@@ -33,7 +33,7 @@ function calculateRoundCloseTime(intervalMinutes) {
     
     if (intervalMinutes === 60) {
         // Always round up to the next full hour
-        // At 22:00:00 through 22:59:59 → close at 23:00
+        // At 22:00:00 through 22:59:59 -> close at 23:00
         const closeTime = new Date(Date.UTC(
             now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
             now.getUTCHours() + 1, 0, 0, 0
@@ -604,7 +604,7 @@ async function lockBalance(userId, amount) {
     if (result.rows.length === 0) {
         const balance = await getOrCreateBalance(userId);
         const available = parseFloat(balance.available);
-        throw new Error(`Недостаточно средств. Доступно: ${available.toFixed(2)}, нужно: ${amount.toFixed(2)}. Пополните баланс.`);
+        throw new Error(`Insufficient funds. Available: ${available.toFixed(2)}, required: ${amount.toFixed(2)}. Please deposit more.`);
     }
     
     const newAvail = parseFloat(result.rows[0].available);
@@ -1453,7 +1453,7 @@ if (action === 'orderbook') {
             if (action !== 'sell' && amt < 500) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Minimum: 500 токенов'
+                    error: 'Minimum: 500 tokens'
                 });
             }
             
@@ -1501,7 +1501,7 @@ if (action === 'orderbook') {
                 const sellAmount = Math.min(amt, posAmount);
                 
                 if (sellAmount <= 0) {
-                    return res.status(400).json({ success: false, error: 'Нечего продавать' });
+                    return res.status(400).json({ success: false, error: 'Nothing to sell' });
                 }
                 
                 await db.logAction(user.id, 'sell_position', { side, amount: sellAmount, type, price }, clientIP, req.headers['user-agent']);
@@ -1649,7 +1649,7 @@ if (action === 'orderbook') {
                 if (soldAmount <= 0) {
                     return res.status(400).json({ 
                         success: false, 
-                        error: 'Нет покупателей в стакане. Попробуйте лимитный ордер на продажу.' 
+                        error: 'No buyers in order book. Try placing a limit sell order.' 
                     });
                 }
                 
@@ -1670,7 +1670,7 @@ if (action === 'orderbook') {
                 }
                 
                 
-                await creditBalance(user.id, totalProceeds, `Продажа ${soldAmount} ${side} токенов`);
+                await creditBalance(user.id, totalProceeds, `Sell ${soldAmount} ${side} tokens`);
                 
                 const avgSellPrice = totalProceeds / soldAmount;
                 const profit = totalProceeds - costReduction;
@@ -1803,7 +1803,7 @@ if (action === 'orderbook') {
                     
                     return res.status(400).json({
                         success: false,
-                        error: 'Стакан пустой - используйте лимитный ордер или подождите пока появятся ордера'
+                        error: 'Order book empty - use limit orders or wait for orders to appear'
                     });
                 }
                 
@@ -1829,7 +1829,7 @@ if (action === 'orderbook') {
                             cost: totalCost,
                             source: 'orderbook',
                             partialFill: true,
-                            message: `Частично исполнено: ${totalMatched} из ${amt} токенов. Остаток не был куплен из AMM.`
+                            message: `Partially filled: ${totalMatched} of ${amt} tokens. Remaining was not filled from AMM.`
                         },
                         orderBook
                     });
