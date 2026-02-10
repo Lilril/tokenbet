@@ -2,10 +2,8 @@ name: Settle Rounds Cron Job
 
 on:
   schedule:
-    # Запускается каждые 5 минут
     - cron: '*/5 * * * *'
   
-  # Позволяет запустить вручную из GitHub UI
   workflow_dispatch:
 
 jobs:
