@@ -129,7 +129,7 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     const existing = await sql`SELECT id, status FROM deposits WHERE tx_signature = ${txSignature}`;
     if (existing.rows.length > 0) {
         if (existing.rows[0].status === 'confirmed') {
-            return { success: false, error: 'Этот депозит уже зачислен' };
+            return { success: false, error: 'This deposit has already been credited' };
         }
     }
 
@@ -151,11 +151,11 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     }
 
     if (!txInfo) {
-        return { success: false, error: 'Транзакция не найдена. Подождите 30 секунд и попробуйте снова.' };
+        return { success: false, error: 'Transaction not found. Please wait 30 seconds and try again.' };
     }
 
     if (txInfo.meta?.err) {
-        return { success: false, error: 'Транзакция завершилась с ошибкой on-chain' };
+        return { success: false, error: 'Transaction failed on-chain' };
     }
 
     
@@ -250,24 +250,24 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     }
 
     if (depositAmount <= 0) {
-        return { success: false, error: 'В этой транзакции не найден перевод токенов на кошелёк платформы' };
+        return { success: false, error: 'No token transfer to platform wallet found in this transaction' };
     }
 
     
     if (senderAuthority !== walletAddress) {
         console.error(`🚫 Sender mismatch! Authority: ${senderAuthority}, Claimed: ${walletAddress}`);
-        return { success: false, error: 'Отправитель транзакции не совпадает с вашим кошельком' };
+        return { success: false, error: 'Transaction sender does not match your wallet' };
     }
 
     
     if (depositAmount < MIN_DEPOSIT) {
-        return { success: false, error: `Минимальный депозит: ${MIN_DEPOSIT} токенов` };
+        return { success: false, error: `Minimum deposit: ${MIN_DEPOSIT} tokens` };
     }
 
     
     const userResult = await sql`SELECT id FROM users WHERE wallet_address = ${walletAddress}`;
     if (userResult.rows.length === 0) {
-        return { success: false, error: 'Сначала подключите кошелёк' };
+        return { success: false, error: 'Please connect your wallet first' };
     }
     const userId = userResult.rows[0].id;
 
@@ -300,11 +300,11 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
 
 async function processWithdrawal(userId, walletAddress, amount) {
     if (amount < MIN_WITHDRAWAL) {
-        throw new Error(`Минимальный вывод: ${MIN_WITHDRAWAL} токенов`);
+        throw new Error(`Minimum withdrawal: ${MIN_WITHDRAWAL} tokens`);
     }
 
     const netAmount = amount - WITHDRAWAL_FEE;
-    if (netAmount <= 0) throw new Error('Сумма слишком мала после комиссии');
+    if (netAmount <= 0) throw new Error('Amount too small after fee');
 
     const withdrawal = await sql`
         INSERT INTO withdrawals (user_id, wallet_address, amount, fee, status)
