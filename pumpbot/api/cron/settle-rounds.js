@@ -1,19 +1,8 @@
-// ============================================
-// CRON JOB - Автоматический расчет завершенных раундов
-// ============================================
-// Vercel Cron: создай файл vercel.json в корне проекта:
-// {
-//   "crons": [{
-//     "path": "/api/cron/settle-rounds",
-//     "schedule": "*/5 * * * *"
-//   }]
-// }
-
 import { sql } from '@vercel/postgres';
 
 async function settleRound(roundId) {
     try {
-        // 1. Получаем раунд
+        // 1. Get round
         const roundResult = await sql`
             SELECT * FROM rounds WHERE id = ${roundId} AND status = 'closed'
         `;
@@ -26,7 +15,7 @@ async function settleRound(roundId) {
         const initialMarketCap = parseFloat(round.start_market_cap) || 0;
         
         // ============================================
-        // CASE 1: start_market_cap = 0 → рефанд (НЕ НУЖЕН finalMC!)
+        // CASE 1: start_market_cap = 0 -> refund (no finalMC needed!)
         // ============================================
         if (initialMarketCap <= 0) {
             console.log(`⚠️ Round ${roundId}: start_market_cap is 0, refunding all positions`);
@@ -62,7 +51,7 @@ async function settleRound(roundId) {
         }
         
         // ============================================
-        // 2. Получаем finalMC (нужен только если startMC > 0)
+        // 2. Get finalMC (only needed if startMC > 0)
         // ============================================
         let finalMarketCap = parseFloat(round.final_market_cap);
         
@@ -85,7 +74,7 @@ async function settleRound(roundId) {
         }
         
         // ============================================
-        // CASE 2: Ничья — капа не изменилась → рефанд
+        // CASE 2: Tie - price unchanged -> refund
         // ============================================
         if (finalMarketCap === initialMarketCap) {
             console.log(`⚠️ Round ${roundId}: price unchanged (${initialMarketCap} === ${finalMarketCap}), refunding all`);
@@ -124,7 +113,7 @@ async function settleRound(roundId) {
         
         console.log(`🎯 Settling Round ${roundId}: ${initialMarketCap} → ${finalMarketCap} (Winner: ${winningSide})`);
         
-        // 3. Получаем все позиции
+        // 3. Get all positions
         const positions = await sql`
             SELECT user_id, side, amount, avg_price, total_cost
             FROM user_positions
@@ -137,7 +126,7 @@ async function settleRound(roundId) {
             return { success: true, message: 'No positions to settle' };
         }
         
-        // 4. Подсчитываем пулы
+        // 4. Calculate pools
         let totalWinningAmount = 0;
         let totalLosingCost = 0;
         
@@ -151,7 +140,7 @@ async function settleRound(roundId) {
         
         console.log(`💰 Pools: Winners=${totalWinningAmount} tokens, Losers=${totalLosingCost} cost`);
         
-        // 5. Создаем расчеты
+        // 5. Create settlements
         for (const pos of positions.rows) {
             const won = pos.side === winningSide;
             const amount = parseFloat(pos.amount);
@@ -161,7 +150,7 @@ async function settleRound(roundId) {
             let profitLoss = 0;
             
             if (won && totalWinningAmount > 0) {
-                // Выигравшие получают возврат + долю проигравших
+                // Winners get refund + share of losers
                 const returnAmount = totalCost;
                 const winShare = amount / totalWinningAmount;
                 const winnings = totalLosingCost * winShare;
@@ -169,7 +158,7 @@ async function settleRound(roundId) {
                 payout = returnAmount + winnings;
                 profitLoss = payout - totalCost;
             } else if (!won) {
-                // Проигравшие теряют все
+                // Losers lose everything
                 payout = 0;
                 profitLoss = -totalCost;
             }
@@ -189,7 +178,7 @@ async function settleRound(roundId) {
             console.log(`  User ${pos.user_id} (${pos.side}): ${won ? 'WON' : 'LOST'}, payout=${payout}`);
         }
         
-        // 6. Обновляем статус
+        // 6. Update status
         await sql`
             UPDATE rounds 
             SET settlement_status = 'settled', settled_at = NOW(), winning_side = ${winningSide}
@@ -215,7 +204,7 @@ async function fetchFinalMarketCap(round) {
     const TOKEN_ADDRESS = '3TJUekjVmyvvGazbohcWZm89f6QwYkSS1SahFNmvpump';
     const TOTAL_SUPPLY = 1000000000;
     
-    // Метод 1: DexScreener
+    // Method 1: DexScreener
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
@@ -247,7 +236,7 @@ async function fetchFinalMarketCap(round) {
         console.error('❌ DexScreener error:', error.message);
     }
     
-    // Метод 2: Jupiter
+    // Method 2: Jupiter
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
@@ -281,7 +270,7 @@ async function fetchFinalMarketCap(round) {
 // CRON HANDLER
 // ============================================
 export default async function handler(req, res) {
-    // Защита: только Vercel Cron может вызывать этот endpoint
+    // Protection: only Vercel Cron can call this endpoint
     const authHeader = req.headers.authorization;
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized' });
@@ -291,7 +280,7 @@ export default async function handler(req, res) {
         console.log('🕐 CRON: Starting round settlement check...');
         
         // ============================================
-        // ШАГ 1: Закрыть все истекшие активные раунды
+        // STEP 1: Close all expired active rounds
         // ============================================
         const closedResult = await sql`
             UPDATE rounds 
@@ -306,10 +295,10 @@ export default async function handler(req, res) {
         }
         
         // ============================================
-        // ШАГ 2: Settle закрытые раунды с позициями
+        // STEP 2: Settle closed rounds with positions
         // ============================================
-        // Находим все закрытые раунды которые еще не рассчитаны
-        // Приоритет: сначала раунды с позициями, потом пустые
+        // Find all closed rounds that haven't been settled yet
+        // Priority: rounds with positions first, then empty ones
         const roundsToSettle = await sql`
             SELECT r.id, r.slug, r.end_time, r.settlement_status,
                    (SELECT COUNT(*) FROM user_positions WHERE round_id = r.id) as position_count
