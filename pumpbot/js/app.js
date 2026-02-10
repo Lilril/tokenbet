@@ -971,7 +971,7 @@ function renderTradeHistory() {
         return;
     }
     container.innerHTML = recentTrades.map(trade => {
-        const time = new Date(trade.time).toLocaleTimeString('ru-RU');
+        const time = new Date(trade.time).toLocaleTimeString('en-US');
         const sideClass = trade.side === 'higher' ? 'buy' : 'sell';
         const sideText = trade.side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
         return `
@@ -1050,7 +1050,7 @@ async function cancelOrder(orderId) {
         });
         const result = await response.json();
         if (result.success) {
-            showNotification('Ордер отменен!', 'success');
+            showNotification('Order cancelled!', 'success');
             // Refresh data
             await Promise.all([
                 fetchUserOrders(),
@@ -1180,7 +1180,7 @@ async function fetchUserTrades() {
         const data = await response.json();
         if (data.success && data.trades && data.trades.length > 0) {
             list.innerHTML = data.trades.map(trade => {
-                const timestamp = new Date(trade.timestamp).toLocaleString('ru-RU', {
+                const timestamp = new Date(trade.timestamp).toLocaleString('en-US', {
                     day: '2-digit',
                     month: '2-digit',
                     hour: '2-digit',
@@ -1388,13 +1388,13 @@ async function executeTrade(side) {
             const sideText = side === 'higher' ? 'HIGHER' : 'LOWER';
             const typeText = selectedOrderType === 'market' ? 'Market' : 'Limit';
             if (selectedOrderType === 'market' && result.trade) {
-                let message = `${typeText} ордер на ${sideText} исполнен!\n\n`;
+                let message = `${typeText} order for ${sideText} filled!\n\n`;
                 message += `Qty: ${amount} tokens\n`;
                 message += `Avg price: ${result.trade.price.toFixed(4)}\n`;
                 if (result.trade.source === 'orderbook') {
-                    message += `\n• Исполнено из стакана ордеров`;
+                    message += `\n• Filled from order book`;
                 } else if (result.trade.source === 'mixed') {
-                    message += `\n• Из стакана: ${result.trade.orderbookFilled} tokens`;
+                    message += `\n• From order book: ${result.trade.orderbookFilled} tokens`;
                     message += `\n• From AMM pool: ${result.trade.ammFilled} tokens`;
                 } else if (result.trade.source === 'amm') {
                     message += `\n• Filled from AMM pool`;
@@ -1404,17 +1404,17 @@ async function executeTrade(side) {
                 const matched = result.matched || 0;
                 const remaining = result.order.amount - matched;
                 if (matched > 0 && remaining > 0) {
-                    showNotification(`${typeText} ордер на ${sideText} размещен!\n\n` +
+                    showNotification(`${typeText} order for ${sideText} placed!\n\n` +
                           `Filled immediately: ${matched} tokens\n` +
                           `Remaining in book: ${remaining} tokens`);
                 } else if (matched > 0) {
-                    showNotification(`${typeText} ордер на ${sideText} полностью исполнен!\n\n` +
+                    showNotification(`${typeText} order for ${sideText} fully filled!\n\n` +
                           `Qty: ${matched} tokens`);
                 } else {
-                    showNotification(`${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
+                    showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} tokens`, 'success');
                 }
             } else {
-                showNotification(`${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
+                showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} tokens`, 'success');
             }
             // Reset form
             amountInput.value = '';
@@ -1629,7 +1629,7 @@ async function executeUnifiedTrade() {
                 const sideText = side === 'higher' ? 'HIGHER' : 'LOWER';
                 const profit = result.sell.profit;
                 const profitText = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
-                showNotification(`Продано ${result.sell.amount.toFixed(2)} ${sideText} по ${result.sell.avgPrice.toFixed(4)}\nВыручка: ${result.sell.proceeds.toFixed(2)} | P&L: ${profitText}`, 'success');
+                showNotification(`Sold ${result.sell.amount.toFixed(2)} ${sideText} @ ${result.sell.avgPrice.toFixed(4)}\nProceeds: ${result.sell.proceeds.toFixed(2)} | P&L: ${profitText}`, 'success');
                 document.getElementById('tradeAmount').value = '';
                 document.getElementById('tradeEstimate').innerHTML = '<div style="color: var(--text-dim);">Enter amount</div>';
                 updateSellPositionInfo();
@@ -1681,20 +1681,20 @@ async function executeUnifiedTrade() {
             const sideText = side === 'higher' ? 'HIGHER' : 'LOWER';
             const typeText = selectedOrderType === 'market' ? 'Market' : 'Limit';
             if (selectedOrderType === 'market' && result.trade) {
-                let message = `${typeText} ордер на ${sideText} исполнен!\n\n`;
+                let message = `${typeText} order for ${sideText} filled!\n\n`;
                 message += `Qty: ${amount} tokens\n`;
                 message += `Avg price: ${result.trade.price.toFixed(4)}\n`;
                 if (result.trade.source === 'orderbook') {
-                    message += `\n• Исполнено из стакана ордеров`;
+                    message += `\n• Filled from order book`;
                 } else if (result.trade.source === 'mixed') {
-                    message += `\n• Из стакана: ${result.trade.orderbookFilled} tokens`;
+                    message += `\n• From order book: ${result.trade.orderbookFilled} tokens`;
                     message += `\n• From AMM pool: ${result.trade.ammFilled} tokens`;
                 } else if (result.trade.source === 'amm') {
                     message += `\n• Filled from AMM pool`;
                 }
                 showNotification(message, 'error');
             } else {
-                showNotification(`${typeText} ордер на ${sideText} размещен!\n\nQty: ${amount} tokens`, 'success');
+                showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} tokens`, 'success');
             }
             // Reset
             document.getElementById('tradeAmount').value = '';
@@ -2020,7 +2020,7 @@ window.addEventListener('load', async () => {
             });
             const result = await response.json();
             if (result.success) {
-                showNotification(`Выигрыш забран!\n\nПолучено: ${result.payout.toFixed(2)} tokens\nP&L: ${result.profitLoss.toFixed(2)} tokens`, 'success');
+                showNotification(`Winnings claimed!\n\nReceived: ${result.payout.toFixed(2)} tokens\nP&L: ${result.profitLoss.toFixed(2)} tokens`, 'success');
                 await Promise.all([
                     fetchUnclaimedSettlements(),
                     fetchTokenBalance()
@@ -2181,18 +2181,18 @@ window.addEventListener('load', async () => {
     function buildTransactionRow(t) {
         const typeMap = {
             'deposit': { label: '↓ Deposit', color: 'var(--accent-green)' },
-            'withdrawal': { label: '↑ Вывод', color: 'var(--accent-red)' },
+            'withdrawal': { label: '↑ Withdrawal', color: 'var(--accent-red)' },
             'trade_credit': { label: '$ Payout', color: 'var(--accent-green)' },
-            'trade_debit': { label: '○ Ставка', color: 'var(--accent-red)' },
-            'order_lock': { label: '⌂ Блокировка', color: 'var(--text-dim)' },
-            'order_unlock': { label: '⌂ Unlock', color: 'var(--text-dim)' },
+            'trade_debit': { label: '○ Trade debit', color: 'var(--accent-red)' },
+            'order_lock': { label: '⌂ Order lock', color: 'var(--text-dim)' },
+            'order_unlock': { label: '⌂ Order unlock', color: 'var(--text-dim)' },
             'refund': { label: '↔ Refund', color: 'var(--accent-yellow)' }
         };
         const info = typeMap[t.type] || { label: t.type, color: 'var(--text-dim)' };
         const isPositive = t.amount > 0 && (t.type === 'deposit' || t.type === 'trade_credit' || t.type === 'refund' || t.type === 'order_unlock');
         const amtColor = isPositive ? 'var(--accent-green)' : 'var(--accent-red)';
         const sign = isPositive ? '+' : (t.type === 'withdrawal' || t.type === 'trade_debit' || t.type === 'order_lock') ? '-' : '';
-        const date = new Date(t.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const date = new Date(t.createdAt).toLocaleString('en-US', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
         const amt = Math.abs(t.amount).toFixed(2);
         const bal = t.balanceAfter.toFixed(2);
         return '<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">' +
@@ -2265,7 +2265,7 @@ window.addEventListener('load', async () => {
         const sideColor = side === 'higher' ? 'text-green' : 'text-red';
         const isTie = Math.abs(profitLoss) < 0.01 && won && payout > 0;
         const statusClass = isTie ? 'refund' : (won ? 'won' : 'lost');
-        const statusText = isTie ? '↔ НИЧЬЯ' : (won ? '▲ ВЫИГРЫШ' : '▼ ПРОИГРЫШ');
+        const statusText = isTie ? '↔ TIE' : (won ? '▲ WIN' : '▼ LOSS');
         const capChange = startMarketCap > 0 
             ? ((finalMarketCap - startMarketCap) / startMarketCap * 100).toFixed(2)
             : '0.00';
@@ -2278,7 +2278,7 @@ window.addEventListener('load', async () => {
                         <div>
                             <div style="font-weight: 600; color: var(--text-primary);">${roundSlug}</div>
                             <div style="font-size: 0.85em; color: var(--text-dim);">
-                                ${new Date(settlement.endTime).toLocaleString('ru-RU')}
+                                ${new Date(settlement.endTime).toLocaleString('en-US')}
                             </div>
                         </div>
                     </div>
@@ -2288,12 +2288,12 @@ window.addEventListener('load', async () => {
                 </div>
                 <div class="market-cap-comparison">
                     <div>
-                        <div style="font-size: 0.8em; color: var(--text-dim);">Start cap.</div>
+                        <div style="font-size: 0.8em; color: var(--text-dim);">Start cap</div>
                         <div class="market-cap-value">$${startMarketCap > 0 ? startMarketCap.toLocaleString() : '—'}</div>
                     </div>
                     <div class="market-cap-arrow">${capArrow}</div>
                     <div>
-                        <div style="font-size: 0.8em; color: var(--text-dim);">Final cap.</div>
+                        <div style="font-size: 0.8em; color: var(--text-dim);">Final cap</div>
                         <div class="market-cap-value">$${finalMarketCap > 0 ? finalMarketCap.toLocaleString() : '—'}</div>
                     </div>
                     <div style="padding: 8px 15px; background: var(--bg-tertiary); border-radius: 8px; font-weight: 600;">
@@ -2348,7 +2348,7 @@ window.addEventListener('load', async () => {
         if (!claimed) {
             return '<div class="settlement-claimed">Pending claim</div>';
         }
-        const claimDate = new Date(claimedAt).toLocaleString('ru-RU');
+        const claimDate = new Date(claimedAt).toLocaleString('en-US');
         return `
             <div class="settlement-claimed">
                 <strong>✓ Claimed</strong>
@@ -2358,7 +2358,7 @@ window.addEventListener('load', async () => {
                     <a href="https://solscan.io/tx/${claimTxHash}" 
                        target="_blank" 
                        class="settlement-tx-link">
-                        Посмотреть транзакцию →
+                        View transaction →
                     </a>
                 ` : ''}
             </div>
