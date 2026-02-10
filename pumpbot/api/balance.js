@@ -15,7 +15,7 @@ import bs58 from 'bs58';
 // ============================================
 
 // ============================================
-const MINT_ADDRESS = process.env.TOKEN_MINT || 'AWAITING_TOKEN';
+const MINT_ADDRESS = process.env.TOKEN_MINT || '51PMG6dcDJcbxstHzebVC2z2t6zQ2pbP26tncSGDpump';
 const PLATFORM_WALLET_SECRET = process.env.PLATFORM_WALLET_SECRET;
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
 const RPC_URL = HELIUS_API_KEY
