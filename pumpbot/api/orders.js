@@ -1859,12 +1859,15 @@ if (action === 'orderbook') {
                 });
             }
             
-            // LIMIT ORDER
+// ============================================
+            // LIMIT ORDER - FIXED POLYMARKET-STYLE MATCHING
+            // ============================================
+            // CRITICAL FIX: Match FIRST with existing orders, create limit order ONLY for unfilled amount
+            // This prevents orders from appearing in orderbook when they should execute immediately
             else {
                 const prc = parseFloat(price);
                 
                 if (!prc || prc < 0.01 || prc > 0.99 || isNaN(prc)) {
-                    
                     await unlockBalance(user.id, estimatedCost);
                     return res.status(400).json({
                         success: false,
@@ -1872,15 +1875,20 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                const order = await db.placeLimitOrder(user.id, round.id, side, amt, prc);
+                // ============================================
+                // STEP 1: FIND MATCHABLE ORDERS FIRST (BEFORE creating any order)
+                // ============================================
                 const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
                 
                 let totalMatched = 0;
                 let totalBuyerCost = 0;
+                const trades = [];
                 
+                // Try to match with existing orders
                 for (const oppositeOrder of matchableOrders) {
                     // Self-trade protection
                     if (oppositeOrder.user_id === user.id) continue;
+                    
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
@@ -1888,67 +1896,154 @@ if (action === 'orderbook') {
                     
                     const matchAmount = Math.min(remainingToFill, oppositeRemaining);
                     const oppPrice = parseFloat(oppositeOrder.price);
-                    // Complementary: each side pays their own price
-                    const buyerPrice = prc; // Buyer pays their limit price
-                    const sellerPrice = oppPrice; // Seller pays their limit price
                     
+                    // Complementary pricing: each side pays their own price
+                    const buyerPrice = prc;
+                    const sellerPrice = oppPrice;
+                    
+                    // Calculate surplus and effective prices (price improvement)
                     const surplus = (buyerPrice + sellerPrice - 1.0) / 2;
                     const effectiveBuyerPrice = buyerPrice - surplus;
                     const effectiveSellerPrice = sellerPrice - surplus;
                     const buyerCost = matchAmount * effectiveBuyerPrice;
                     const sellerCost = matchAmount * effectiveSellerPrice;
                     
-                    await db.recordTrade({
-                        roundId: round.id,
-                        buyerId: user.id,
-                        sellerId: oppositeOrder.user_id,
-                        buyOrderId: order.id,
-                        sellOrderId: oppositeOrder.id,
-                        side,
-                        amount: matchAmount,
-                        price: effectiveBuyerPrice,
-                        totalCost: buyerCost,
-                        tradeType: 'limit'
+                    // Store trade info for execution
+                    trades.push({
+                        oppositeOrder,
+                        matchAmount,
+                        effectiveBuyerPrice,
+                        effectiveSellerPrice,
+                        buyerCost,
+                        sellerCost
                     });
-                    
-                    await db.updateOrderFilled(order.id, matchAmount);
-                    await db.updateOrderFilled(oppositeOrder.id, matchAmount);
-                    
-                    await db.upsertUserPosition(user.id, round.id, side, matchAmount, effectiveBuyerPrice, buyerCost);
-                    await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
-                    
-                    
-                    await deductLocked(oppositeOrder.user_id, sellerCost);
                     
                     totalMatched += matchAmount;
                     totalBuyerCost += buyerCost;
                 }
                 
+                // ============================================
+                // STEP 2: EXECUTE MATCHED TRADES (if any were found)
+                // ============================================
+                let createdOrderForTrades = null;
                 
                 if (totalMatched > 0) {
+                    // Create order record for the matched amount (will be immediately filled)
+                    createdOrderForTrades = await db.placeLimitOrder(user.id, round.id, side, totalMatched, prc);
+                    
+                    // Execute all matched trades
+                    for (const trade of trades) {
+                        const {oppositeOrder, matchAmount, effectiveBuyerPrice, effectiveSellerPrice, buyerCost, sellerCost} = trade;
+                        
+                        await db.recordTrade({
+                            roundId: round.id,
+                            buyerId: user.id,
+                            sellerId: oppositeOrder.user_id,
+                            buyOrderId: createdOrderForTrades.id,
+                            sellOrderId: oppositeOrder.id,
+                            side,
+                            amount: matchAmount,
+                            price: effectiveBuyerPrice,
+                            totalCost: buyerCost,
+                            tradeType: 'limit'
+                        });
+                        
+                        // Update filled amounts
+                        await db.updateOrderFilled(createdOrderForTrades.id, matchAmount);
+                        await db.updateOrderFilled(oppositeOrder.id, matchAmount);
+                        
+                        // Update positions
+                        await db.upsertUserPosition(user.id, round.id, side, matchAmount, effectiveBuyerPrice, buyerCost);
+                        await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
+                        
+                        // Deduct from opposite user's locked balance
+                        await deductLocked(oppositeOrder.user_id, sellerCost);
+                    }
+                    
+                    // Deduct matched cost from this user's locked balance
                     await deductLocked(user.id, totalBuyerCost);
-                    // Refund: locked was at full limit price, but effective price may be less
+                    
+                    // Refund price improvement (user locked at limit price but paid less)
                     const lockedForMatched = totalMatched * prc;
                     const refund = lockedForMatched - totalBuyerCost;
-                    if (refund > 0.001) await unlockBalance(user.id, refund);
+                    if (refund > 0.001) {
+                        await unlockBalance(user.id, refund);
+                    }
                 }
                 
+                // ============================================
+                // STEP 3: CREATE LIMIT ORDER ONLY FOR UNFILLED AMOUNT
+                // ============================================
+                const unfilledAmount = amt - totalMatched;
+                let limitOrder = null;
+                
+                if (unfilledAmount > 0.001) {
+                    // Create limit order for remaining unfilled amount
+                    // This order will sit in the orderbook waiting for matches
+                    limitOrder = await db.placeLimitOrder(user.id, round.id, side, unfilledAmount, prc);
+                    
+                    // The locked balance for unfilled amount stays locked
+                    // (already locked in estimatedCost, minus what was used for matches)
+                }
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
-                return res.status(200).json({
-                    success: true,
-                    order: {
-                        id: order.id,
-                        side,
-                        amount: amt,
-                        price: prc,
-                        filled: totalMatched,
-                        status: totalMatched >= amt ? 'filled' : 'active'
-                    },
-                    matched: totalMatched,
-                    orderBook
-                });
+                // ============================================
+                // STEP 4: RETURN APPROPRIATE RESPONSE
+                // ============================================
+                
+                if (totalMatched >= amt) {
+                    // Fully filled from existing orders - no limit order created
+                    return res.status(200).json({
+                        success: true,
+                        order: {
+                            id: createdOrderForTrades.id,
+                            side,
+                            amount: amt,
+                            price: prc,
+                            filled: totalMatched,
+                            status: 'filled'
+                        },
+                        matched: totalMatched,
+                        averagePrice: totalBuyerCost / totalMatched,
+                        message: `Fully filled at average price ${(totalBuyerCost / totalMatched).toFixed(2)}¢`,
+                        orderBook
+                    });
+                } else if (totalMatched > 0) {
+                    // Partially filled - created limit order for remaining amount
+                    return res.status(200).json({
+                        success: true,
+                        order: {
+                            id: limitOrder.id,
+                            side,
+                            amount: amt,
+                            price: prc,
+                            filled: totalMatched,
+                            remaining: unfilledAmount,
+                            status: 'active'
+                        },
+                        matched: totalMatched,
+                        averagePrice: totalBuyerCost / totalMatched,
+                        message: `Partially filled: ${totalMatched.toFixed(2)} at ${(totalBuyerCost / totalMatched).toFixed(2)}¢, limit order for ${unfilledAmount.toFixed(2)} at ${prc.toFixed(2)}¢`,
+                        orderBook
+                    });
+                } else {
+                    // No matches found - pure limit order created
+                    return res.status(200).json({
+                        success: true,
+                        order: {
+                            id: limitOrder.id,
+                            side,
+                            amount: amt,
+                            price: prc,
+                            filled: 0,
+                            status: 'active'
+                        },
+                        matched: 0,
+                        message: `Limit order placed for ${amt} at ${prc.toFixed(2)}¢`,
+                        orderBook
+                    });
+                }
             }
         }
         
