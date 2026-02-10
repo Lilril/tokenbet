@@ -1,6 +1,6 @@
-const TOKEN_ADDRESS = '8KvoBfxiPiVp9b9mxSFZHpJdX9NUtbmNFhAGggLDpump';
+const TOKEN_ADDRESS = 'HB1GX2Vkh8KosPePZ5zBtbLgLQm7JQXpmgz7ADM4pump';
 const API_BASE = '';
-const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === '8KvoBfxiPiVp9b9mxSFZHpJdX9NUtbmNFhAGggLDpump' || TOKEN_ADDRESS.length < 30;
+const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === 'HB1GX2Vkh8KosPePZ5zBtbLgLQm7JQXpmgz7ADM4pump' || TOKEN_ADDRESS.length < 30;
 // HELPER FUNCTIONS FOR SAFE API CALLS
 // Safe JSON parse with content-type check
 async function safeJsonParse(response) {
