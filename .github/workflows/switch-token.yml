@@ -25,33 +25,42 @@ jobs:
         run: |
           NEW="${{ steps.cfg.outputs.token }}"
           PUMP="${{ steps.cfg.outputs.pump }}"
+          
+          # Получаем текущий токен из app.js
           CURRENT=$(grep -oP "const TOKEN_ADDRESS = '\K[^']+" pumpbot/js/app.js || echo "")
           CURRENT_PUMP=$(grep -oP 'id="buyMercLink"[^>]*href="\K[^"]+' pumpbot/index.html || echo "")
+          
           echo "Current token: $CURRENT"
           echo "New token:     $NEW"
-          OLD_TOKENS=("$CURRENT" "DmHzzungjC7eMYVXUve4SksEg4XoUTcAQuRJ5tMmpump" "HiNkp9CdKqTgPtB6WnncrUAu9YwQqnrvT6Ceuxoypump" "HiNkp9CdKqTgPtB6WnnrrUAu9YwQqnrvT6Ceuxoypump")
-          FILES=("pumpbot/js/app.js" "pumpbot/index.html" "pumpbot/api/orders.js" "pumpbot/api/balance.js" "pumpbot/api/marketcap.js" "pumpbot/api/cron/settle-rounds.js")
-          TOTAL=0
-          for FILE in "${FILES[@]}"; do
-            [ ! -f "$FILE" ] && continue
-            COUNT=0
-            for OLD in "${OLD_TOKENS[@]}"; do
-              if [ -n "$OLD" ] && [ "$OLD" != "$NEW" ] && grep -q "$OLD" "$FILE" 2>/dev/null; then
-                C=$(grep -c "$OLD" "$FILE")
-                sed -i "s|$OLD|$NEW|g" "$FILE"
-                COUNT=$((COUNT + C))
+          
+          # Если текущий токен существует и он не равен новому - заменяем
+          if [ -n "$CURRENT" ] && [ "$CURRENT" != "$NEW" ]; then
+            echo "Replacing $CURRENT with $NEW in all files..."
+            
+            FILES=("pumpbot/js/app.js" "pumpbot/index.html" "pumpbot/api/orders.js" "pumpbot/api/balance.js" "pumpbot/api/marketcap.js" "pumpbot/api/cron/settle-rounds.js")
+            TOTAL=0
+            
+            for FILE in "${FILES[@]}"; do
+              if [ -f "$FILE" ]; then
+                COUNT=$(grep -c "$CURRENT" "$FILE" 2>/dev/null || echo "0")
+                if [ "$COUNT" -gt 0 ]; then
+                  sed -i "s|$CURRENT|$NEW|g" "$FILE"
+                  echo "$FILE -- $COUNT replacements"
+                  TOTAL=$((TOTAL + COUNT))
+                fi
               fi
             done
-            if [ "$COUNT" -gt 0 ]; then
-              echo "$FILE -- $COUNT replacements"
-              TOTAL=$((TOTAL + COUNT))
-            fi
-          done
+            
+            echo "Total: $TOTAL replacements"
+          else
+            echo "No replacement needed (tokens are the same or current token is empty)"
+          fi
+          
+          # Обновляем pump_url если он изменился
           if [ -n "$PUMP" ] && [ "$PUMP" != "null" ] && [ -n "$CURRENT_PUMP" ] && [ "$CURRENT_PUMP" != "$PUMP" ]; then
             sed -i "s|$CURRENT_PUMP|$PUMP|g" pumpbot/index.html
-            echo "Pump link updated"
+            echo "Pump link updated from $CURRENT_PUMP to $PUMP"
           fi
-          echo "Total: $TOTAL replacements"
 
       - name: Full database wipe
         env:
@@ -103,3 +112,33 @@ jobs:
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "Launch ${{ steps.cfg.outputs.token }}"
           git push
+
+      - name: Trigger Vercel Deploy Hook
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
+            echo "WARNING: VERCEL_DEPLOY_HOOK_URL not set, skipping redeploy"
+            echo "INFO: To enable auto-redeploy:"
+            echo "  1. Go to Vercel Dashboard -> Settings -> Git"
+            echo "  2. Create a Deploy Hook for the 'main' branch"
+            echo "  3. Add the URL as VERCEL_DEPLOY_HOOK_URL secret in GitHub"
+            exit 0
+          fi
+          
+          echo "Triggering Vercel deployment via Deploy Hook..."
+          
+          RESPONSE=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK_URL")
+          
+          if echo "$RESPONSE" | grep -q '"job"'; then
+            echo "SUCCESS: Vercel deployment triggered successfully"
+            echo "Response: $RESPONSE"
+          else
+            echo "ERROR: Failed to trigger deployment"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
+          
+          echo ""
+          echo "Deployment started. Check Vercel Dashboard for progress."
+          echo "Your site will update in 1-3 minutes."
