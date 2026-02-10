@@ -26,14 +26,12 @@ jobs:
           NEW="${{ steps.cfg.outputs.token }}"
           PUMP="${{ steps.cfg.outputs.pump }}"
           
-          # Получаем текущий токен из app.js
           CURRENT=$(grep -oP "const TOKEN_ADDRESS = '\K[^']+" pumpbot/js/app.js || echo "")
           CURRENT_PUMP=$(grep -oP 'id="buyMercLink"[^>]*href="\K[^"]+' pumpbot/index.html || echo "")
           
           echo "Current token: $CURRENT"
           echo "New token:     $NEW"
           
-          # Если текущий токен существует и он не равен новому - заменяем
           if [ -n "$CURRENT" ] && [ "$CURRENT" != "$NEW" ]; then
             echo "Replacing $CURRENT with $NEW in all files..."
             
@@ -61,7 +59,17 @@ jobs:
             sed -i "s|$CURRENT_PUMP|$PUMP|g" pumpbot/index.html
             echo "Pump link updated from $CURRENT_PUMP to $PUMP"
           fi
-
+            # Обновляем проверку PLATFORM_PAUSED если нужно
+          if [ "$NEW" = "AWAITING_TOKEN" ]; then
+            # Ставим на паузу - обновляем проверку на AWAITING_TOKEN
+            sed -i "s|TOKEN_ADDRESS === '[^']*' \|\| TOKEN_ADDRESS.length|TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length|g" pumpbot/js/app.js
+            echo "Platform paused (AWAITING_TOKEN mode)"
+          else
+            # Запускаем - убираем проверку на конкретный токен, оставляем только AWAITING_TOKEN
+            sed -i "s|TOKEN_ADDRESS === '[^']*' \|\| TOKEN_ADDRESS.length|TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length|g" pumpbot/js/app.js
+            echo "Platform active"
+          fi
+          
       - name: Full database wipe
         env:
           POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
