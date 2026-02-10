@@ -2370,3 +2370,4 @@ window.addEventListener('load', async () => {
     window.switchSettlementTab = switchSettlementTab;
 });
 
+
