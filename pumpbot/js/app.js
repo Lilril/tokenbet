@@ -1,4 +1,4 @@
-const TOKEN_ADDRESS = 'HytpLmXEFm9HUJypoQDdJ4mD9NnoqPbEiRKqxPhCpump';
+const TOKEN_ADDRESS = '4HuUVH8gPTk9yuohhCKR6uCLTgmrsCEiYCJFVQPVpump';
 const API_BASE = '';
 const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length < 30;
 // HELPER FUNCTIONS FOR SAFE API CALLS
@@ -62,7 +62,7 @@ function getCurrentInterval() {
     return 15;
 }
 // Trading state
-let orderBookData = { higher: [], lower: [] };
+let orderBookData = { higher: [], lower: [], higherSells: [], lowerSells: [] };
 let ammPrices = { higher: 0.5, lower: 0.5 };
 let recentTrades = [];
 let selectedSide = 'higher';
@@ -834,39 +834,62 @@ function renderOrderBook() {
     const lowerEl = document.getElementById('orderBookLower');
     const side = (typeof currentTradeSide !== 'undefined') ? currentTradeSide : 'higher';
     // Polymarket-style orderbook:
-    // When viewing HIGHER (YES): 
-    // When viewing LOWER (NO):
-    let asksRaw, bidsRaw;
+    // Asks = sell orders on current side + complement buy orders on opposite side
+    // Bids = buy orders on current side
+    let complementAsks, directSells, bidsRaw;
     let asksSide, bidsSide;
     if (side === 'higher') {
-        asksRaw = orderBookData.lower;  // LOWER orders = YES asks (sellers)
-        bidsRaw = orderBookData.higher; // HIGHER orders = YES bids (buyers)
+        complementAsks = orderBookData.lower || [];   // LOWER buy orders = complement asks
+        directSells = orderBookData.higherSells || []; // Direct HIGHER sell orders
+        bidsRaw = orderBookData.higher || [];          // HIGHER buy orders = bids
         asksSide = 'lower';
         bidsSide = 'higher';
     } else {
-        asksRaw = orderBookData.higher; // HIGHER orders = NO asks (sellers)
-        bidsRaw = orderBookData.lower;  // LOWER orders = NO bids (buyers)
+        complementAsks = orderBookData.higher || [];   // HIGHER buy orders = complement asks
+        directSells = orderBookData.lowerSells || [];  // Direct LOWER sell orders
+        bidsRaw = orderBookData.lower || [];           // LOWER buy orders = bids
         asksSide = 'higher';
         bidsSide = 'lower';
     }
-    // Convert asks to complementary prices (1 - price)
-    const asksData = asksRaw.map(o => ({
+    // Convert complement asks to complementary prices (1 - price) + merge with direct sell orders
+    const complementData = complementAsks.map(o => ({
         ...o,
-        displayPrice: 1 - o.price, // complementary
-        rawPrice: o.price
-    })).sort((a, b) => a.displayPrice - b.displayPrice); // lowest ask first (closest to spread)
+        displayPrice: Math.round((1 - o.price) * 100) / 100,
+        rawPrice: o.price,
+        source: 'complement'
+    }));
+    const directSellData = directSells.map(o => ({
+        ...o,
+        displayPrice: Math.round(o.price * 100) / 100,
+        rawPrice: o.price,
+        source: 'sell'
+    }));
+    // Merge and deduplicate by displayPrice
+    const allAsksMap = new Map();
+    for (const a of [...complementData, ...directSellData]) {
+        const key = a.displayPrice.toFixed(2);
+        if (allAsksMap.has(key)) {
+            const existing = allAsksMap.get(key);
+            existing.amount += a.amount;
+            existing.orders = (existing.orders || 1) + (a.orders || 1);
+        } else {
+            allAsksMap.set(key, { ...a });
+        }
+    }
+    const asksData = Array.from(allAsksMap.values()).sort((a, b) => a.displayPrice - b.displayPrice);
+    
     // Bids keep original prices
     const bidsData = bidsRaw.map(o => ({
         ...o,
-        displayPrice: o.price,
+        displayPrice: Math.round(o.price * 100) / 100,
         rawPrice: o.price
-    })).sort((a, b) => b.displayPrice - a.displayPrice); // highest bid first (closest to spread)
+    })).sort((a, b) => b.displayPrice - a.displayPrice); // highest bid first
     // Reverse asks so highest is at top, lowest near spread
     const asksReversed = [...asksData].reverse();
     // Helper: check if this price level has user's order
     function isUserOrder(orderSide, rawPrice) {
         const prices = userOrderPrices[orderSide] || [];
-        return prices.some(p => Math.abs(p - rawPrice) < 0.00001);
+        return prices.some(p => Math.abs(p - rawPrice) < 0.0001);
     }
     if (asksReversed.length === 0) {
         higherEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">No orders</div>';
@@ -881,7 +904,7 @@ function renderOrderBook() {
                 <div class="order-book-row" onclick="fillFromOrderBook(${order.displayPrice}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Your order — ' : ''}Click to fill">
                     <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(255, 71, 87, 0.2));"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="text-red">${order.displayPrice.toFixed(4)}${userMarker}</span>
+                        <span class="text-red">${order.displayPrice.toFixed(2)}${userMarker}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
@@ -901,7 +924,7 @@ function renderOrderBook() {
                 <div class="order-book-row" onclick="fillFromOrderBook(${order.displayPrice}, ${order.amount})" style="cursor: pointer; ${userStyle}" title="${isUser ? '★ Your order — ' : ''}Click to fill">
                     <div class="order-bar" style="width: ${pct}%; background: linear-gradient(90deg, transparent, rgba(0, 255, 159, 0.2));"></div>
                     <div style="display: flex; justify-content: space-between; position: relative; z-index: 1;">
-                        <span class="text-green">${order.displayPrice.toFixed(4)}${userMarker}</span>
+                        <span class="text-green">${order.displayPrice.toFixed(2)}${userMarker}</span>
                         <span>${order.amount.toFixed(0)}</span>
                     </div>
                 </div>
@@ -1119,13 +1142,14 @@ function updateMyOrdersModalList() {
         const filled = order.filled || 0;
         const remaining = order.amount - filled;
         const showRemaining = filled > 0;
-        const orderType = order.order_type || (order.price === 0 ? 'Market' : 'Limit');
+        const isSell = order.order_type === 'sell';
+        const orderType = isSell ? 'Sell Limit' : (order.price === 0 ? 'Market' : 'Limit');
         return `
             <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                     <div>
                         <span class="${order.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
-                            ${order.side === 'higher' ? '↑ HIGHER' : '↓ LOWER'}
+                            ${isSell ? '⤵ SELL' : ''} ${order.side === 'higher' ? '↑ HIGHER' : '↓ LOWER'}
                         </span>
                         <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
                             ${orderType}
@@ -1627,9 +1651,19 @@ async function executeUnifiedTrade() {
             const result = await response.json();
             if (result.success && result.sell) {
                 const sideText = side === 'higher' ? 'HIGHER' : 'LOWER';
-                const profit = result.sell.profit;
-                const profitText = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
-                showNotification(`Sold ${result.sell.amount.toFixed(2)} ${sideText} @ ${result.sell.avgPrice.toFixed(4)}\nProceeds: ${result.sell.proceeds.toFixed(2)} | P&L: ${profitText}`, 'success');
+                let message;
+                if (result.sell.limitOrderPlaced && result.sell.amount <= 0) {
+                    message = `Sell limit order placed for ${result.sell.limitOrderPlaced.toFixed(0)} ${sideText}`;
+                } else if (result.sell.limitOrderPlaced) {
+                    const profit = result.sell.profit;
+                    const profitText = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
+                    message = `Sold ${result.sell.amount.toFixed(0)} ${sideText} @ ${result.sell.avgPrice.toFixed(2)}\nSell limit order placed for remaining ${result.sell.limitOrderPlaced.toFixed(0)}`;
+                } else {
+                    const profit = result.sell.profit;
+                    const profitText = profit >= 0 ? `+${profit.toFixed(2)}` : profit.toFixed(2);
+                    message = `Sold ${result.sell.amount.toFixed(0)} ${sideText} @ ${result.sell.avgPrice.toFixed(2)}\nProceeds: ${result.sell.proceeds.toFixed(2)} | P&L: ${profitText}`;
+                }
+                showNotification(message, 'success');
                 document.getElementById('tradeAmount').value = '';
                 document.getElementById('tradeEstimate').innerHTML = '<div style="color: var(--text-dim);">Enter amount</div>';
                 updateSellPositionInfo();
@@ -2369,5 +2403,3 @@ window.addEventListener('load', async () => {
     window.closeSettlementsModal = closeSettlementsModal;
     window.switchSettlementTab = switchSettlementTab;
 });
-
-
