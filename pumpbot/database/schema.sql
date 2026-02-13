@@ -55,9 +55,10 @@ CREATE TABLE limit_orders (
     round_id INTEGER REFERENCES rounds(id),
     side VARCHAR(10) NOT NULL,
     amount DECIMAL(20, 2) NOT NULL,
-    price DECIMAL(10, 8) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
     filled DECIMAL(20, 2) DEFAULT 0,
     status VARCHAR(20) DEFAULT 'active',
+    order_type VARCHAR(10) DEFAULT 'buy',
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     cancelled_at TIMESTAMP,
@@ -65,7 +66,8 @@ CREATE TABLE limit_orders (
     
     CONSTRAINT valid_side CHECK (side IN ('higher', 'lower')),
     CONSTRAINT valid_price CHECK (price > 0 AND price < 1),
-    CONSTRAINT valid_amount CHECK (amount > 0)
+    CONSTRAINT valid_amount CHECK (amount > 0),
+    CONSTRAINT valid_order_type CHECK (order_type IN ('buy', 'sell'))
 );
 
 CREATE INDEX idx_orders_user ON limit_orders(user_id);
