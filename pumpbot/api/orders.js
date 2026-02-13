@@ -16,6 +16,10 @@ async function ensureIndexes() {
     try {
         await sql`ALTER TABLE limit_orders ADD COLUMN IF NOT EXISTS order_type VARCHAR(10) DEFAULT 'buy'`;
     } catch(e) {} // Already exists
+    // Add cost_basis column for correct position restoration on sell order cancel
+    try {
+        await sql`ALTER TABLE limit_orders ADD COLUMN IF NOT EXISTS cost_basis DECIMAL(10, 4)`;
+    } catch(e) {} // Already exists
 }
 
 // ============================================ 
@@ -353,12 +357,12 @@ async function getAggregatedOrderBook(roundId) {
     }
 }
 
-async function placeLimitOrder(userId, roundId, side, amount, price, orderType = 'buy') {
+async function placeLimitOrder(userId, roundId, side, amount, price, orderType = 'buy', costBasis = null) {
     try {
         const roundedPrice = roundPrice(price);
         const result = await sql`
-            INSERT INTO limit_orders (user_id, round_id, side, amount, price, status, order_type)
-            VALUES (${userId}, ${roundId}, ${side}, ${amount}, ${roundedPrice}, 'active', ${orderType})
+            INSERT INTO limit_orders (user_id, round_id, side, amount, price, status, order_type, cost_basis)
+            VALUES (${userId}, ${roundId}, ${side}, ${amount}, ${roundedPrice}, 'active', ${orderType}, ${costBasis})
             RETURNING *
         `;
         return result.rows[0];
@@ -936,7 +940,7 @@ async function cancelExpiredOrders() {
             WHERE lo.round_id = r.id
             AND lo.status = 'active'
             AND r.status = 'closed'
-            RETURNING lo.id, lo.user_id, lo.amount, lo.filled, lo.price, lo.order_type, lo.round_id, lo.side
+            RETURNING lo.id, lo.user_id, lo.amount, lo.filled, lo.price, lo.order_type, lo.round_id, lo.side, lo.cost_basis
         `;
         
         if (expired.rows.length === 0) return;
@@ -948,7 +952,9 @@ async function cancelExpiredOrders() {
             if (isSellOrder) {
                 // Sell order expired: restore position
                 if (unfilled > 0.001) {
-                    const costPerToken = parseFloat(order.price);
+                    const costPerToken = order.cost_basis 
+                        ? parseFloat(order.cost_basis)
+                        : parseFloat(order.price);
                     const restoredCost = unfilled * costPerToken;
                     await upsertUserPosition(order.user_id, order.round_id, order.side, unfilled, costPerToken, restoredCost);
                 }
@@ -1779,7 +1785,9 @@ if (action === 'orderbook') {
                     // If not fully filled, create a SELL limit order that sits in the orderbook
                     const unfilledSell = sellAmount - soldAmount;
                     if (unfilledSell > 0.001) {
-                        await db.placeLimitOrder(user.id, round.id, side, unfilledSell, sellPrice, 'sell');
+                        // Store original avg_price as cost_basis so cancellation restores correct cost
+                        const originalAvgPrice = parseFloat(position.total_cost) / posAmount;
+                        await db.placeLimitOrder(user.id, round.id, side, unfilledSell, sellPrice, 'sell', originalAvgPrice);
                     }
                 }
                 
@@ -1831,16 +1839,24 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                // Reduce or delete the seller's position
-                const newAmount = posAmount - soldAmount;
-                // Also account for unfilled sell limit orders (position is "reserved")
-                const unfilledSellForPosition = sellAmount - soldAmount;
-                const totalPositionReduction = soldAmount;
-                const costReduction = (totalPositionReduction / posAmount) * parseFloat(position.total_cost);
+                // ============================================
+                // CRITICAL: Position reduction logic
+                // - Market sell: reduce only by soldAmount (no pending order for remainder)
+                // - Limit sell: reduce by FULL sellAmount (unfilled portion sits as sell order)
+                //   When sell limit order is cancelled, position will be restored.
+                //   When sell limit order is filled, seller gets proceeds.
+                // ============================================
+                const unfilledSellAmount = sellAmount - soldAmount;
+                const hasSellLimitOrder = (type === 'limit' && unfilledSellAmount > 0.001);
+                const totalPositionReduction = hasSellLimitOrder ? sellAmount : soldAmount;
+                const newAmount = posAmount - totalPositionReduction;
+                const costReduction = totalPositionReduction > 0 
+                    ? (totalPositionReduction / posAmount) * parseFloat(position.total_cost)
+                    : 0;
                 
                 if (newAmount <= 0.001) {
                     await sql`DELETE FROM user_positions WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}`;
-                } else {
+                } else if (totalPositionReduction > 0) {
                     await sql`
                         UPDATE user_positions 
                         SET amount = ${newAmount}, 
@@ -2323,7 +2339,10 @@ if (action === 'orderbook') {
             if (isSellOrder) {
                 // Sell order cancelled: restore the position that was reserved for selling
                 if (unfilledAmount > 0.001) {
-                    const costPerToken = parseFloat(canceledOrder.price); // approximate
+                    // Use cost_basis (original avg_price) if available, otherwise fall back to sell price
+                    const costPerToken = canceledOrder.cost_basis 
+                        ? parseFloat(canceledOrder.cost_basis) 
+                        : parseFloat(canceledOrder.price);
                     const restoredCost = unfilledAmount * costPerToken;
                     await db.upsertUserPosition(user.id, canceledOrder.round_id, canceledOrder.side, unfilledAmount, costPerToken, restoredCost);
                 }
