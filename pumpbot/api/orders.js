@@ -12,11 +12,20 @@ async function ensureIndexes() {
     try {
         await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_rounds_slug ON rounds(slug)`;
     } catch(e) {} // Already exists
+    // Add order_type column for sell limit orders
+    try {
+        await sql`ALTER TABLE limit_orders ADD COLUMN IF NOT EXISTS order_type VARCHAR(10) DEFAULT 'buy'`;
+    } catch(e) {} // Already exists
 }
 
 // ============================================ 
 // ROUND TIMESTAMP CALCULATION & AUTO-GENERATION
 // ============================================
+
+// Round price to max 2 decimal places to avoid floating-point mismatches
+function roundPrice(price) {
+    return Math.round(price * 100) / 100;
+}
 
 function calculateRoundCloseTime(intervalMinutes) {
     const now = new Date();
@@ -97,7 +106,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
-        const TOKEN_ADDR = 'HytpLmXEFm9HUJypoQDdJ4mD9NnoqPbEiRKqxPhCpump';
+        const TOKEN_ADDR = '4HuUVH8gPTk9yuohhCKR6uCLTgmrsCEiYCJFVQPVpump';
         
         try {
             const controller = new AbortController();
@@ -247,12 +256,13 @@ async function savePoolSnapshot(roundId, higherReserve, lowerReserve, kConstant)
 
 async function getAggregatedOrderBook(roundId) {
     try {
-        // Get HIGHER orders (sorted by price DESC - highest first)
-        const higherResult = await sql`
+        // Get HIGHER BUY orders (bids for higher - sorted by price DESC)
+        const higherBuyResult = await sql`
             SELECT side, price, SUM(amount - filled) as total_amount, COUNT(*) as order_count
             FROM limit_orders
             WHERE round_id = ${roundId} 
             AND side = 'higher'
+            AND (order_type IS NULL OR order_type = 'buy')
             AND status = 'active' 
             AND amount > filled
             GROUP BY side, price
@@ -260,12 +270,13 @@ async function getAggregatedOrderBook(roundId) {
             LIMIT 25
         `;
         
-        // Get LOWER orders (sorted by price ASC - lowest first)
-        const lowerResult = await sql`
+        // Get LOWER BUY orders (bids for lower - sorted by price ASC)
+        const lowerBuyResult = await sql`
             SELECT side, price, SUM(amount - filled) as total_amount, COUNT(*) as order_count
             FROM limit_orders
             WHERE round_id = ${roundId} 
             AND side = 'lower'
+            AND (order_type IS NULL OR order_type = 'buy')
             AND status = 'active' 
             AND amount > filled
             GROUP BY side, price
@@ -273,9 +284,37 @@ async function getAggregatedOrderBook(roundId) {
             LIMIT 25
         `;
         
-        const orderBook = { higher: [], lower: [] };
+        // Get HIGHER SELL orders (asks for higher - sorted by price ASC)
+        const higherSellResult = await sql`
+            SELECT side, price, SUM(amount - filled) as total_amount, COUNT(*) as order_count
+            FROM limit_orders
+            WHERE round_id = ${roundId} 
+            AND side = 'higher'
+            AND order_type = 'sell'
+            AND status = 'active' 
+            AND amount > filled
+            GROUP BY side, price
+            ORDER BY price ASC
+            LIMIT 25
+        `;
         
-        higherResult.rows.forEach(row => {
+        // Get LOWER SELL orders (asks for lower - sorted by price ASC)
+        const lowerSellResult = await sql`
+            SELECT side, price, SUM(amount - filled) as total_amount, COUNT(*) as order_count
+            FROM limit_orders
+            WHERE round_id = ${roundId} 
+            AND side = 'lower'
+            AND order_type = 'sell'
+            AND status = 'active' 
+            AND amount > filled
+            GROUP BY side, price
+            ORDER BY price ASC
+            LIMIT 25
+        `;
+        
+        const orderBook = { higher: [], lower: [], higherSells: [], lowerSells: [] };
+        
+        higherBuyResult.rows.forEach(row => {
             orderBook.higher.push({
                 price: parseFloat(row.price),
                 amount: parseFloat(row.total_amount),
@@ -283,8 +322,24 @@ async function getAggregatedOrderBook(roundId) {
             });
         });
         
-        lowerResult.rows.forEach(row => {
+        lowerBuyResult.rows.forEach(row => {
             orderBook.lower.push({
+                price: parseFloat(row.price),
+                amount: parseFloat(row.total_amount),
+                orders: parseInt(row.order_count)
+            });
+        });
+        
+        higherSellResult.rows.forEach(row => {
+            orderBook.higherSells.push({
+                price: parseFloat(row.price),
+                amount: parseFloat(row.total_amount),
+                orders: parseInt(row.order_count)
+            });
+        });
+        
+        lowerSellResult.rows.forEach(row => {
+            orderBook.lowerSells.push({
                 price: parseFloat(row.price),
                 amount: parseFloat(row.total_amount),
                 orders: parseInt(row.order_count)
@@ -298,11 +353,12 @@ async function getAggregatedOrderBook(roundId) {
     }
 }
 
-async function placeLimitOrder(userId, roundId, side, amount, price) {
+async function placeLimitOrder(userId, roundId, side, amount, price, orderType = 'buy') {
     try {
+        const roundedPrice = roundPrice(price);
         const result = await sql`
-            INSERT INTO limit_orders (user_id, round_id, side, amount, price, status)
-            VALUES (${userId}, ${roundId}, ${side}, ${amount}, ${price}, 'active')
+            INSERT INTO limit_orders (user_id, round_id, side, amount, price, status, order_type)
+            VALUES (${userId}, ${roundId}, ${side}, ${amount}, ${roundedPrice}, 'active', ${orderType})
             RETURNING *
         `;
         return result.rows[0];
@@ -364,33 +420,6 @@ async function upsertUserPosition(userId, roundId, side, amount, avgPrice, total
     }
 }
 
-// FIX: reduce position when selling
-async function reduceUserPosition(userId, roundId, side, amount, costReduction) {
-    try {
-        const current = await sql`SELECT * FROM user_positions WHERE user_id = ${userId} AND round_id = ${roundId} AND side = ${side}`;
-        if (current.rows.length === 0) throw new Error('No position to reduce');
-        const pos = current.rows[0];
-        const curAmt = parseFloat(pos.amount);
-        const curCost = parseFloat(pos.total_cost);
-        if (curAmt < amount - 0.01) throw new Error(`Insufficient position: have ${curAmt}, need ${amount}`);
-        const newAmt = curAmt - amount;
-        if (newAmt < 0.01) {
-            await sql`DELETE FROM user_positions WHERE user_id = ${userId} AND round_id = ${roundId} AND side = ${side}`;
-            return { amount: 0, total_cost: 0 };
-        }
-        const newCost = Math.max(curCost - costReduction, 0);
-        const result = await sql`
-            UPDATE user_positions SET amount = ${newAmt}, total_cost = ${newCost},
-                avg_price = CASE WHEN ${newAmt} > 0 THEN ${newCost} / ${newAmt} ELSE 0 END
-            WHERE user_id = ${userId} AND round_id = ${roundId} AND side = ${side} RETURNING *
-        `;
-        return result.rows[0];
-    } catch (error) {
-        console.error('reduceUserPosition error:', error);
-        throw error;
-    }
-}
-
 async function getUserPositions(userId, roundId) {
     try {
         const result = await sql`
@@ -407,7 +436,7 @@ async function getUserPositions(userId, roundId) {
 async function getUserOrders(userId, roundId) {
     try {
         const result = await sql`
-            SELECT * FROM limit_orders
+            SELECT *, COALESCE(order_type, 'buy') as order_type FROM limit_orders
             WHERE user_id = ${userId} 
             AND round_id = ${roundId}
             AND status = 'active'
@@ -427,7 +456,7 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
         
         // Complementary pricing: match when my_price + opposite_price >= 1.0
         // i.e. opposite_price >= (1 - my_price)
-        const minOppositePrice = price !== null && price !== undefined ? (1 - price) : null;
+        const minOppositePrice = price !== null && price !== undefined ? roundPrice(1 - price) : null;
         
         let result;
         
@@ -439,6 +468,7 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
                     FROM limit_orders
                     WHERE round_id = ${roundId} 
                     AND side = ${oppositeSide}
+                    AND (order_type IS NULL OR order_type = 'buy')
                     AND user_id != ${excludeUserId}
                     AND status = 'active' 
                     AND amount > filled
@@ -451,6 +481,7 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
                     FROM limit_orders
                     WHERE round_id = ${roundId} 
                     AND side = ${oppositeSide}
+                    AND (order_type IS NULL OR order_type = 'buy')
                     AND status = 'active' 
                     AND amount > filled
                     ORDER BY price DESC, created_at ASC
@@ -465,6 +496,7 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
                     FROM limit_orders
                     WHERE round_id = ${roundId} 
                     AND side = ${oppositeSide}
+                    AND (order_type IS NULL OR order_type = 'buy')
                     AND user_id != ${excludeUserId}
                     AND status = 'active' 
                     AND amount > filled
@@ -478,6 +510,7 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
                     FROM limit_orders
                     WHERE round_id = ${roundId} 
                     AND side = ${oppositeSide}
+                    AND (order_type IS NULL OR order_type = 'buy')
                     AND status = 'active' 
                     AND amount > filled
                     AND price >= ${minOppositePrice}
@@ -490,6 +523,144 @@ async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
         return result.rows;
     } catch (error) {
         console.error('❌ getMatchableOrders error:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// SELL MATCHING: Find same-side BUY orders for when user wants to SELL their position
+// e.g., selling HIGHER → find HIGHER buy orders at >= sellPrice
+// ============================================
+async function getBuyOrdersForSeller(roundId, side, sellPrice, excludeUserId = null) {
+    try {
+        const roundedSellPrice = sellPrice !== null && sellPrice !== undefined ? roundPrice(sellPrice) : null;
+        
+        let result;
+        if (roundedSellPrice !== null && excludeUserId) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND user_id != ${excludeUserId}
+                AND status = 'active'
+                AND amount > filled
+                AND price >= ${roundedSellPrice}
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+            `;
+        } else if (roundedSellPrice !== null) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND status = 'active'
+                AND amount > filled
+                AND price >= ${roundedSellPrice}
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+            `;
+        } else if (excludeUserId) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND user_id != ${excludeUserId}
+                AND status = 'active'
+                AND amount > filled
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+            `;
+        } else {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND status = 'active'
+                AND amount > filled
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+            `;
+        }
+        return result.rows;
+    } catch (error) {
+        console.error('❌ getBuyOrdersForSeller error:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// BUY MATCHING: Find same-side SELL orders for when a buyer comes in
+// e.g., buying HIGHER at 0.9 → find HIGHER sell orders at <= 0.9
+// ============================================
+async function getSellOrdersForBuyer(roundId, side, buyPrice, excludeUserId = null) {
+    try {
+        const roundedBuyPrice = buyPrice !== null && buyPrice !== undefined ? roundPrice(buyPrice) : null;
+        
+        let result;
+        if (roundedBuyPrice !== null && excludeUserId) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price, order_type
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND order_type = 'sell'
+                AND user_id != ${excludeUserId}
+                AND status = 'active'
+                AND amount > filled
+                AND price <= ${roundedBuyPrice}
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+            `;
+        } else if (roundedBuyPrice !== null) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price, order_type
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND order_type = 'sell'
+                AND status = 'active'
+                AND amount > filled
+                AND price <= ${roundedBuyPrice}
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+            `;
+        } else if (excludeUserId) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price, order_type
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND order_type = 'sell'
+                AND user_id != ${excludeUserId}
+                AND status = 'active'
+                AND amount > filled
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+            `;
+        } else {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price, order_type
+                FROM limit_orders
+                WHERE round_id = ${roundId}
+                AND side = ${side}
+                AND order_type = 'sell'
+                AND status = 'active'
+                AND amount > filled
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+            `;
+        }
+        return result.rows;
+    } catch (error) {
+        console.error('❌ getSellOrdersForBuyer error:', error);
         throw error;
     }
 }
@@ -572,8 +743,9 @@ async function logAction(userId, action, details, ipAddress, userAgent) {
 const db = {
     getOrCreateUser, getActiveRound, getRoundById, getOrCreateCurrentRound,
     getLatestPoolSnapshot, savePoolSnapshot, getAggregatedOrderBook,
-    placeLimitOrder, recordTrade, getRecentTrades, upsertUserPosition, reduceUserPosition,
-    getUserPositions, getUserOrders, getMatchableOrders, updateOrderFilled, cancelOrder,
+    placeLimitOrder, recordTrade, getRecentTrades, upsertUserPosition,
+    getUserPositions, getUserOrders, getMatchableOrders, getBuyOrdersForSeller,
+    getSellOrdersForBuyer, updateOrderFilled, cancelOrder,
     checkRateLimit, logAction, sql
 };
 
@@ -764,17 +936,28 @@ async function cancelExpiredOrders() {
             WHERE lo.round_id = r.id
             AND lo.status = 'active'
             AND r.status = 'closed'
-            RETURNING lo.id, lo.user_id, lo.amount, lo.filled, lo.price
+            RETURNING lo.id, lo.user_id, lo.amount, lo.filled, lo.price, lo.order_type, lo.round_id, lo.side
         `;
         
         if (expired.rows.length === 0) return;
         
         for (const order of expired.rows) {
             const unfilled = parseFloat(order.amount) - parseFloat(order.filled);
-            const cost = unfilled * parseFloat(order.price);
+            const isSellOrder = order.order_type === 'sell';
             
-            if (cost > 0.001) {
-                await unlockBalance(order.user_id, cost);
+            if (isSellOrder) {
+                // Sell order expired: restore position
+                if (unfilled > 0.001) {
+                    const costPerToken = parseFloat(order.price);
+                    const restoredCost = unfilled * costPerToken;
+                    await upsertUserPosition(order.user_id, order.round_id, order.side, unfilled, costPerToken, restoredCost);
+                }
+            } else {
+                // Buy order expired: unlock balance
+                const cost = unfilled * parseFloat(order.price);
+                if (cost > 0.001) {
+                    await unlockBalance(order.user_id, cost);
+                }
             }
         }
     } catch (e) {
@@ -858,7 +1041,7 @@ async function inlineSettleRound(roundId) {
         // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
-            const TOKEN = 'HytpLmXEFm9HUJypoQDdJ4mD9NnoqPbEiRKqxPhCpump';
+            const TOKEN = '4HuUVH8gPTk9yuohhCKR6uCLTgmrsCEiYCJFVQPVpump';
             
             
             try {
@@ -1358,7 +1541,7 @@ if (action === 'orderbook') {
                         price: parseFloat(o.price),
                         filled: parseFloat(o.filled),
                         status: o.status,
-                        order_type: o.order_type || 'limit',
+                        order_type: o.order_type || 'buy',
                         interval_minutes: round.interval_minutes,
                         round_id: round.id,
                         created: o.created_at
@@ -1392,6 +1575,7 @@ if (action === 'orderbook') {
                         r.id as round_id,
                         CASE 
                             WHEN t.buyer_id = ${user.id} THEN t.side
+                            WHEN t.trade_type = 'sell' THEN t.side
                             ELSE (CASE WHEN t.side = 'higher' THEN 'lower' ELSE 'higher' END)
                         END as user_side
                     FROM trades t
@@ -1513,7 +1697,7 @@ if (action === 'orderbook') {
             const user = await db.getOrCreateUser(wallet);
             
             // ============================================
-            
+            // SELL ACTION - FIXED: match against SAME-side buy orders
             // ============================================
             if (action === 'sell') {
                 
@@ -1537,163 +1721,145 @@ if (action === 'orderbook') {
                 let soldAmount = 0;
                 const trades = [];
                 
-                
-                
-                
-                const oppositeSide = side === 'higher' ? 'lower' : 'higher';
+                // ============================================
+                // CRITICAL FIX: Look for buy orders on the SAME side
+                // e.g., selling HIGHER → find HIGHER buy orders
+                // The buyer pays their price, seller receives that price
+                // ============================================
                 
                 if (type === 'limit') {
-                    const sellPrice = parseFloat(price);
+                    const sellPrice = roundPrice(parseFloat(price));
                     if (!sellPrice || sellPrice < 0.01 || sellPrice > 0.99 || isNaN(sellPrice)) {
                         return res.status(400).json({ success: false, error: 'Price must be 0.01 to 0.99' });
                     }
                     
-                    const minOppPrice = 1 - sellPrice;
+                    // Find same-side buy orders where buyer's price >= seller's ask price
+                    const buyOrders = await db.getBuyOrdersForSeller(round.id, side, sellPrice, user.id);
                     
-                    await sql`BEGIN`;
-                    try {
-                        const buyOrders = await sql`
-                            SELECT id, user_id, side, amount, filled, price
-                            FROM limit_orders
-                            WHERE round_id = ${round.id} AND side = ${oppositeSide}
-                            AND user_id != ${user.id} AND status = 'active' AND amount > filled
-                            AND price >= ${minOppPrice}
-                            ORDER BY price DESC, created_at ASC LIMIT 50
-                            FOR UPDATE
-                        `;
+                    for (const buyOrder of buyOrders) {
+                        const remaining = sellAmount - soldAmount;
+                        if (remaining <= 0) break;
                         
-                        for (const buyOrder of buyOrders.rows) {
-                            const remaining = sellAmount - soldAmount;
-                            if (remaining <= 0) break;
-                            
-                            const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
-                            const matchAmount = Math.min(remaining, orderRemaining);
-                            const oppPrice = parseFloat(buyOrder.price);
-                            const sellGetPrice = 1 - oppPrice;
-                            const proceeds = matchAmount * sellGetPrice;
-                            
-                            const trade = await db.recordTrade({
-                                roundId: round.id, buyerId: buyOrder.user_id, sellerId: user.id,
-                                buyOrderId: buyOrder.id, sellOrderId: null,
-                                side, amount: matchAmount, price: sellGetPrice, totalCost: proceeds, tradeType: 'sell'
-                            });
-                            trades.push(trade);
-                            
-                            await db.updateOrderFilled(buyOrder.id, matchAmount);
-                            
-                            // FIX BUG #1: buyer gets position on THEIR order's side (buyOrder.side), not oppositeSide
-                            const buyerCost = matchAmount * oppPrice;
-                            await db.upsertUserPosition(buyOrder.user_id, round.id, buyOrder.side, matchAmount, oppPrice, buyerCost);
-                            await deductLocked(buyOrder.user_id, buyerCost);
-                            
-                            totalProceeds += proceeds;
-                            soldAmount += matchAmount;
-                        }
+                        // Self-trade protection
+                        if (buyOrder.user_id === user.id) continue;
                         
-                        await sql`COMMIT`;
-                    } catch (e) {
-                        await sql`ROLLBACK`;
-                        throw e;
+                        const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
+                        const matchAmount = Math.min(remaining, orderRemaining);
+                        const buyerPrice = roundPrice(parseFloat(buyOrder.price));
+                        
+                        // Seller receives the buyer's price per token (direct, no complement)
+                        const proceeds = matchAmount * buyerPrice;
+                        
+                        const trade = await db.recordTrade({
+                            roundId: round.id,
+                            buyerId: buyOrder.user_id,
+                            sellerId: user.id,
+                            buyOrderId: buyOrder.id,
+                            sellOrderId: null,
+                            side,
+                            amount: matchAmount,
+                            price: buyerPrice,
+                            totalCost: proceeds,
+                            tradeType: 'sell'
+                        });
+                        trades.push(trade);
+                        
+                        // Fill the buyer's order
+                        await db.updateOrderFilled(buyOrder.id, matchAmount);
+                        
+                        // Buyer gets position on the SAME side they ordered
+                        const buyerCost = matchAmount * buyerPrice;
+                        await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, buyerPrice, buyerCost);
+                        await deductLocked(buyOrder.user_id, buyerCost);
+                        
+                        totalProceeds += proceeds;
+                        soldAmount += matchAmount;
+                    }
+                    
+                    // If not fully filled, create a SELL limit order that sits in the orderbook
+                    const unfilledSell = sellAmount - soldAmount;
+                    if (unfilledSell > 0.001) {
+                        await db.placeLimitOrder(user.id, round.id, side, unfilledSell, sellPrice, 'sell');
                     }
                 }
                 
                 if (type === 'market') {
-                    await sql`BEGIN`;
-                    try {
-                        const buyOrders = await sql`
-                            SELECT id, user_id, side, amount, filled, price
-                            FROM limit_orders
-                            WHERE round_id = ${round.id} AND side = ${oppositeSide}
-                            AND user_id != ${user.id} AND status = 'active' AND amount > filled
-                            ORDER BY price DESC, created_at ASC LIMIT 50
-                            FOR UPDATE
-                        `;
+                    // Market sell: match against same-side buy orders at any price (best price first)
+                    const buyOrders = await db.getBuyOrdersForSeller(round.id, side, null, user.id);
+                    
+                    for (const buyOrder of buyOrders) {
+                        const remaining = sellAmount - soldAmount;
+                        if (remaining <= 0) break;
                         
-                        for (const buyOrder of buyOrders.rows) {
-                            const remaining = sellAmount - soldAmount;
-                            if (remaining <= 0) break;
-                            
-                            const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
-                            const matchAmount = Math.min(remaining, orderRemaining);
-                            const oppPrice = parseFloat(buyOrder.price);
-                            const sellGetPrice = 1 - oppPrice;
-                            const proceeds = matchAmount * sellGetPrice;
-                            
-                            const trade = await db.recordTrade({
-                                roundId: round.id, buyerId: buyOrder.user_id, sellerId: user.id,
-                                buyOrderId: buyOrder.id, sellOrderId: null,
-                                side, amount: matchAmount, price: sellGetPrice, totalCost: proceeds, tradeType: 'sell'
-                            });
-                            trades.push(trade);
-                            
-                            await db.updateOrderFilled(buyOrder.id, matchAmount);
-                            // FIX BUG #1: buyer gets position on THEIR order's side
-                            const buyerCost = matchAmount * oppPrice;
-                            await db.upsertUserPosition(buyOrder.user_id, round.id, buyOrder.side, matchAmount, oppPrice, buyerCost);
-                            await deductLocked(buyOrder.user_id, buyerCost);
-                            
-                            totalProceeds += proceeds;
-                            soldAmount += matchAmount;
-                        }
+                        if (buyOrder.user_id === user.id) continue;
                         
-                        // FIX: AMM sell — update pool reserves properly
-                        if (soldAmount < sellAmount) {
-                            const remainSell = sellAmount - soldAmount;
-                            const poolResult = await sql`
-                                SELECT higher_reserve, lower_reserve, k_constant
-                                FROM pool_snapshots WHERE round_id = ${round.id}
-                                ORDER BY created_at DESC LIMIT 1
-                            `;
-                            if (poolResult.rows.length > 0) {
-                                const pool = poolResult.rows[0];
-                                const hReserve = parseFloat(pool.higher_reserve);
-                                const lReserve = parseFloat(pool.lower_reserve);
-                                const k = parseFloat(pool.k_constant);
-                                let proceeds, newH, newL;
-                                if (side === 'higher') {
-                                    newH = hReserve + remainSell;
-                                    newL = k / newH;
-                                    proceeds = lReserve - newL;
-                                } else {
-                                    newL = lReserve + remainSell;
-                                    newH = k / newL;
-                                    proceeds = hReserve - newH;
-                                }
-                                if (proceeds > 0) {
-                                    await db.savePoolSnapshot(round.id, newH, newL, k);
-                                    totalProceeds += proceeds;
-                                    soldAmount += remainSell;
-                                }
-                            }
-                        }
+                        const orderRemaining = parseFloat(buyOrder.amount) - parseFloat(buyOrder.filled);
+                        const matchAmount = Math.min(remaining, orderRemaining);
+                        const buyerPrice = roundPrice(parseFloat(buyOrder.price));
                         
-                        await sql`COMMIT`;
-                    } catch (e) {
-                        await sql`ROLLBACK`;
-                        throw e;
+                        // Seller receives the buyer's price per token
+                        const proceeds = matchAmount * buyerPrice;
+                        
+                        const trade = await db.recordTrade({
+                            roundId: round.id,
+                            buyerId: buyOrder.user_id,
+                            sellerId: user.id,
+                            buyOrderId: buyOrder.id,
+                            sellOrderId: null,
+                            side,
+                            amount: matchAmount,
+                            price: buyerPrice,
+                            totalCost: proceeds,
+                            tradeType: 'sell'
+                        });
+                        trades.push(trade);
+                        
+                        await db.updateOrderFilled(buyOrder.id, matchAmount);
+                        const buyerCost = matchAmount * buyerPrice;
+                        await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, buyerPrice, buyerCost);
+                        await deductLocked(buyOrder.user_id, buyerCost);
+                        
+                        totalProceeds += proceeds;
+                        soldAmount += matchAmount;
                     }
                 }
                 
-                if (soldAmount <= 0) {
+                if (soldAmount <= 0 && type === 'market') {
                     return res.status(400).json({ 
                         success: false, 
                         error: 'No buyers in order book. Try placing a limit sell order.' 
                     });
                 }
                 
-                // FIX: use reduceUserPosition for proper position reduction
-                const costReduction = (soldAmount / posAmount) * parseFloat(position.total_cost);
-                await db.reduceUserPosition(user.id, round.id, side, soldAmount, costReduction);
+                // Reduce or delete the seller's position
+                const newAmount = posAmount - soldAmount;
+                // Also account for unfilled sell limit orders (position is "reserved")
+                const unfilledSellForPosition = sellAmount - soldAmount;
+                const totalPositionReduction = soldAmount;
+                const costReduction = (totalPositionReduction / posAmount) * parseFloat(position.total_cost);
                 
+                if (newAmount <= 0.001) {
+                    await sql`DELETE FROM user_positions WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}`;
+                } else {
+                    await sql`
+                        UPDATE user_positions 
+                        SET amount = ${newAmount}, 
+                            total_cost = total_cost - ${costReduction}
+                        WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}
+                    `;
+                }
                 
-                await creditBalance(user.id, totalProceeds, `Sell ${soldAmount} ${side} tokens`);
+                // Credit seller's balance with proceeds from filled portion
+                if (totalProceeds > 0) {
+                    await creditBalance(user.id, totalProceeds, `Sell ${soldAmount} ${side} tokens`);
+                }
                 
-                const avgSellPrice = totalProceeds / soldAmount;
+                const avgSellPrice = soldAmount > 0 ? totalProceeds / soldAmount : 0;
                 const profit = totalProceeds - costReduction;
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
-                return res.status(200).json({
+                const responseData = {
                     success: true,
                     sell: {
                         side,
@@ -1703,10 +1869,20 @@ if (action === 'orderbook') {
                         proceeds: totalProceeds,
                         profit: profit,
                         remaining: Math.max(0, newAmount),
-                        partialFill: soldAmount < amt
+                        partialFill: soldAmount < sellAmount
                     },
                     orderBook
-                });
+                };
+                
+                // Inform user if a sell limit order was placed for unfilled amount
+                if (type === 'limit' && (sellAmount - soldAmount) > 0.001) {
+                    responseData.sell.limitOrderPlaced = sellAmount - soldAmount;
+                    responseData.sell.message = soldAmount > 0
+                        ? `Partially filled: ${soldAmount.toFixed(2)} sold, limit sell order placed for ${(sellAmount - soldAmount).toFixed(2)}`
+                        : `Limit sell order placed for ${(sellAmount - soldAmount).toFixed(2)} at ${roundPrice(parseFloat(price))}`;
+                }
+                
+                return res.status(200).json(responseData);
             }
             
             // ============================================
@@ -1729,7 +1905,7 @@ if (action === 'orderbook') {
                 estimatedCost = amt;
             } else {
                 
-                estimatedCost = amt * parseFloat(price);
+                estimatedCost = amt * roundPrice(parseFloat(price));
             }
             
             try {
@@ -1743,24 +1919,13 @@ if (action === 'orderbook') {
             
             // MARKET ORDER
             if (type === 'market') {
-                await sql`BEGIN`;
-                try {
-                    const matchableOrders = await sql`
-                        SELECT id, user_id, side, amount, filled, price
-                        FROM limit_orders
-                        WHERE round_id = ${round.id}
-                        AND side = ${side === 'higher' ? 'lower' : 'higher'}
-                        AND user_id != ${user.id}
-                        AND status = 'active' AND amount > filled
-                        ORDER BY price DESC, created_at ASC LIMIT 50
-                        FOR UPDATE
-                    `;
+                // Step 1: Match against opposite-side buy orders (complement matching)
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
                 
                 let totalMatched = 0;
                 const trades = [];
                 
-                for (const oppositeOrder of matchableOrders.rows) {
-                    // Self-trade protection
+                for (const oppositeOrder of matchableOrders) {
                     if (oppositeOrder.user_id === user.id) continue;
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
@@ -1768,9 +1933,8 @@ if (action === 'orderbook') {
                     if (remainingToFill <= 0) break;
                     
                     const matchAmount = Math.min(remainingToFill, oppositeRemaining);
-                    const oppPrice = parseFloat(oppositeOrder.price);
-                    // Complementary: buyer pays (1 - opposite_price), seller pays opposite_price
-                    const buyerPrice = 1 - oppPrice;
+                    const oppPrice = roundPrice(parseFloat(oppositeOrder.price));
+                    const buyerPrice = roundPrice(1 - oppPrice);
                     const buyerCost = matchAmount * buyerPrice;
                     const sellerCost = matchAmount * oppPrice;
                     
@@ -1792,13 +1956,48 @@ if (action === 'orderbook') {
                     await db.updateOrderFilled(oppositeOrder.id, matchAmount);
                     await db.upsertUserPosition(user.id, round.id, side, matchAmount, buyerPrice, buyerCost);
                     await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, oppPrice, sellerCost);
-                    
                     await deductLocked(oppositeOrder.user_id, sellerCost);
                     
                     totalMatched += matchAmount;
                 }
                 
-                await sql`COMMIT`;
+                // Step 2: If not fully filled, match against same-side sell orders
+                if (totalMatched < amt) {
+                    const sellOrders = await db.getSellOrdersForBuyer(round.id, side, null, user.id);
+                    
+                    for (const sellOrder of sellOrders) {
+                        if (sellOrder.user_id === user.id) continue;
+                        const remainingToFill = amt - totalMatched;
+                        if (remainingToFill <= 0) break;
+                        
+                        const orderRemaining = parseFloat(sellOrder.amount) - parseFloat(sellOrder.filled);
+                        const matchAmount = Math.min(remainingToFill, orderRemaining);
+                        const sellPrice = roundPrice(parseFloat(sellOrder.price));
+                        const buyerCost = matchAmount * sellPrice;
+                        
+                        const trade = await db.recordTrade({
+                            roundId: round.id,
+                            buyerId: user.id,
+                            sellerId: sellOrder.user_id,
+                            buyOrderId: null,
+                            sellOrderId: sellOrder.id,
+                            side,
+                            amount: matchAmount,
+                            price: sellPrice,
+                            totalCost: buyerCost,
+                            tradeType: 'market'
+                        });
+                        trades.push(trade);
+                        
+                        await db.updateOrderFilled(sellOrder.id, matchAmount);
+                        await db.upsertUserPosition(user.id, round.id, side, matchAmount, sellPrice, buyerCost);
+                        
+                        // Credit seller proceeds and reduce seller's position
+                        await creditBalance(sellOrder.user_id, buyerCost, `Sell order filled: ${matchAmount} ${side}`);
+                        
+                        totalMatched += matchAmount;
+                    }
+                }
                 
                 if (totalMatched >= amt) {
                     const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / amt;
@@ -1806,7 +2005,7 @@ if (action === 'orderbook') {
                     
                     await deductLocked(user.id, totalCost);
                     const refund = estimatedCost - totalCost;
-                    if (refund > 0.001) await unlockBalance(user.id, refund);
+                    if (refund > 0) await unlockBalance(user.id, refund);
                     
                     const orderBook = await db.getAggregatedOrderBook(round.id);
                     
@@ -1824,7 +2023,6 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                
                 if (totalMatched === 0) {
                     await unlockBalance(user.id, estimatedCost);
                     
@@ -1834,14 +2032,13 @@ if (action === 'orderbook') {
                     });
                 }
                 
-                
                 if (totalMatched < amt) {
                     const avgPrice = trades.reduce((sum, t) => sum + parseFloat(t.price) * parseFloat(t.amount), 0) / totalMatched;
                     const totalCost = trades.reduce((sum, t) => sum + parseFloat(t.total_cost), 0);
                     
                     await deductLocked(user.id, totalCost);
                     const refund = estimatedCost - totalCost;
-                    if (refund > 0.001) await unlockBalance(user.id, refund);
+                    if (refund > 0) await unlockBalance(user.id, refund);
                     
                     const orderBook = await db.getAggregatedOrderBook(round.id);
                     
@@ -1868,7 +2065,7 @@ if (action === 'orderbook') {
                 
                 await deductLocked(user.id, totalCost);
                 const refund = estimatedCost - totalCost;
-                if (refund > 0.001) await unlockBalance(user.id, refund);
+                if (refund > 0) await unlockBalance(user.id, refund);
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
@@ -1884,121 +2081,213 @@ if (action === 'orderbook') {
                     },
                     orderBook
                 });
-                } catch (e) {
-                    await sql`ROLLBACK`;
-                    try { await unlockBalance(user.id, estimatedCost); } catch(ue) {}
-                    throw e;
-                }
             }
             
+// ============================================
+            // LIMIT ORDER - FIXED POLYMARKET-STYLE MATCHING
+            // ============================================
             else {
-                const prc = parseFloat(price);
+                const prc = roundPrice(parseFloat(price));
                 
                 if (!prc || prc < 0.01 || prc > 0.99 || isNaN(prc)) {
                     await unlockBalance(user.id, estimatedCost);
-                    return res.status(400).json({ success: false, error: 'Price must be 0.01 to 0.99' });
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Price must be 0.01 to 0.99'
+                    });
                 }
                 
-                // FIX: Use transaction with FOR UPDATE for race condition safety
-                await sql`BEGIN`;
-                try {
-                    // FIX: Create ONE order for full amount FIRST
-                    const createdOrder = await db.placeLimitOrder(user.id, round.id, side, amt, prc);
+                // ============================================
+                // STEP 1A: Match against opposite-side BUY orders (complement matching)
+                // ============================================
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
+                
+                let totalMatched = 0;
+                let totalBuyerCost = 0;
+                const trades = [];
+                
+                for (const oppositeOrder of matchableOrders) {
+                    if (oppositeOrder.user_id === user.id) continue;
                     
-                    // Find matchable orders with row locks
-                    const matchableOrders = await sql`
-                        SELECT id, user_id, side, amount, filled, price
-                        FROM limit_orders
-                        WHERE round_id = ${round.id} 
-                        AND side = ${side === 'higher' ? 'lower' : 'higher'}
-                        AND user_id != ${user.id}
-                        AND status = 'active' AND amount > filled
-                        AND price >= ${1 - prc}
-                        ORDER BY price DESC, created_at ASC LIMIT 50
-                        FOR UPDATE
-                    `;
+                    const remainingToFill = amt - totalMatched;
+                    const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
-                    let totalMatched = 0;
-                    let totalBuyerCost = 0;
+                    if (remainingToFill <= 0) break;
                     
-                    for (const oppositeOrder of matchableOrders.rows) {
-                        if (oppositeOrder.user_id === user.id) continue;
+                    const matchAmount = Math.min(remainingToFill, oppositeRemaining);
+                    const oppPrice = roundPrice(parseFloat(oppositeOrder.price));
+                    
+                    const buyerPrice = prc;
+                    const sellerPrice = oppPrice;
+                    
+                    // Price improvement (surplus split equally)
+                    const surplus = roundPrice((buyerPrice + sellerPrice - 1.0) / 2);
+                    const effectiveBuyerPrice = roundPrice(buyerPrice - surplus);
+                    const effectiveSellerPrice = roundPrice(sellerPrice - surplus);
+                    const buyerCost = matchAmount * effectiveBuyerPrice;
+                    const sellerCost = matchAmount * effectiveSellerPrice;
+                    
+                    trades.push({
+                        oppositeOrder,
+                        matchAmount,
+                        effectiveBuyerPrice,
+                        effectiveSellerPrice,
+                        buyerCost,
+                        sellerCost,
+                        isSellOrder: false
+                    });
+                    
+                    totalMatched += matchAmount;
+                    totalBuyerCost += buyerCost;
+                }
+                
+                // ============================================
+                // STEP 1B: Match against same-side SELL orders (from position holders)
+                // ============================================
+                if (totalMatched < amt) {
+                    const sellOrders = await db.getSellOrdersForBuyer(round.id, side, prc, user.id);
+                    
+                    for (const sellOrder of sellOrders) {
+                        if (sellOrder.user_id === user.id) continue;
+                        
                         const remainingToFill = amt - totalMatched;
-                        const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                         if (remainingToFill <= 0) break;
                         
-                        const matchAmount = Math.min(remainingToFill, oppositeRemaining);
-                        const oppPrice = parseFloat(oppositeOrder.price);
+                        const orderRemaining = parseFloat(sellOrder.amount) - parseFloat(sellOrder.filled);
+                        const matchAmount = Math.min(remainingToFill, orderRemaining);
+                        const sellPrice = roundPrice(parseFloat(sellOrder.price));
                         
-                        // Price improvement: split surplus
-                        const surplus = (prc + oppPrice - 1.0) / 2;
-                        const effectiveBuyerPrice = prc - surplus;
-                        const effectiveSellerPrice = oppPrice - surplus;
-                        const buyerCost = matchAmount * effectiveBuyerPrice;
-                        const sellerCost = matchAmount * effectiveSellerPrice;
+                        // Buyer pays the sell price (no complement needed)
+                        const buyerCost = matchAmount * sellPrice;
                         
-                        await db.recordTrade({
-                            roundId: round.id, buyerId: user.id, sellerId: oppositeOrder.user_id,
-                            buyOrderId: createdOrder.id, sellOrderId: oppositeOrder.id,
-                            side, amount: matchAmount, price: effectiveBuyerPrice,
-                            totalCost: buyerCost, tradeType: 'limit'
+                        trades.push({
+                            oppositeOrder: sellOrder,
+                            matchAmount,
+                            effectiveBuyerPrice: sellPrice,
+                            effectiveSellerPrice: sellPrice,
+                            buyerCost,
+                            sellerCost: buyerCost,
+                            isSellOrder: true
                         });
-                        
-                        // FIX: Update the SAME order's filled amount (no double orders)
-                        await db.updateOrderFilled(createdOrder.id, matchAmount);
-                        await db.updateOrderFilled(oppositeOrder.id, matchAmount);
-                        
-                        // Buyer opens position on their side
-                        await db.upsertUserPosition(user.id, round.id, side, matchAmount, effectiveBuyerPrice, buyerCost);
-                        // Maker opens position on THEIR side
-                        await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
-                        
-                        await deductLocked(oppositeOrder.user_id, sellerCost);
                         
                         totalMatched += matchAmount;
                         totalBuyerCost += buyerCost;
                     }
+                }
+                
+                // ============================================
+                // STEP 2: EXECUTE ALL MATCHED TRADES
+                // ============================================
+                let createdOrderForTrades = null;
+                
+                if (totalMatched > 0) {
+                    createdOrderForTrades = await db.placeLimitOrder(user.id, round.id, side, totalMatched, prc);
                     
-                    await sql`COMMIT`;
-                    
-                    // Handle balance for matched portion
-                    if (totalMatched > 0) {
-                        await deductLocked(user.id, totalBuyerCost);
-                        const lockedForMatched = totalMatched * prc;
-                        const refund = lockedForMatched - totalBuyerCost;
-                        if (refund > 0.001) await unlockBalance(user.id, refund);
+                    for (const trade of trades) {
+                        const {oppositeOrder, matchAmount, effectiveBuyerPrice, effectiveSellerPrice, buyerCost, sellerCost, isSellOrder} = trade;
+                        
+                        await db.recordTrade({
+                            roundId: round.id,
+                            buyerId: user.id,
+                            sellerId: oppositeOrder.user_id,
+                            buyOrderId: createdOrderForTrades.id,
+                            sellOrderId: oppositeOrder.id,
+                            side,
+                            amount: matchAmount,
+                            price: effectiveBuyerPrice,
+                            totalCost: buyerCost,
+                            tradeType: 'limit'
+                        });
+                        
+                        await db.updateOrderFilled(createdOrderForTrades.id, matchAmount);
+                        await db.updateOrderFilled(oppositeOrder.id, matchAmount);
+                        
+                        // Buyer always gets position on their requested side
+                        await db.upsertUserPosition(user.id, round.id, side, matchAmount, effectiveBuyerPrice, buyerCost);
+                        
+                        if (isSellOrder) {
+                            // Matched against a sell order: credit the seller
+                            await creditBalance(oppositeOrder.user_id, sellerCost, `Sell order filled: ${matchAmount} ${side}`);
+                        } else {
+                            // Matched against complement buy order: give them their position
+                            await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
+                            await deductLocked(oppositeOrder.user_id, sellerCost);
+                        }
                     }
                     
-                    const orderBook = await db.getAggregatedOrderBook(round.id);
+                    await deductLocked(user.id, totalBuyerCost);
                     
-                    if (totalMatched >= amt) {
-                        return res.status(200).json({
-                            success: true,
-                            order: { id: createdOrder.id, side, amount: amt, price: prc, filled: totalMatched, status: 'filled' },
-                            matched: totalMatched, averagePrice: totalBuyerCost / totalMatched,
-                            message: `Fully filled at average price ${(totalBuyerCost / totalMatched).toFixed(4)}`,
-                            orderBook
-                        });
-                    } else if (totalMatched > 0) {
-                        return res.status(200).json({
-                            success: true,
-                            order: { id: createdOrder.id, side, amount: amt, price: prc, filled: totalMatched, remaining: amt - totalMatched, status: 'active' },
-                            matched: totalMatched, averagePrice: totalBuyerCost / totalMatched,
-                            message: `Partially filled: ${totalMatched.toFixed(2)} tokens, ${(amt - totalMatched).toFixed(2)} remaining in orderbook`,
-                            orderBook
-                        });
-                    } else {
-                        return res.status(200).json({
-                            success: true,
-                            order: { id: createdOrder.id, side, amount: amt, price: prc, filled: 0, status: 'active' },
-                            matched: 0, message: `Limit order placed for ${amt} at ${prc.toFixed(2)}`,
-                            orderBook
-                        });
+                    const lockedForMatched = totalMatched * prc;
+                    const refund = lockedForMatched - totalBuyerCost;
+                    if (refund > 0.001) {
+                        await unlockBalance(user.id, refund);
                     }
-                } catch (e) {
-                    await sql`ROLLBACK`;
-                    try { await unlockBalance(user.id, estimatedCost); } catch(ue) {}
-                    throw e;
+                }
+                
+                // ============================================
+                // STEP 3: CREATE LIMIT ORDER ONLY FOR UNFILLED AMOUNT
+                // ============================================
+                const unfilledAmount = amt - totalMatched;
+                let limitOrder = null;
+                
+                if (unfilledAmount > 0.001) {
+                    limitOrder = await db.placeLimitOrder(user.id, round.id, side, unfilledAmount, prc);
+                }
+                
+                const orderBook = await db.getAggregatedOrderBook(round.id);
+                
+                // ============================================
+                // STEP 4: RETURN RESPONSE
+                // ============================================
+                
+                if (totalMatched >= amt) {
+                    return res.status(200).json({
+                        success: true,
+                        order: {
+                            id: createdOrderForTrades.id,
+                            side,
+                            amount: amt,
+                            price: prc,
+                            filled: totalMatched,
+                            status: 'filled'
+                        },
+                        matched: totalMatched,
+                        averagePrice: totalBuyerCost / totalMatched,
+                        message: `Fully filled at average price ${(totalBuyerCost / totalMatched).toFixed(2)}¢`,
+                        orderBook
+                    });
+                } else if (totalMatched > 0) {
+                    return res.status(200).json({
+                        success: true,
+                        order: {
+                            id: limitOrder ? limitOrder.id : createdOrderForTrades.id,
+                            side,
+                            amount: amt,
+                            price: prc,
+                            filled: totalMatched,
+                            remaining: unfilledAmount,
+                            status: 'active'
+                        },
+                        matched: totalMatched,
+                        averagePrice: totalBuyerCost / totalMatched,
+                        message: `Partially filled: ${totalMatched.toFixed(2)} at ${(totalBuyerCost / totalMatched).toFixed(2)}¢, limit order for ${unfilledAmount.toFixed(2)} at ${prc.toFixed(2)}¢`,
+                        orderBook
+                    });
+                } else {
+                    return res.status(200).json({
+                        success: true,
+                        order: {
+                            id: limitOrder.id,
+                            side,
+                            amount: amt,
+                            price: prc,
+                            filled: 0,
+                            status: 'active'
+                        },
+                        matched: 0,
+                        message: `Limit order placed for ${amt} at ${prc.toFixed(2)}¢`,
+                        orderBook
+                    });
                 }
             }
         }
@@ -2018,12 +2307,6 @@ if (action === 'orderbook') {
             
             const user = await db.getOrCreateUser(wallet);
             
-            
-            const orderBefore = await sql`
-                SELECT * FROM limit_orders 
-                WHERE id = ${parseInt(orderId)} AND user_id = ${user.id} AND status = 'active'
-            `;
-            
             const canceledOrder = await db.cancelOrder(parseFloat(orderId), user.id);
             
             if (!canceledOrder) {
@@ -2033,14 +2316,25 @@ if (action === 'orderbook') {
                 });
             }
             
-            
             const unfilledAmount = parseFloat(canceledOrder.amount) - parseFloat(canceledOrder.filled);
             const unfilledCost = unfilledAmount * parseFloat(canceledOrder.price);
-            if (unfilledCost > 0) {
-                await unlockBalance(user.id, unfilledCost);
+            const isSellOrder = canceledOrder.order_type === 'sell';
+            
+            if (isSellOrder) {
+                // Sell order cancelled: restore the position that was reserved for selling
+                if (unfilledAmount > 0.001) {
+                    const costPerToken = parseFloat(canceledOrder.price); // approximate
+                    const restoredCost = unfilledAmount * costPerToken;
+                    await db.upsertUserPosition(user.id, canceledOrder.round_id, canceledOrder.side, unfilledAmount, costPerToken, restoredCost);
+                }
+            } else {
+                // Buy order cancelled: unlock the locked balance
+                if (unfilledCost > 0) {
+                    await unlockBalance(user.id, unfilledCost);
+                }
             }
             
-            await db.logAction(user.id, 'cancel_order', { orderId }, clientIP, req.headers['user-agent']);
+            await db.logAction(user.id, 'cancel_order', { orderId, orderType: canceledOrder.order_type }, clientIP, req.headers['user-agent']);
             
             const round = await db.getActiveRound();
             const orderBook = await db.getAggregatedOrderBook(round.id);
@@ -2052,7 +2346,8 @@ if (action === 'orderbook') {
                     side: canceledOrder.side,
                     amount: parseFloat(canceledOrder.amount),
                     filled: parseFloat(canceledOrder.filled),
-                    refunded: unfilledCost
+                    refunded: isSellOrder ? 0 : unfilledCost,
+                    positionRestored: isSellOrder ? unfilledAmount : 0
                 },
                 orderBook
             });
