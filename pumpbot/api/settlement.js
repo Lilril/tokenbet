@@ -120,16 +120,12 @@ async function settleRound(roundId) {
             let payout = 0;
             let profitLoss = 0;
             
-            if (won) {
-                
-                const returnAmount = totalCost; 
-                const winShare = totalWinningAmount > 0 ? (amount / totalWinningAmount) : 0;
-                const winnings = totalLosingCost * winShare;
-                
-                payout = returnAmount + winnings;
+            if (won && amount > 0) {
+                // Each winning token is worth exactly $1.00
+                // (every token pair was created via complement match at $1.00 total)
+                payout = amount * 1.0;
                 profitLoss = payout - totalCost;
             } else {
-                
                 payout = 0;
                 profitLoss = -totalCost;
             }
@@ -359,16 +355,11 @@ async function quickSettleForUser(userId) {
                 
                 const winningSide = finalMC > startMC ? 'higher' : 'lower';
                 const positions = await sql`SELECT user_id,side,amount,avg_price,total_cost FROM user_positions WHERE round_id=${round.id}`;
-                let totalWinAmt = 0, totalLoseCost = 0;
-                for (const p of positions.rows) {
-                    if (p.side === winningSide) totalWinAmt += parseFloat(p.amount);
-                    else totalLoseCost += parseFloat(p.total_cost);
-                }
                 for (const pos of positions.rows) {
                     const won = pos.side === winningSide;
                     const amt = parseFloat(pos.amount), tc = parseFloat(pos.total_cost);
                     let payout = 0, pl = 0;
-                    if (won && totalWinAmt > 0) { payout = tc + totalLoseCost * (amt / totalWinAmt); pl = payout - tc; }
+                    if (won && amt > 0) { payout = amt * 1.0; pl = payout - tc; }
                     else if (!won) { payout = 0; pl = -tc; }
                     await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
                         VALUES (${pos.user_id},${round.id},${pos.side},${amt},${pos.avg_price},${tc},${won},${payout},${pl},false)
