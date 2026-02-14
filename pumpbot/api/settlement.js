@@ -226,13 +226,23 @@ async function claimSettlement(userId, roundId, txHash = null) {
             throw new Error('Settlement not found or already claimed');
         }
         
-        const s = settlement.rows[0];
-        const payout = parseFloat(s.payout);
-        
-        if (payout <= 0) {
-            throw new Error('No payout available to claim');
+        // Sum payouts from ALL settlements for this round (user may have multiple positions)
+        let totalPayout = 0;
+        let totalProfitLoss = 0;
+        for (const s of settlement.rows) {
+            totalPayout += parseFloat(s.payout) || 0;
+            totalProfitLoss += parseFloat(s.profit_loss) || 0;
         }
         
+        if (totalPayout <= 0) {
+            // Mark losing settlements as claimed so they don't show up again
+            await sql`
+                UPDATE user_settlements
+                SET claimed = true, claimed_at = NOW()
+                WHERE user_id = ${userId} AND round_id = ${roundId} AND claimed = false
+            `;
+            throw new Error('No payout available to claim');
+        }
         
         
         const claimResult = await sql`
@@ -250,17 +260,17 @@ async function claimSettlement(userId, roundId, txHash = null) {
         
         await sql`
             UPDATE user_balances 
-            SET available = available + ${payout}, updated_at = NOW()
+            SET available = available + ${totalPayout}, updated_at = NOW()
             WHERE user_id = ${userId}
         `;
         
         
         const balResult = await sql`SELECT available FROM user_balances WHERE user_id = ${userId}`;
-        const balAfter = balResult.rows.length > 0 ? parseFloat(balResult.rows[0].available) : payout;
+        const balAfter = balResult.rows.length > 0 ? parseFloat(balResult.rows[0].available) : totalPayout;
         
         await sql`
             INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
-            VALUES (${userId}, 'trade_credit', ${payout}, ${balAfter - payout}, ${balAfter}, ${'Claim round #' + roundId + ', payout ' + payout.toFixed(2)})
+            VALUES (${userId}, 'trade_credit', ${totalPayout}, ${balAfter - totalPayout}, ${balAfter}, ${'Claim round #' + roundId + ', payout ' + totalPayout.toFixed(2)})
         `;
         
         
@@ -269,15 +279,15 @@ async function claimSettlement(userId, roundId, txHash = null) {
             INSERT INTO audit_log (user_id, action, details)
             VALUES (${userId}, 'claim_settlement', ${JSON.stringify({
                 roundId,
-                payout: payout,
+                payout: totalPayout,
                 txHash
             })})
         `;
         
         return {
             success: true,
-            payout: payout,
-            profitLoss: parseFloat(s.profit_loss),
+            payout: totalPayout,
+            profitLoss: totalProfitLoss,
             txHash
         };
         
