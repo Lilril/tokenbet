@@ -214,7 +214,8 @@ async function connectWallet(walletType) {
             authToken = authResult.token;
             try { localStorage.setItem('tokenbet_auth', authToken); } catch(e) {}
         } catch (authError) {
-            showNotification('Auth server error', 'error');
+            console.error('Auth error:', authError);
+            showNotification('Auth error: ' + authError.message, 'error');
             return;
         }
         
@@ -1140,7 +1141,8 @@ async function cancelOrder(orderId) {
     }
     try {
         const response = await fetch(`${API_BASE}/api/orders?orderId=${orderId}&wallet=${wallet}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: authHeaders()
         });
         const result = await response.json();
         if (result.success) {
@@ -2026,6 +2028,8 @@ window.addEventListener('load', async () => {
         }
     }
     if (autoConnected) {
+        // Restore auth token from localStorage
+        try { authToken = localStorage.getItem('tokenbet_auth') || null; } catch(e) {}
         updateUI(true);
         await fetchTokenBalance();
     } else {
