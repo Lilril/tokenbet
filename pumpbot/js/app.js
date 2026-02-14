@@ -952,10 +952,17 @@ function renderOrderBook() {
     const bestAsk = asksData.length > 0 ? asksData[0].displayPrice : null;
     const spreadEl = document.getElementById('spreadDisplay');
     if (spreadEl && bestBid !== null && bestAsk !== null) {
-        const spread = ((bestAsk - bestBid) * 100).toFixed(2);
-        spreadEl.textContent = spread + '%';
+        const spread = (bestAsk - bestBid) * 100;
+        if (spread < 0) {
+            spreadEl.textContent = 'CROSSED';
+            spreadEl.style.color = 'var(--accent-red, #ff4757)';
+        } else {
+            spreadEl.textContent = spread.toFixed(2) + '%';
+            spreadEl.style.color = '';
+        }
     } else if (spreadEl) {
         spreadEl.textContent = '0.00%';
+        spreadEl.style.color = '';
     }
 }
 function fillFromOrderBook(price, amount) {
