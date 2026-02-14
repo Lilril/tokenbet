@@ -3,6 +3,7 @@
 // ============================================
 
 import { sql } from '@vercel/postgres';
+import { verifyToken } from './auth.js';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -501,6 +502,15 @@ export default async function handler(req, res) {
                 return res.status(400).json({
                     success: false,
                     error: 'Wallet and roundId required'
+                });
+            }
+            
+            // AUTH: Verify wallet ownership
+            const auth = verifyToken(req.headers['authorization']);
+            if (!auth || auth.wallet !== wallet) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized. Please reconnect your wallet.'
                 });
             }
             
