@@ -3,6 +3,7 @@
 // ============================================
 
 import { sql } from '@vercel/postgres';
+import { verifyToken } from './auth.js';
 
 // Ensure unique constraint on slug (idempotent)
 let indexCreated = false;
@@ -861,7 +862,7 @@ async function inlineSettlementCheck() {
         
         // ============================================
         const now = Date.now();
-        if (now - lastSettleCheck < 5000) return;
+        if (now - lastSettleCheck < 5000) return; // 5s cooldown
         lastSettleCheck = now;
         
         
@@ -1637,6 +1638,17 @@ if (action === 'orderbook') {
                 });
             }
             
+            // ============================================
+            // AUTH: Verify wallet ownership via signed token
+            // ============================================
+            const auth = verifyToken(req.headers['authorization']);
+            if (!auth || auth.wallet !== wallet) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized. Please reconnect your wallet.'
+                });
+            }
+            
             const rateLimitError = await enforceRateLimit(req, res, wallet, 'POST:order');
             if (rateLimitError) return;
             
@@ -2407,6 +2419,15 @@ if (action === 'orderbook') {
                 return res.status(400).json({
                     success: false,
                     error: 'Missing orderId or wallet'
+                });
+            }
+            
+            // AUTH: Verify wallet ownership
+            const auth = verifyToken(req.headers['authorization']);
+            if (!auth || auth.wallet !== wallet) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized. Please reconnect your wallet.'
                 });
             }
             
