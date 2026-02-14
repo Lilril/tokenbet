@@ -457,71 +457,60 @@ async function getUserOrders(userId, roundId) {
 async function getMatchableOrders(roundId, side, price, excludeUserId = null) {
     try {
         const oppositeSide = side === 'higher' ? 'lower' : 'higher';
-        
-        // Complementary pricing: match when my_price + opposite_price >= 1.0
-        // i.e. opposite_price >= (1 - my_price)
         const minOppositePrice = price !== null && price !== undefined ? roundPrice(1 - price) : null;
         
         let result;
+        const useMinPrice = minOppositePrice !== null && 
+            !((side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0));
         
-        if (minOppositePrice === null || (side === 'higher' && price >= 1.0) || (side === 'lower' && price <= 0.0)) {
-            
-            if (excludeUserId) {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND (order_type IS NULL OR order_type = 'buy')
-                    AND user_id != ${excludeUserId}
-                    AND status = 'active' 
-                    AND amount > filled
-                    ORDER BY price DESC, created_at ASC
-                    LIMIT 50
-                `;
-            } else {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND (order_type IS NULL OR order_type = 'buy')
-                    AND status = 'active' 
-                    AND amount > filled
-                    ORDER BY price DESC, created_at ASC
-                    LIMIT 50
-                `;
-            }
+        if (useMinPrice && excludeUserId) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND user_id != ${excludeUserId}
+                AND status = 'active' AND amount > filled
+                AND price >= ${minOppositePrice}
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
+        } else if (useMinPrice) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND status = 'active' AND amount > filled
+                AND price >= ${minOppositePrice}
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
+        } else if (excludeUserId) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND user_id != ${excludeUserId}
+                AND status = 'active' AND amount > filled
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
         } else {
-            
-            if (excludeUserId) {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND (order_type IS NULL OR order_type = 'buy')
-                    AND user_id != ${excludeUserId}
-                    AND status = 'active' 
-                    AND amount > filled
-                    AND price >= ${minOppositePrice}
-                    ORDER BY price DESC, created_at ASC
-                    LIMIT 50
-                `;
-            } else {
-                result = await sql`
-                    SELECT id, user_id, side, amount, filled, price
-                    FROM limit_orders
-                    WHERE round_id = ${roundId} 
-                    AND side = ${oppositeSide}
-                    AND (order_type IS NULL OR order_type = 'buy')
-                    AND status = 'active' 
-                    AND amount > filled
-                    AND price >= ${minOppositePrice}
-                    ORDER BY price DESC, created_at ASC
-                    LIMIT 50
-                `;
-            }
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND (order_type IS NULL OR order_type = 'buy')
+                AND status = 'active' AND amount > filled
+                ORDER BY price DESC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
         }
         
         return result.rows;
@@ -544,53 +533,49 @@ async function getBuyOrdersForSeller(roundId, side, sellPrice, excludeUserId = n
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND (order_type IS NULL OR order_type = 'buy')
                 AND user_id != ${excludeUserId}
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 AND price >= ${roundedSellPrice}
                 ORDER BY price DESC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         } else if (roundedSellPrice !== null) {
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND (order_type IS NULL OR order_type = 'buy')
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 AND price >= ${roundedSellPrice}
                 ORDER BY price DESC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         } else if (excludeUserId) {
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND (order_type IS NULL OR order_type = 'buy')
                 AND user_id != ${excludeUserId}
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 ORDER BY price DESC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         } else {
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND (order_type IS NULL OR order_type = 'buy')
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 ORDER BY price DESC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         }
         return result.rows;
@@ -613,53 +598,49 @@ async function getSellOrdersForBuyer(roundId, side, buyPrice, excludeUserId = nu
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price, order_type
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND order_type = 'sell'
                 AND user_id != ${excludeUserId}
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 AND price <= ${roundedBuyPrice}
                 ORDER BY price ASC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         } else if (roundedBuyPrice !== null) {
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price, order_type
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND order_type = 'sell'
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 AND price <= ${roundedBuyPrice}
                 ORDER BY price ASC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         } else if (excludeUserId) {
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price, order_type
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND order_type = 'sell'
                 AND user_id != ${excludeUserId}
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 ORDER BY price ASC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         } else {
             result = await sql`
                 SELECT id, user_id, side, amount, filled, price, order_type
                 FROM limit_orders
-                WHERE round_id = ${roundId}
-                AND side = ${side}
+                WHERE round_id = ${roundId} AND side = ${side}
                 AND order_type = 'sell'
-                AND status = 'active'
-                AND amount > filled
+                AND status = 'active' AND amount > filled
                 ORDER BY price ASC, created_at ASC
                 LIMIT 50
+                FOR UPDATE SKIP LOCKED
             `;
         }
         return result.rows;
@@ -677,9 +658,12 @@ async function updateOrderFilled(orderId, additionalFilled) {
                 status = CASE WHEN filled + ${additionalFilled} >= amount THEN 'filled' ELSE 'active' END,
                 filled_at = CASE WHEN filled + ${additionalFilled} >= amount THEN NOW() ELSE filled_at END
             WHERE id = ${orderId}
+            AND status = 'active'
+            AND filled + ${additionalFilled} <= amount
             RETURNING *
         `;
-        return result.rows[0];
+        // Returns null if race condition: someone else already filled this order
+        return result.rows[0] || null;
     } catch (error) {
         console.error('❌ updateOrderFilled error:', error);
         throw error;
@@ -1106,18 +1090,14 @@ async function inlineSettleRound(roundId) {
         
         // ============================================
         const winningSide = finalMC > startMC ? 'higher' : 'lower';
-        let totalWinAmt = 0, totalLoseCost = 0;
-        for (const p of positions.rows) {
-            if (p.side === winningSide) totalWinAmt += parseFloat(p.amount);
-            else totalLoseCost += parseFloat(p.total_cost);
-        }
         
         for (const pos of positions.rows) {
             const won = pos.side === winningSide;
             const amt = parseFloat(pos.amount), tc = parseFloat(pos.total_cost);
             let payout = 0, pl = 0;
-            if (won && totalWinAmt > 0) {
-                payout = tc + totalLoseCost * (amt / totalWinAmt);
+            if (won && amt > 0) {
+                // Each winning token = $1.00 (complement pairs always cost $1.00 total)
+                payout = amt * 1.0;
                 pl = payout - tc;
                 
             } else if (!won) {
@@ -1756,6 +1736,10 @@ if (action === 'orderbook') {
                         const matchAmount = Math.min(remaining, orderRemaining);
                         const buyerPrice = roundPrice(parseFloat(buyOrder.price));
                         
+                        // Atomically fill - skip if race condition
+                        const fillResult = await db.updateOrderFilled(buyOrder.id, matchAmount);
+                        if (!fillResult) continue;
+                        
                         // Seller receives the buyer's price per token (direct, no complement)
                         const proceeds = matchAmount * buyerPrice;
                         
@@ -1772,9 +1756,6 @@ if (action === 'orderbook') {
                             tradeType: 'sell'
                         });
                         trades.push(trade);
-                        
-                        // Fill the buyer's order
-                        await db.updateOrderFilled(buyOrder.id, matchAmount);
                         
                         // Buyer gets position on the SAME side they ordered
                         const buyerCost = matchAmount * buyerPrice;
@@ -1808,6 +1789,10 @@ if (action === 'orderbook') {
                         const matchAmount = Math.min(remaining, orderRemaining);
                         const buyerPrice = roundPrice(parseFloat(buyOrder.price));
                         
+                        // Atomically fill - skip if race condition
+                        const fillResult = await db.updateOrderFilled(buyOrder.id, matchAmount);
+                        if (!fillResult) continue;
+                        
                         // Seller receives the buyer's price per token
                         const proceeds = matchAmount * buyerPrice;
                         
@@ -1825,7 +1810,6 @@ if (action === 'orderbook') {
                         });
                         trades.push(trade);
                         
-                        await db.updateOrderFilled(buyOrder.id, matchAmount);
                         const buyerCost = matchAmount * buyerPrice;
                         await db.upsertUserPosition(buyOrder.user_id, round.id, side, matchAmount, buyerPrice, buyerCost);
                         await deductLocked(buyOrder.user_id, buyerCost);
@@ -1974,6 +1958,10 @@ if (action === 'orderbook') {
                     const buyerCost = matchAmount * buyerPrice;
                     const sellerCost = matchAmount * oppPrice;
                     
+                    // Atomically fill - skip if race condition
+                    const fillResult = await db.updateOrderFilled(oppositeOrder.id, matchAmount);
+                    if (!fillResult) continue;
+                    
                     const trade = await db.recordTrade({
                         roundId: round.id,
                         buyerId: user.id,
@@ -1989,7 +1977,6 @@ if (action === 'orderbook') {
                     
                     trades.push(trade);
                     
-                    await db.updateOrderFilled(oppositeOrder.id, matchAmount);
                     await db.upsertUserPosition(user.id, round.id, side, matchAmount, buyerPrice, buyerCost);
                     await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, oppPrice, sellerCost);
                     await deductLocked(oppositeOrder.user_id, sellerCost);
@@ -2011,6 +1998,10 @@ if (action === 'orderbook') {
                         const sellPrice = roundPrice(parseFloat(sellOrder.price));
                         const buyerCost = matchAmount * sellPrice;
                         
+                        // Atomically fill - skip if race condition
+                        const fillResult = await db.updateOrderFilled(sellOrder.id, matchAmount);
+                        if (!fillResult) continue;
+                        
                         const trade = await db.recordTrade({
                             roundId: round.id,
                             buyerId: user.id,
@@ -2025,7 +2016,6 @@ if (action === 'orderbook') {
                         });
                         trades.push(trade);
                         
-                        await db.updateOrderFilled(sellOrder.id, matchAmount);
                         await db.upsertUserPosition(user.id, round.id, side, matchAmount, sellPrice, buyerCost);
                         
                         // Credit seller proceeds and reduce seller's position
@@ -2241,8 +2231,17 @@ if (action === 'orderbook') {
                 if (totalMatched > 0) {
                     createdOrderForTrades = await db.placeLimitOrder(user.id, round.id, side, totalMatched, prc);
                     
+                    let actualMatched = 0;
+                    let actualBuyerCost = 0;
+                    
                     for (const trade of trades) {
                         const {oppositeOrder, matchAmount, effectiveBuyerPrice, effectiveSellerPrice, buyerCost, sellerCost, isSellOrder} = trade;
+                        
+                        // Atomically fill opposite order - skip if race condition
+                        const fillResult = await db.updateOrderFilled(oppositeOrder.id, matchAmount);
+                        if (!fillResult) continue;
+                        
+                        await db.updateOrderFilled(createdOrderForTrades.id, matchAmount);
                         
                         await db.recordTrade({
                             roundId: round.id,
@@ -2257,9 +2256,6 @@ if (action === 'orderbook') {
                             tradeType: 'limit'
                         });
                         
-                        await db.updateOrderFilled(createdOrderForTrades.id, matchAmount);
-                        await db.updateOrderFilled(oppositeOrder.id, matchAmount);
-                        
                         // Buyer always gets position on their requested side
                         await db.upsertUserPosition(user.id, round.id, side, matchAmount, effectiveBuyerPrice, buyerCost);
                         
@@ -2271,7 +2267,14 @@ if (action === 'orderbook') {
                             await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
                             await deductLocked(oppositeOrder.user_id, sellerCost);
                         }
+                        
+                        actualMatched += matchAmount;
+                        actualBuyerCost += buyerCost;
                     }
+                    
+                    // Use actual amounts (may differ from planned due to race conditions)
+                    totalMatched = actualMatched;
+                    totalBuyerCost = actualBuyerCost;
                     
                     await deductLocked(user.id, totalBuyerCost);
                     
