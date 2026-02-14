@@ -1347,7 +1347,7 @@ if (action === 'orderbook') {
     } : { higher: 0.5, lower: 0.5 };
     
     
-    let userOrderPrices = { higher: [], lower: [] };
+    let userOrderPrices = { higher: [], lower: [], higherSells: [], lowerSells: [] };
     const reqWallet = req.query.wallet;
     if (reqWallet) {
         try {
@@ -1355,15 +1355,18 @@ if (action === 'orderbook') {
             if (userResult.rows.length > 0) {
                 const userId = userResult.rows[0].id;
                 const userOrders = await sql`
-                    SELECT side, price, (amount - filled) as remaining
+                    SELECT side, price, COALESCE(order_type, 'buy') as order_type, (amount - filled) as remaining
                     FROM limit_orders
                     WHERE round_id = ${round.id} AND user_id = ${userId} AND status = 'active' AND amount > filled
                 `;
                 for (const o of userOrders.rows) {
                     const side = o.side;
                     const price = parseFloat(o.price);
-                    if (!userOrderPrices[side].includes(price)) {
-                        userOrderPrices[side].push(price);
+                    const isSell = o.order_type === 'sell';
+                    const key = isSell ? (side + 'Sells') : side; // e.g., 'higherSells' or 'higher'
+                    if (!userOrderPrices[key]) userOrderPrices[key] = [];
+                    if (!userOrderPrices[key].includes(price)) {
+                        userOrderPrices[key].push(price);
                     }
                 }
             }
@@ -1739,6 +1742,29 @@ if (action === 'orderbook') {
                         return res.status(400).json({ success: false, error: 'Price must be 0.01 to 0.99' });
                     }
                     
+                    // ============================================
+                    // AUTO-CANCEL: Cancel user's own buy orders that overlap with sell price
+                    // e.g., user has LOWER buy at 0.90, sells LOWER at 0.90 → cancel buy, return locked funds
+                    // This prevents contradictory buy+sell at same price from same user
+                    // ============================================
+                    const overlappingOwnBuys = await sql`
+                        SELECT id, amount, filled, price FROM limit_orders
+                        WHERE round_id = ${round.id} AND user_id = ${user.id}
+                        AND side = ${side} AND (order_type IS NULL OR order_type = 'buy')
+                        AND status = 'active' AND amount > filled
+                        AND price >= ${sellPrice}
+                        ORDER BY price DESC
+                    `;
+                    for (const ownBuy of overlappingOwnBuys.rows) {
+                        const unfilled = parseFloat(ownBuy.amount) - parseFloat(ownBuy.filled);
+                        const refund = unfilled * parseFloat(ownBuy.price);
+                        await sql`UPDATE limit_orders SET status = 'cancelled', cancelled_at = NOW() WHERE id = ${ownBuy.id}`;
+                        if (refund > 0.001) {
+                            await unlockBalance(user.id, refund);
+                        }
+                        console.log(`🔄 Auto-cancelled overlapping buy #${ownBuy.id} (${side} @ ${ownBuy.price}) for sell at ${sellPrice}`);
+                    }
+                    
                     // Find same-side buy orders where buyer's price >= seller's ask price
                     const buyOrders = await db.getBuyOrdersForSeller(round.id, side, sellPrice, user.id);
                     
@@ -1792,6 +1818,22 @@ if (action === 'orderbook') {
                 }
                 
                 if (type === 'market') {
+                    // Auto-cancel user's own buy orders on the same side (market sell matches at any price)
+                    const overlappingOwnBuys = await sql`
+                        SELECT id, amount, filled, price FROM limit_orders
+                        WHERE round_id = ${round.id} AND user_id = ${user.id}
+                        AND side = ${side} AND (order_type IS NULL OR order_type = 'buy')
+                        AND status = 'active' AND amount > filled
+                    `;
+                    for (const ownBuy of overlappingOwnBuys.rows) {
+                        const unfilled = parseFloat(ownBuy.amount) - parseFloat(ownBuy.filled);
+                        const refund = unfilled * parseFloat(ownBuy.price);
+                        await sql`UPDATE limit_orders SET status = 'cancelled', cancelled_at = NOW() WHERE id = ${ownBuy.id}`;
+                        if (refund > 0.001) {
+                            await unlockBalance(user.id, refund);
+                        }
+                    }
+                    
                     // Market sell: match against same-side buy orders at any price (best price first)
                     const buyOrders = await db.getBuyOrdersForSeller(round.id, side, null, user.id);
                     
