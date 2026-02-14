@@ -1938,6 +1938,22 @@ if (action === 'orderbook') {
             
             // MARKET ORDER
             if (type === 'market') {
+                // Reject if user has opposite-side buy orders
+                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
+                const ownOppOrders = await sql`
+                    SELECT COUNT(*) as cnt FROM limit_orders
+                    WHERE round_id = ${round.id} AND user_id = ${user.id}
+                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
+                    AND status = 'active' AND amount > filled
+                `;
+                if (parseInt(ownOppOrders.rows[0].cnt) > 0) {
+                    await unlockBalance(user.id, estimatedCost);
+                    return res.status(400).json({
+                        success: false,
+                        error: `You have active ${oppSideCheck.toUpperCase()} buy orders. Cancel them first before buying ${side.toUpperCase()}.`
+                    });
+                }
+                
                 // Step 1: Match against opposite-side buy orders (complement matching)
                 // Self-trade protection: user's own orders skipped
                 const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
@@ -2117,6 +2133,26 @@ if (action === 'orderbook') {
                     });
                 }
                 
+                
+                // ============================================
+                // Reject if user has opposite-side buy orders that would cross
+                // ============================================
+                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
+                const minOppPrice = roundPrice(1 - prc);
+                const ownOppOrders = await sql`
+                    SELECT COUNT(*) as cnt FROM limit_orders
+                    WHERE round_id = ${round.id} AND user_id = ${user.id}
+                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
+                    AND status = 'active' AND amount > filled
+                    AND price >= ${minOppPrice}
+                `;
+                if (parseInt(ownOppOrders.rows[0].cnt) > 0) {
+                    await unlockBalance(user.id, estimatedCost);
+                    return res.status(400).json({
+                        success: false,
+                        error: `You have active ${oppSideCheck.toUpperCase()} buy orders that conflict with this price. Cancel them first.`
+                    });
+                }
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
