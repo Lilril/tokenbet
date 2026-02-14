@@ -63,6 +63,7 @@ function getCurrentInterval() {
 }
 // Trading state
 let orderBookData = { higher: [], lower: [], higherSells: [], lowerSells: [] };
+let userOrderPrices = { higher: [], lower: [], higherSells: [], lowerSells: [] };
 let ammPrices = { higher: 0.5, lower: 0.5 };
 let recentTrades = [];
 let selectedSide = 'higher';
@@ -793,7 +794,6 @@ async function fetchAllRounds() {
     }
 }
 // ORDER BOOK // ORDER BOOK & TRADING TRADING
-let userOrderPrices = { higher: [], lower: [] };
 async function fetchOrderBook() {
     try {
         const intervalMinutes = getCurrentInterval();
@@ -803,7 +803,7 @@ async function fetchOrderBook() {
         if (data.success) {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
-            userOrderPrices = data.userOrderPrices || { higher: [], lower: [] };
+            userOrderPrices = data.userOrderPrices || { higher: [], lower: [], higherSells: [], lowerSells: [] };
             if (data.startMarketCap && parseFloat(data.startMarketCap) > 0) {
                 targetMarketCap = parseFloat(data.startMarketCap);
                 ;
@@ -887,9 +887,25 @@ function renderOrderBook() {
     // Reverse asks so highest is at top, lowest near spread
     const asksReversed = [...asksData].reverse();
     // Helper: check if this price level has user's order
-    function isUserOrder(orderSide, rawPrice) {
+    // For complement asks: check buy orders on the complement side
+    // For direct sell asks: check sell orders on the current side
+    // For bids: check buy orders on the current side
+    function isUserBuyOrder(orderSide, rawPrice) {
         const prices = userOrderPrices[orderSide] || [];
         return prices.some(p => Math.abs(p - rawPrice) < 0.0001);
+    }
+    function isUserSellOrder(orderSide, rawPrice) {
+        const key = orderSide + 'Sells'; // e.g., 'higherSells'
+        const prices = userOrderPrices[key] || [];
+        return prices.some(p => Math.abs(p - rawPrice) < 0.0001);
+    }
+    function isUserAsk(order) {
+        if (order.source === 'complement') {
+            return isUserBuyOrder(asksSide, order.rawPrice);
+        } else {
+            // Direct sell order: check sell orders on current (bid) side
+            return isUserSellOrder(bidsSide, order.rawPrice);
+        }
     }
     if (asksReversed.length === 0) {
         higherEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim);">No orders</div>';
@@ -897,7 +913,7 @@ function renderOrderBook() {
         const maxAmount = Math.max(...asksReversed.map(o => o.amount));
         higherEl.innerHTML = asksReversed.map(order => {
             const pct = (order.amount / maxAmount) * 100;
-            const isUser = isUserOrder(asksSide, order.rawPrice);
+            const isUser = isUserAsk(order);
             const userStyle = isUser ? 'border-left: 3px solid var(--accent-yellow); background: rgba(255, 204, 0, 0.08);' : '';
             const userMarker = isUser ? '<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 4px;" title="Your order">★</span>' : '';
             return `
@@ -917,7 +933,7 @@ function renderOrderBook() {
         const maxAmount = Math.max(...bidsData.map(o => o.amount));
         lowerEl.innerHTML = bidsData.map(order => {
             const pct = (order.amount / maxAmount) * 100;
-            const isUser = isUserOrder(bidsSide, order.rawPrice);
+            const isUser = isUserBuyOrder(bidsSide, order.rawPrice);
             const userStyle = isUser ? 'border-left: 3px solid var(--accent-yellow); background: rgba(255, 204, 0, 0.08);' : '';
             const userMarker = isUser ? '<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 4px;" title="Your order">★</span>' : '';
             return `
