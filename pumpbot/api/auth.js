@@ -4,24 +4,50 @@
 // ============================================
 
 import { sql } from '@vercel/postgres';
-import { createHmac } from 'crypto';
-import nacl from 'tweetnacl';
-import bs58 from 'bs58';
+import { createHmac, createPublicKey, verify } from 'crypto';
 
 const TOKEN_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-in-production';
 const TOKEN_TTL_SEC = 86400; // 24 hours
 
+// Inline base58 decoder (no external dependency)
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58Decode(str) {
+    const bytes = [0];
+    for (let i = 0; i < str.length; i++) {
+        const c = BASE58_ALPHABET.indexOf(str[i]);
+        if (c < 0) throw new Error('Invalid base58 character');
+        for (let j = 0; j < bytes.length; j++) bytes[j] *= 58;
+        bytes[0] += c;
+        let carry = 0;
+        for (let j = 0; j < bytes.length; j++) {
+            bytes[j] += carry;
+            carry = (bytes[j] >> 8);
+            bytes[j] &= 0xff;
+        }
+        while (carry) { bytes.push(carry & 0xff); carry >>= 8; }
+    }
+    // Leading zeros
+    for (let i = 0; i < str.length && str[i] === '1'; i++) bytes.push(0);
+    return Buffer.from(bytes.reverse());
+}
+
 // ============================================
-// VERIFY SOLANA SIGNATURE
+// VERIFY SOLANA SIGNATURE (Node.js built-in crypto only)
 // ============================================
 function verifySolanaSignature(walletAddress, signature, message) {
     try {
-        const publicKeyBytes = bs58.decode(walletAddress);
-        const signatureBytes = typeof signature === 'string' 
-            ? bs58.decode(signature) 
-            : new Uint8Array(signature);
-        const messageBytes = new TextEncoder().encode(message);
-        return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
+        const publicKeyBytes = base58Decode(walletAddress);
+        const signatureBytes = Array.isArray(signature) 
+            ? Buffer.from(signature) 
+            : Buffer.from(signature);
+        const messageBytes = Buffer.from(message, 'utf-8');
+        
+        // Ed25519 DER-encoded SPKI prefix + 32-byte public key
+        const derPrefix = Buffer.from('302a300506032b6570032100', 'hex');
+        const derKey = Buffer.concat([derPrefix, publicKeyBytes]);
+        
+        const key = createPublicKey({ key: derKey, format: 'der', type: 'spki' });
+        return verify(null, messageBytes, key, signatureBytes);
     } catch (error) {
         console.error('Signature verification error:', error.message);
         return false;
@@ -125,6 +151,6 @@ export default async function handler(req, res) {
         
     } catch (error) {
         console.error('❌ Auth error:', error);
-        return res.status(500).json({ success: false, error: 'Authentication failed' });
+        return res.status(500).json({ success: false, error: 'Auth failed: ' + error.message });
     }
 }
