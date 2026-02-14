@@ -1690,19 +1690,38 @@ if (action === 'orderbook') {
             // ============================================
             if (action === 'sell') {
                 
-                const positions = await db.getUserPositions(user.id, round.id);
-                const position = positions.find(p => p.side === side);
+                // ============================================
+                // ATOMIC POSITION RESERVATION
+                // Prevents double-spend: position is reduced BEFORE matching
+                // If concurrent sells arrive, only one succeeds per token
+                // ============================================
+                const sellAmount = roundPrice(amt);
                 
-                if (!position || parseFloat(position.amount) <= 0) {
-                    return res.status(400).json({ success: false, error: 'No position to sell' });
+                // Atomically try to reserve tokens from position
+                const reserveResult = await sql`
+                    UPDATE user_positions 
+                    SET amount = amount - ${sellAmount}
+                    WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}
+                    AND amount >= ${sellAmount}
+                    RETURNING *, (amount + ${sellAmount}) as original_amount
+                `;
+                
+                if (reserveResult.rows.length === 0) {
+                    // Either no position or insufficient amount (race condition lost)
+                    const currentPos = await db.getUserPositions(user.id, round.id);
+                    const pos = currentPos.find(p => p.side === side);
+                    const available = pos ? parseFloat(pos.amount) : 0;
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: available > 0 
+                            ? `Insufficient position. Available: ${available.toFixed(2)} tokens`
+                            : 'No position to sell' 
+                    });
                 }
                 
-                const posAmount = parseFloat(position.amount);
-                const sellAmount = Math.min(amt, posAmount);
-                
-                if (sellAmount <= 0) {
-                    return res.status(400).json({ success: false, error: 'Nothing to sell' });
-                }
+                const position = reserveResult.rows[0];
+                const posOriginalAmount = parseFloat(position.original_amount);
+                // Position is now reduced. If anything fails, we must restore it.
                 
                 await db.logAction(user.id, 'sell_position', { side, amount: sellAmount, type, price }, clientIP, req.headers['user-agent']);
                 
@@ -1770,7 +1789,7 @@ if (action === 'orderbook') {
                     const unfilledSell = sellAmount - soldAmount;
                     if (unfilledSell > 0.001) {
                         // Store original avg_price as cost_basis so cancellation restores correct cost
-                        const originalAvgPrice = parseFloat(position.total_cost) / posAmount;
+                        const originalAvgPrice = parseFloat(position.total_cost) / posOriginalAmount;
                         await db.placeLimitOrder(user.id, round.id, side, unfilledSell, sellPrice, 'sell', originalAvgPrice);
                     }
                 }
@@ -1820,6 +1839,12 @@ if (action === 'orderbook') {
                 }
                 
                 if (soldAmount <= 0 && type === 'market') {
+                    // No buyers found - restore the reserved position
+                    await sql`
+                        UPDATE user_positions 
+                        SET amount = amount + ${sellAmount}
+                        WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}
+                    `;
                     return res.status(400).json({ 
                         success: false, 
                         error: 'No buyers in order book. Try placing a limit sell order.' 
@@ -1827,30 +1852,49 @@ if (action === 'orderbook') {
                 }
                 
                 // ============================================
-                // CRITICAL: Position reduction logic
-                // - Market sell: reduce only by soldAmount (no pending order for remainder)
-                // - Limit sell: reduce by FULL sellAmount (unfilled portion sits as sell order)
-                //   When sell limit order is cancelled, position will be restored.
-                //   When sell limit order is filled, seller gets proceeds.
+                // POSITION FINALIZATION
+                // Position was already reduced by sellAmount at the start (atomic reservation).
+                // Now handle the unfilled portion:
+                // - Market sell: restore unsold tokens back to position
+                // - Limit sell: unsold tokens stay reserved (sit as sell order in book)
                 // ============================================
                 const unfilledSellAmount = sellAmount - soldAmount;
-                const hasSellLimitOrder = (type === 'limit' && unfilledSellAmount > 0.001);
-                const totalPositionReduction = hasSellLimitOrder ? sellAmount : soldAmount;
-                const newAmount = posAmount - totalPositionReduction;
-                const costReduction = totalPositionReduction > 0 
-                    ? (totalPositionReduction / posAmount) * parseFloat(position.total_cost)
+                const costPerToken = posOriginalAmount > 0 
+                    ? parseFloat(position.total_cost) / posOriginalAmount 
                     : 0;
+                const costReduction = sellAmount * costPerToken;
                 
-                if (newAmount <= 0.001) {
-                    await sql`DELETE FROM user_positions WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}`;
-                } else if (totalPositionReduction > 0) {
+                if (type === 'market' && unfilledSellAmount > 0.001) {
+                    // Market sell: restore unsold tokens back to position
                     await sql`
                         UPDATE user_positions 
-                        SET amount = ${newAmount}, 
-                            total_cost = total_cost - ${costReduction}
+                        SET amount = amount + ${unfilledSellAmount},
+                            total_cost = total_cost + ${unfilledSellAmount * costPerToken}
                         WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}
                     `;
                 }
+                
+                // Adjust total_cost proportionally for sold portion
+                if (soldAmount > 0) {
+                    const soldCostReduction = soldAmount * costPerToken;
+                    await sql`
+                        UPDATE user_positions 
+                        SET total_cost = GREATEST(0, total_cost - ${soldCostReduction})
+                        WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}
+                        AND amount > 0
+                    `;
+                }
+                
+                // Clean up empty position rows
+                await sql`
+                    DELETE FROM user_positions 
+                    WHERE user_id = ${user.id} AND round_id = ${round.id} AND side = ${side}
+                    AND amount < 0.001
+                `;
+                
+                const remainingAmount = type === 'limit' 
+                    ? posOriginalAmount - sellAmount 
+                    : posOriginalAmount - soldAmount;
                 
                 // Credit seller's balance with proceeds from filled portion
                 if (totalProceeds > 0) {
@@ -1858,7 +1902,7 @@ if (action === 'orderbook') {
                 }
                 
                 const avgSellPrice = soldAmount > 0 ? totalProceeds / soldAmount : 0;
-                const profit = totalProceeds - costReduction;
+                const profit = totalProceeds - (soldAmount * costPerToken);
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
@@ -1871,7 +1915,7 @@ if (action === 'orderbook') {
                         avgPrice: avgSellPrice,
                         proceeds: totalProceeds,
                         profit: profit,
-                        remaining: Math.max(0, newAmount),
+                        remaining: Math.max(0, remainingAmount),
                         partialFill: soldAmount < sellAmount
                     },
                     orderBook
@@ -2384,10 +2428,13 @@ if (action === 'orderbook') {
             if (isSellOrder) {
                 // Sell order cancelled: restore the position that was reserved for selling
                 if (unfilledAmount > 0.001) {
-                    // Use cost_basis (original avg_price) if available, otherwise fall back to sell price
+                    // Use cost_basis (original avg_price) - MUST be set for sell orders
                     const costPerToken = canceledOrder.cost_basis 
                         ? parseFloat(canceledOrder.cost_basis) 
-                        : parseFloat(canceledOrder.price);
+                        : parseFloat(canceledOrder.price); // Fallback (should not happen)
+                    if (!canceledOrder.cost_basis) {
+                        console.warn(`⚠️ Sell order #${canceledOrder.id} missing cost_basis! Using sell price as fallback.`);
+                    }
                     const restoredCost = unfilledAmount * costPerToken;
                     await db.upsertUserPosition(user.id, canceledOrder.round_id, canceledOrder.side, unfilledAmount, costPerToken, restoredCost);
                 }
