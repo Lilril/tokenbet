@@ -1938,14 +1938,33 @@ if (action === 'orderbook') {
             
             // MARKET ORDER
             if (type === 'market') {
+                // ============================================
+                // REJECT if user has conflicting opposite-side buy orders
+                // e.g., buying HIGHER while having LOWER buy orders → rejected
+                // ============================================
+                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
+                const conflicting = await sql`
+                    SELECT COUNT(*) as cnt FROM limit_orders
+                    WHERE round_id = ${round.id} AND user_id = ${user.id}
+                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
+                    AND status = 'active' AND amount > filled
+                `;
+                if (parseInt(conflicting.rows[0].cnt) > 0) {
+                    await unlockBalance(user.id, estimatedCost);
+                    return res.status(400).json({
+                        success: false,
+                        error: `You have active ${oppSideCheck.toUpperCase()} buy orders. Cancel them first before buying ${side.toUpperCase()}.`
+                    });
+                }
+                
                 // Step 1: Match against opposite-side buy orders (complement matching)
-                // NOTE: Self-matching ALLOWED for complement orders (buying both sides is valid)
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null, null);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
                 
                 let totalMatched = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
+                    if (oppositeOrder.user_id === user.id) continue;
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
@@ -2118,17 +2137,37 @@ if (action === 'orderbook') {
                 
                 
                 // ============================================
-                // STEP 1A: Match against opposite-side BUY orders (complement matching)
-                // NOTE: Self-matching ALLOWED for complement orders
-                // e.g., HIGHER buy @ 0.10 matches own LOWER buy @ 0.90 → user gets both positions
+                // REJECT if user has conflicting opposite-side buy orders that would cross
+                // e.g., placing HIGHER buy @ 0.10 while having LOWER buy @ 0.90
                 // ============================================
-                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, null);
+                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
+                const minOppPrice = roundPrice(1 - prc);
+                const conflicting = await sql`
+                    SELECT COUNT(*) as cnt FROM limit_orders
+                    WHERE round_id = ${round.id} AND user_id = ${user.id}
+                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
+                    AND status = 'active' AND amount > filled
+                    AND price >= ${minOppPrice}
+                `;
+                if (parseInt(conflicting.rows[0].cnt) > 0) {
+                    await unlockBalance(user.id, estimatedCost);
+                    return res.status(400).json({
+                        success: false,
+                        error: `You have active ${oppSideCheck.toUpperCase()} buy orders that conflict with this price. Cancel them first.`
+                    });
+                }
+                
+                // ============================================
+                // STEP 1A: Match against opposite-side BUY orders (complement matching)
+                // ============================================
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
                 
                 let totalMatched = 0;
                 let totalBuyerCost = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
+                    if (oppositeOrder.user_id === user.id) continue;
                     
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
