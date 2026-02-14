@@ -39,6 +39,7 @@ async function apiCall(url, options = {}) {
 }
 // State
 let wallet = null;
+let authToken = null; // Signed session token from /api/auth
 let selectedInterval = 15;
 let currentMarketCap = 0;
 let targetMarketCap = 0;
@@ -173,17 +174,59 @@ async function connectWallet(walletType) {
             showNotification(walletInfo.name + ': failed to get wallet address', 'error');
             return;
         }
-        wallet = pubKey.toString();
+        const walletAddress = pubKey.toString();
+        
+        // Sign authentication message
+        const message = `Login to PumpBot: ${Date.now()}`;
+        const encodedMessage = new TextEncoder().encode(message);
+        let signatureBytes;
+        try {
+            const signResult = await provider.signMessage(encodedMessage, 'utf8');
+            signatureBytes = signResult.signature || signResult;
+        } catch (signError) {
+            if (signError.message?.includes('rejected') || signError.message?.includes('User rejected')) {
+                showNotification('Signature cancelled', 'error');
+            } else {
+                showNotification('Wallet must sign to verify ownership', 'error');
+            }
+            return;
+        }
+        
+        // Convert signature to base58 for transport
+        const signatureB58 = btoa(String.fromCharCode(...new Uint8Array(signatureBytes)));
+        
+        // Authenticate with backend
+        try {
+            const authResponse = await fetch(`${API_BASE}/api/auth`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    wallet: walletAddress,
+                    signature: Array.from(new Uint8Array(signatureBytes)),
+                    message
+                })
+            });
+            const authResult = await authResponse.json();
+            if (!authResult.success) {
+                showNotification('Auth failed: ' + (authResult.error || 'Unknown'), 'error');
+                return;
+            }
+            authToken = authResult.token;
+            try { localStorage.setItem('tokenbet_auth', authToken); } catch(e) {}
+        } catch (authError) {
+            showNotification('Auth server error', 'error');
+            return;
+        }
+        
+        wallet = walletAddress;
         activeProvider = provider;
         activeWalletType = walletType;
         saveWalletChoice(walletType);
-        // connected;
         closeModal();
         updateUI(true);
         await fetchTokenBalance();
         try {
             provider.on('disconnect', () => {
-                // disconnected;
                 disconnect();
             });
         } catch(e) {} 
@@ -252,11 +295,21 @@ async function disconnect() {
         console.error('❌ Disconnect error:', error);
     }
     wallet = null;
+    authToken = null;
+    try { localStorage.removeItem('tokenbet_auth'); } catch(e) {}
     activeProvider = null;
     activeWalletType = null;
     clearWalletChoice();
     updateUI(false);
 }
+
+// Authenticated fetch — adds Authorization header to POST/DELETE
+function authHeaders(extraHeaders = {}) {
+    const headers = { 'Content-Type': 'application/json', ...extraHeaders };
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    return headers;
+}
+
 // TOKEN BALANCE
 let balanceAvailable = 0;
 let balanceLocked = 0;
@@ -331,7 +384,7 @@ async function loadDepositInfo() {
     try {
         const infoResp = await fetch(`${API_BASE}/api/balance`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ action: 'deposit-info' })
         });
         const info = await infoResp.json();
@@ -362,7 +415,7 @@ async function fetchOnChainTokenBalance() {
             try {
                 const resp = await fetch(rpcUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: authHeaders(),
                     body: JSON.stringify({
                         jsonrpc: '2.0', id: 1,
                         method: 'getTokenAccountsByOwner',
@@ -472,7 +525,7 @@ async function executeDeposit() {
             try {
                 const freshInfo = await fetch(`${API_BASE}/api/balance`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: authHeaders(),
                     body: JSON.stringify({ action: 'deposit-info' })
                 });
                 const freshData = await freshInfo.json();
@@ -500,7 +553,7 @@ async function executeDeposit() {
             try {
                 const confirmResp = await fetch(`${API_BASE}/api/balance`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: authHeaders(),
                     body: JSON.stringify({
                         action: 'confirm-deposit',
                         wallet: wallet,
@@ -655,7 +708,7 @@ async function processWithdraw() {
     try {
         const response = await fetch(`${API_BASE}/api/balance`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({
                 action: 'withdraw',
                 wallet: wallet,
@@ -1420,9 +1473,7 @@ async function executeTrade(side) {
         }
         const response = await fetch(`${API_BASE}/api/orders`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: authHeaders(),
             body: JSON.stringify(orderData)
         });
         const result = await response.json();
@@ -1663,7 +1714,7 @@ async function executeUnifiedTrade() {
             }
             const response = await fetch(`${API_BASE}/api/orders`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authHeaders(),
                 body: JSON.stringify(orderData)
             });
             const result = await response.json();
@@ -1725,7 +1776,7 @@ async function executeUnifiedTrade() {
         }
         const response = await fetch(`${API_BASE}/api/orders`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify(orderData)
         });
         const result = await response.json();
@@ -2061,9 +2112,7 @@ window.addEventListener('load', async () => {
             }
             const response = await fetch(`${API_BASE}/api/settlement`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: authHeaders(),
                 body: JSON.stringify({
                     wallet,
                     roundId,
