@@ -1939,13 +1939,14 @@ if (action === 'orderbook') {
             // MARKET ORDER
             if (type === 'market') {
                 // Step 1: Match against opposite-side buy orders (complement matching)
-                // Self-matching ALLOWED: user can buy both sides (creates paired positions)
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null, null);
+                // Self-trade protection: user's own orders skipped
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
                 
                 let totalMatched = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
+                    if (oppositeOrder.user_id === user.id) continue;
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
@@ -2119,15 +2120,16 @@ if (action === 'orderbook') {
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
-                // Self-matching ALLOWED: user can buy both sides (creates paired positions)
+                // Self-trade protection: user's own orders skipped
                 // ============================================
-                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, null);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
                 
                 let totalMatched = 0;
                 let totalBuyerCost = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
+                    if (oppositeOrder.user_id === user.id) continue;
                     
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
