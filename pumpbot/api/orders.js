@@ -1742,29 +1742,6 @@ if (action === 'orderbook') {
                         return res.status(400).json({ success: false, error: 'Price must be 0.01 to 0.99' });
                     }
                     
-                    // ============================================
-                    // AUTO-CANCEL: Cancel user's own buy orders that overlap with sell price
-                    // e.g., user has LOWER buy at 0.90, sells LOWER at 0.90 → cancel buy, return locked funds
-                    // This prevents contradictory buy+sell at same price from same user
-                    // ============================================
-                    const overlappingOwnBuys = await sql`
-                        SELECT id, amount, filled, price FROM limit_orders
-                        WHERE round_id = ${round.id} AND user_id = ${user.id}
-                        AND side = ${side} AND (order_type IS NULL OR order_type = 'buy')
-                        AND status = 'active' AND amount > filled
-                        AND price >= ${sellPrice}
-                        ORDER BY price DESC
-                    `;
-                    for (const ownBuy of overlappingOwnBuys.rows) {
-                        const unfilled = parseFloat(ownBuy.amount) - parseFloat(ownBuy.filled);
-                        const refund = unfilled * parseFloat(ownBuy.price);
-                        await sql`UPDATE limit_orders SET status = 'cancelled', cancelled_at = NOW() WHERE id = ${ownBuy.id}`;
-                        if (refund > 0.001) {
-                            await unlockBalance(user.id, refund);
-                        }
-                        console.log(`🔄 Auto-cancelled overlapping buy #${ownBuy.id} (${side} @ ${ownBuy.price}) for sell at ${sellPrice}`);
-                    }
-                    
                     // Find same-side buy orders where buyer's price >= seller's ask price
                     const buyOrders = await db.getBuyOrdersForSeller(round.id, side, sellPrice, user.id);
                     
@@ -1818,22 +1795,6 @@ if (action === 'orderbook') {
                 }
                 
                 if (type === 'market') {
-                    // Auto-cancel user's own buy orders on the same side (market sell matches at any price)
-                    const overlappingOwnBuys = await sql`
-                        SELECT id, amount, filled, price FROM limit_orders
-                        WHERE round_id = ${round.id} AND user_id = ${user.id}
-                        AND side = ${side} AND (order_type IS NULL OR order_type = 'buy')
-                        AND status = 'active' AND amount > filled
-                    `;
-                    for (const ownBuy of overlappingOwnBuys.rows) {
-                        const unfilled = parseFloat(ownBuy.amount) - parseFloat(ownBuy.filled);
-                        const refund = unfilled * parseFloat(ownBuy.price);
-                        await sql`UPDATE limit_orders SET status = 'cancelled', cancelled_at = NOW() WHERE id = ${ownBuy.id}`;
-                        if (refund > 0.001) {
-                            await unlockBalance(user.id, refund);
-                        }
-                    }
-                    
                     // Market sell: match against same-side buy orders at any price (best price first)
                     const buyOrders = await db.getBuyOrdersForSeller(round.id, side, null, user.id);
                     
@@ -1978,13 +1939,13 @@ if (action === 'orderbook') {
             // MARKET ORDER
             if (type === 'market') {
                 // Step 1: Match against opposite-side buy orders (complement matching)
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
+                // NOTE: Self-matching ALLOWED for complement orders (buying both sides is valid)
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, null);
                 
                 let totalMatched = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
-                    if (oppositeOrder.user_id === user.id) continue;
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
@@ -2155,17 +2116,19 @@ if (action === 'orderbook') {
                     });
                 }
                 
+                
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
+                // NOTE: Self-matching ALLOWED for complement orders
+                // e.g., HIGHER buy @ 0.10 matches own LOWER buy @ 0.90 → user gets both positions
                 // ============================================
-                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, null);
                 
                 let totalMatched = 0;
                 let totalBuyerCost = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
-                    if (oppositeOrder.user_id === user.id) continue;
                     
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
