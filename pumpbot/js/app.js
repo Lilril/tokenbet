@@ -456,7 +456,7 @@ async function executeDeposit() {
         return;
     }
     if (amount < minDeposit) {
-        showNotification(`Min deposit: ${minDeposit} tokens`, 'error');
+        showNotification(`Min deposit: ${minDeposit} $MERC`, 'error');
         return;
     }
     if (!platformDepositInfo) {
@@ -578,7 +578,7 @@ async function executeDeposit() {
                     Deposit confirmed!
                 </div>
                 <div style="font-size: 1.5em; font-weight: 700; margin-bottom: 10px;">
-                    +${data.amount} tokens
+                    +${data.amount} $MERC
                 </div>
                 <div style="margin-bottom: 15px;">
                     <a href="https://solscan.io/tx/${signature}" target="_blank" style="color: var(--accent-yellow); text-decoration: underline; font-size: 0.85em;">
@@ -594,7 +594,7 @@ async function executeDeposit() {
             resultEl.innerHTML = `
                 <div style="font-size: 3em; margin-bottom: 15px;">!</div>
                 <div style="font-size: 1.1em; font-weight: 700; color: var(--accent-yellow); margin-bottom: 10px;">
-                    Tokens sent!
+                    $MERC sent!
                 </div>
                 <div style="color: var(--text-dim); margin-bottom: 10px; font-size: 0.9em;">
                     Processing may take 1-2 minutes.
@@ -705,7 +705,7 @@ async function processWithdraw() {
     }
     const btn = document.getElementById('processWithdrawBtn');
     btn.disabled = true;
-    btn.textContent = 'Sending tokens...';
+    btn.textContent = 'Sending $MERC...';
     try {
         const response = await fetch(`${API_BASE}/api/balance`, {
             method: 'POST',
@@ -727,7 +727,7 @@ async function processWithdraw() {
                     Withdrawal complete!
                 </div>
                 <div style="font-size: 1.5em; font-weight: 700; margin-bottom: 10px;">
-                    -${data.amount} tokens
+                    -${data.amount} $MERC
                 </div>
                 ${data.fee > 0 ? `<div style="color: var(--text-dim); font-size: 0.85em; margin-bottom: 5px;">Fee: ${data.fee}</div>` : ''}
                 <div style="margin-bottom: 20px;">
@@ -1029,10 +1029,23 @@ function fillFromOrderBook(price, amount) {
 }
 window.fillFromOrderBook = fillFromOrderBook;
 function updatePriceStats() {
-    document.getElementById('statHigherPrice').textContent = ammPrices.higher.toFixed(3);
-    document.getElementById('statLowerPrice').textContent = ammPrices.lower.toFixed(3);
-    // Update Polymarket-style side buttons
-    if (typeof updateSideOdds === 'function') updateSideOdds();
+    // Use orderbook mid-price when available, fallback to AMM
+    const ob = orderBookData;
+    let higherPrice = ammPrices.higher;
+    let lowerPrice = ammPrices.lower;
+    
+    // Best HIGHER bid = highest buy price on higher side
+    const higherBids = (ob.higher || []).map(o => parseFloat(o.price)).filter(p => p > 0);
+    const lowerBids = (ob.lower || []).map(o => parseFloat(o.price)).filter(p => p > 0);
+    
+    if (higherBids.length > 0 || lowerBids.length > 0) {
+        // Best bid on each side = the "price" for that outcome
+        if (higherBids.length > 0) higherPrice = Math.max(...higherBids);
+        if (lowerBids.length > 0) lowerPrice = Math.max(...lowerBids);
+    }
+    
+    document.getElementById('statHigherPrice').textContent = higherPrice.toFixed(3);
+    document.getElementById('statLowerPrice').textContent = lowerPrice.toFixed(3);
     const capToShow = targetMarketCap > 0 ? targetMarketCap : currentMarketCap;
     if (capToShow > 0) {
         const formatted = capToShow >= 1000000 
@@ -1236,7 +1249,7 @@ function updateMyOrdersModalList() {
                     <div>
                         <div style="font-size: 0.85em; color: var(--text-secondary);">
                             Qty: <span style="color: var(--text-primary); font-weight: 600;">
-                                ${showRemaining ? `${remaining.toFixed(0)} / ${order.amount.toFixed(0)}` : `${order.amount}`} tokens
+                                ${showRemaining ? `${remaining.toFixed(0)} / ${order.amount.toFixed(0)}` : `${order.amount}`} $MERC
                             </span>
                             ${showRemaining ? `<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 5px;">(${((filled / order.amount) * 100).toFixed(1)}% filled)</span>` : ''}
                         </div>
@@ -1305,7 +1318,7 @@ async function fetchUserTrades() {
                         <div style="display: flex; justify-content: space-between;">
                             <div>
                                 <div style="font-size: 0.85em; color: var(--text-secondary);">
-                                    Qty: <span style="color: var(--text-primary); font-weight: 600;">${trade.amount} tokens</span>
+                                    Qty: <span style="color: var(--text-primary); font-weight: 600;">${trade.amount} $MERC</span>
                                 </div>
                                 <div style="font-size: 0.85em; color: var(--text-secondary);">
                                     Price: <span style="color: var(--accent-yellow); font-weight: 600;">${trade.price.toFixed(3)}</span>
@@ -1318,7 +1331,7 @@ async function fetchUserTrades() {
                                 ${trade.profit !== undefined ? `
                                     <div style="font-size: 0.85em; color: var(--text-secondary);">
                                         P&L: <span style="color: ${trade.profit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}; font-weight: 600;">
-                                            ${trade.profit >= 0 ? '+' : ''}${trade.profit.toFixed(2)} tokens
+                                            ${trade.profit >= 0 ? '+' : ''}${trade.profit.toFixed(2)} $MERC
                                         </span>
                                     </div>
                                 ` : ''}
@@ -1429,7 +1442,7 @@ function updateEstimateDisplay(side, data) {
         </div>
         <div class="estimate-row">
             <span>Total:</span>
-            <span class="text-yellow">${cost.toFixed(0)} tokens</span>
+            <span class="text-yellow">${cost.toFixed(0)} $MERC</span>
         </div>
     `;
 }
@@ -1445,7 +1458,7 @@ async function executeTrade(side) {
         return;
     }
     if (amount > tokenBalance) {
-        showNotification('Insufficient tokens', 'error');
+        showNotification('Insufficient $MERC', 'error');
         return;
     }
     // OPTIONAL: Uncomment to disable market orders when orderbook is empty
@@ -1484,13 +1497,13 @@ async function executeTrade(side) {
             const typeText = selectedOrderType === 'market' ? 'Market' : 'Limit';
             if (selectedOrderType === 'market' && result.trade) {
                 let message = `${typeText} order for ${sideText} filled!\n\n`;
-                message += `Qty: ${amount} tokens\n`;
+                message += `Qty: ${amount} $MERC\n`;
                 message += `Avg price: ${result.trade.price.toFixed(4)}\n`;
                 if (result.trade.source === 'orderbook') {
                     message += `\n• Filled from order book`;
                 } else if (result.trade.source === 'mixed') {
-                    message += `\n• From order book: ${result.trade.orderbookFilled} tokens`;
-                    message += `\n• From AMM pool: ${result.trade.ammFilled} tokens`;
+                    message += `\n• From order book: ${result.trade.orderbookFilled} $MERC`;
+                    message += `\n• From AMM pool: ${result.trade.ammFilled} $MERC`;
                 } else if (result.trade.source === 'amm') {
                     message += `\n• Filled from AMM pool`;
                 }
@@ -1500,16 +1513,16 @@ async function executeTrade(side) {
                 const remaining = result.order.amount - matched;
                 if (matched > 0 && remaining > 0) {
                     showNotification(`${typeText} order for ${sideText} placed!\n\n` +
-                          `Filled immediately: ${matched} tokens\n` +
-                          `Remaining in book: ${remaining} tokens`);
+                          `Filled immediately: ${matched} $MERC\n` +
+                          `Remaining in book: ${remaining} $MERC`);
                 } else if (matched > 0) {
                     showNotification(`${typeText} order for ${sideText} fully filled!\n\n` +
-                          `Qty: ${matched} tokens`);
+                          `Qty: ${matched} $MERC`);
                 } else {
-                    showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} tokens`, 'success');
+                    showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} $MERC`, 'success');
                 }
             } else {
-                showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} tokens`, 'success');
+                showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} $MERC`, 'success');
             }
             // Reset form
             amountInput.value = '';
@@ -1568,10 +1581,10 @@ function updateSellPositionInfo() {
     // Find position for current side from userPositions (fetch from API)
     fetchCurrentPosition(side).then(pos => {
         if (pos) {
-            amountEl.textContent = pos.amount.toFixed(2) + ' tokens';
+            amountEl.textContent = pos.amount.toFixed(2) + ' $MERC';
             priceEl.textContent = pos.avgPrice.toFixed(4);
         } else {
-            amountEl.textContent = '0 tokens';
+            amountEl.textContent = '0 $MERC';
             priceEl.textContent = '—';
         }
     });
@@ -1658,7 +1671,7 @@ async function calculateUnifiedEstimate() {
                     </div>
                     <div class="estimate-row">
                         <span>Total:</span>
-                        <span class="text-yellow">${cost.toFixed(0)} tokens</span>
+                        <span class="text-yellow">${cost.toFixed(0)} $MERC</span>
                     </div>
                 `;
             }
@@ -1674,7 +1687,7 @@ async function calculateUnifiedEstimate() {
             </div>
             <div class="estimate-row">
                 <span>Total:</span>
-                <span class="text-yellow">${(amount * price).toFixed(0)} tokens</span>
+                <span class="text-yellow">${(amount * price).toFixed(0)} $MERC</span>
             </div>
         `;
     }
@@ -1691,7 +1704,7 @@ async function executeUnifiedTrade() {
         return;
     }
     if (currentTradeAction !== 'sell' && amount < 500) {
-        showNotification('Minimum: 500 tokens', 'error');
+        showNotification('Minimum: 500 $MERC', 'error');
         return;
     }
     // SELL mode
@@ -1756,7 +1769,7 @@ async function executeUnifiedTrade() {
     }
     // BUY mode (existing logic)
     if (amount > tokenBalance) {
-        showNotification('Insufficient tokens', 'error');
+        showNotification('Insufficient $MERC', 'error');
         return;
     }
     try {
@@ -1787,19 +1800,19 @@ async function executeUnifiedTrade() {
             const typeText = selectedOrderType === 'market' ? 'Market' : 'Limit';
             if (selectedOrderType === 'market' && result.trade) {
                 let message = `${typeText} order for ${sideText} filled!\n\n`;
-                message += `Qty: ${amount} tokens\n`;
+                message += `Qty: ${amount} $MERC\n`;
                 message += `Avg price: ${result.trade.price.toFixed(4)}\n`;
                 if (result.trade.source === 'orderbook') {
                     message += `\n• Filled from order book`;
                 } else if (result.trade.source === 'mixed') {
-                    message += `\n• From order book: ${result.trade.orderbookFilled} tokens`;
-                    message += `\n• From AMM pool: ${result.trade.ammFilled} tokens`;
+                    message += `\n• From order book: ${result.trade.orderbookFilled} $MERC`;
+                    message += `\n• From AMM pool: ${result.trade.ammFilled} $MERC`;
                 } else if (result.trade.source === 'amm') {
                     message += `\n• Filled from AMM pool`;
                 }
                 showNotification(message, 'error');
             } else {
-                showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} tokens`, 'success');
+                showNotification(`${typeText} order for ${sideText} placed!\n\nQty: ${amount} $MERC`, 'success');
             }
             // Reset
             document.getElementById('tradeAmount').value = '';
@@ -1819,13 +1832,6 @@ async function executeUnifiedTrade() {
         console.error('❌ Trade execution error:', error);
         showNotification('Order placement error', 'error');
     }
-}
-// Update side odds when prices update
-function updateSideOdds() {
-    const ho = document.getElementById('sideHigherOdds');
-    const lo = document.getElementById('sideLowerOdds');
-    if (ho) ho.textContent = ammPrices.higher.toFixed(3);
-    if (lo) lo.textContent = ammPrices.lower.toFixed(3);
 }
 // Attach input listener for unified trade
 document.addEventListener('DOMContentLoaded', function() {
@@ -1950,7 +1956,7 @@ window.addEventListener('load', async () => {
     // Set contract address in header from TOKEN_ADDRESS
     const contractEl = document.getElementById('contractAddr');
     if (contractEl) {
-        contractEl.textContent = PLATFORM_PAUSED ? 'Awaiting token launch...' : TOKEN_ADDRESS;
+        contractEl.textContent = PLATFORM_PAUSED ? 'Awaiting $MERC launch...' : TOKEN_ADDRESS;
     }
 
     // If paused — show waiting state, don't start anything
@@ -1965,7 +1971,7 @@ window.addEventListener('load', async () => {
             if (el) el.textContent = 'Paused';
         });
         document.getElementById('tradeHistory').innerHTML =
-            '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Awaiting token launch...</div>';
+            '<div style="padding: 20px; text-align: center; color: var(--text-dim);">Awaiting $MERC launch...</div>';
         return;
     }
 
@@ -2052,7 +2058,7 @@ window.addEventListener('load', async () => {
     // Intervals
     setInterval(updateCountdown, 1000);
     setInterval(updateAllRoundTabs, 1000);
-    setInterval(updateMarketCap, 15000);
+    setInterval(updateMarketCap, 5000);
     setInterval(fetchOrderBook, 5000);
     setInterval(fetchRecentTrades, 10000);
     setInterval(fetchAllRounds, 30000);
@@ -2125,7 +2131,7 @@ window.addEventListener('load', async () => {
             });
             const result = await response.json();
             if (result.success) {
-                showNotification(`Winnings claimed!\n\nReceived: ${result.payout.toFixed(2)} tokens\nP&L: ${result.profitLoss.toFixed(2)} tokens`, 'success');
+                showNotification(`Winnings claimed!\n\nReceived: ${result.payout.toFixed(2)} $MERC\nP&L: ${result.profitLoss.toFixed(2)} $MERC`, 'success');
                 await Promise.all([
                     fetchUnclaimedSettlements(),
                     fetchTokenBalance()
@@ -2444,7 +2450,7 @@ window.addEventListener('load', async () => {
                     id="claim-btn-${roundId}"
                     onclick="claimSettlement(${roundId})"
                 >
-                    Claim ${payout.toFixed(2)} tokens
+                    Claim ${payout.toFixed(2)} $MERC
                 </button>
             </div>
         `;
