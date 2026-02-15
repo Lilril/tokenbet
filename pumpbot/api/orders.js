@@ -1665,7 +1665,7 @@ if (action === 'orderbook') {
             if (action !== 'sell' && amt < 500) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Minimum: 500 tokens'
+                    error: 'Minimum: 500 $MERC'
                 });
             }
             
@@ -1726,7 +1726,7 @@ if (action === 'orderbook') {
                     return res.status(400).json({ 
                         success: false, 
                         error: available > 0 
-                            ? `Insufficient position. Available: ${available.toFixed(2)} tokens`
+                            ? `Insufficient position. Available: ${available.toFixed(2)} $MERC`
                             : 'No position to sell' 
                     });
                 }
