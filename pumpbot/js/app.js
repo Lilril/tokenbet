@@ -77,7 +77,7 @@ let currentSettlementTab = 'unclaimed';
 const WALLETS = {
     phantom: {
         name: 'Phantom',
-        icon: '👻',
+        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjEyOCIgaGVpZ2h0PSIxMjgiIHJ4PSIyNiIgZmlsbD0iI0FCOUZGMiIvPgogIDxwYXRoIGQ9Ik0xMTAuNCA2NC40QzExMC40IDY0LjQgMTA4LjIgNjcuOCAxMDAuOCA2Ny44QzkzLjQgNjcuOCA5MC42IDYxLjIgODQuMiA2MS4yQzc3LjggNjEuMiA3Ni40IDY3LjggNjQgNjcuOEM1MS42IDY3LjggNTAuMiA2MS4yIDQzLjggNjEuMkMzNy40IDYxLjIgMzQuNiA2Ny44IDI3LjIgNjcuOEMxOS44IDY3LjggMTcuNiA2NC40IDE3LjYgNjQuNEMxNy42IDY0LjQgMTkuNCA5Ni44IDMwIDEwNS40QzQwLjYgMTE0IDU1LjYgMTE1LjYgNjQgMTE1LjZDNzIuNCAxMTUuNiA4Ny40IDExNCA5OCAxMDUuNEMxMDguNiA5Ni44IDExMC40IDY0LjQgMTEwLjQgNjQuNFoiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuMTUiLz4KICA8cGF0aCBkPSJNMTEwLjQgNjQuNEM5OS4zIDM0LjUgODQgMjQgNjQgMjRDNDQgMjQgMjguNyAzNC41IDE3LjYgNjQuNEMxNy42IDY0LjQgMTkuNCA5Ni44IDMwIDEwNS40QzQwLjYgMTE0IDU1LjYgMTE1LjYgNjQgMTE1LjZDNzIuNCAxMTUuNiA4Ny40IDExNCA5OCAxMDUuNEMxMDguNiA5Ni44IDExMC40IDY0LjQgMTEwLjQgNjQuNFoiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuMiIvPgogIDxlbGxpcHNlIGN4PSI0NiIgY3k9IjYwIiByeD0iMTAiIHJ5PSIxMiIgZmlsbD0id2hpdGUiLz4KICA8ZWxsaXBzZSBjeD0iODIiIGN5PSI2MCIgcng9IjEwIiByeT0iMTIiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iNDgiIGN5PSI2MiIgcj0iNSIgZmlsbD0iIzRCM0E4NyIvPgogIDxjaXJjbGUgY3g9Ijg0IiBjeT0iNjIiIHI9IjUiIGZpbGw9IiM0QjNBODciLz4KPC9zdmc+Cg==',
         color: '#AB9FF2',
         get: () => {
             if (window.phantom?.solana?.isPhantom) {
@@ -91,13 +91,13 @@ const WALLETS = {
     },
     solflare: {
         name: 'Solflare',
-        icon: '🔥',
+        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjEyOCIgaGVpZ2h0PSIxMjgiIHJ4PSIyNiIgZmlsbD0iIzEyMTIxQiIvPgogIDxwYXRoIGQ9Ik02NCAyMEw4MiA1NEw2NCA3NEw0NiA1NEwzNiA3NEw2NCAxMTJMOTIgNzRMODIgNTRMNjQgMjBaIiBmaWxsPSJ1cmwoI3NmKSIvPgogIDxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0ic2YiIHgxPSI2NCIgeTE9IjIwIiB4Mj0iNjQiIHkyPSIxMTIiPjxzdG9wIHN0b3AtY29sb3I9IiNGQ0M1M0EiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGQzZDMkMiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz4KPC9zdmc+Cg==',
         color: '#FC6C2C',
         get: () => window.solflare || (window.solana?.isSolflare ? window.solana : null)
     },
     coinbase: {
         name: 'Coinbase',
-        icon: '💼',
+        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjEyOCIgaGVpZ2h0PSIxMjgiIHJ4PSIyNiIgZmlsbD0iIzAwNTJGRiIvPgogIDxjaXJjbGUgY3g9IjY0IiBjeT0iNjQiIHI9IjQwIiBmaWxsPSJ3aGl0ZSIvPgogIDxyZWN0IHg9IjUwIiB5PSI1MCIgd2lkdGg9IjI4IiBoZWlnaHQ9IjI4IiByeD0iNCIgZmlsbD0iIzAwNTJGRiIvPgo8L3N2Zz4K',
         color: '#0052FF',
         get: () => window.coinbaseSolana || (window.solana?.isCoinbaseWallet ? window.solana : null)
     }
@@ -132,7 +132,7 @@ function renderWallets() {
     let html = Object.entries(WALLETS).map(([key, info]) => {
         const detected = info.get();
         return '<div class="wallet-option" onclick="connectWallet(\'' + key + '\')" style="border-left: 3px solid ' + info.color + '">' +
-            '<span style="font-size: 2em; margin-right: 15px;">' + info.icon + '</span>' +
+            '<img src="' + info.icon + '" style="width: 36px; height: 36px; margin-right: 15px; border-radius: 8px;">' +
             '<div>' +
                 '<div style="font-weight: 600; font-size: 1.1em;">' + info.name + '</div>' +
                 '<div style="font-size: 0.85em; color: var(--text-dim);">' + (detected ? 'Detected' : 'Not installed') + '</div>' +
@@ -1326,15 +1326,28 @@ async function fetchUserTrades() {
                 if (trade.interval_minutes === 15) roundName = '15m';
                 else if (trade.interval_minutes === 60) roundName = '1h';
                 else if (trade.interval_minutes === 240) roundName = '4h';
+                
+                const isSell = trade.role === 'sell';
+                const sideColor = trade.side === 'higher' ? 'text-green' : 'text-red';
+                const sideIcon = trade.side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
+                const roleLabel = isSell ? '⤵ SELL' : '⤴ BUY';
+                const roleColor = isSell ? 'var(--accent-red)' : 'var(--accent-green)';
+                const typeLabel = trade.order_type === 'cross-sell' ? 'Cross-sell' 
+                    : trade.order_type === 'sell' ? 'Sell' 
+                    : trade.order_type === 'market' ? 'Market' 
+                    : trade.order_type === 'complement' ? 'Complement'
+                    : 'Limit';
+                
                 return `
-                    <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
+                    <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px; border-left: 3px solid ${roleColor};">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                             <div>
-                                <span class="${trade.side === 'higher' ? 'text-green' : 'text-red'}" style="font-weight: 600;">
-                                    ${trade.side === 'higher' ? '↑ HIGHER' : '↓ LOWER'}
+                                <span style="color: ${roleColor}; font-weight: 600;">${roleLabel}</span>
+                                <span class="${sideColor}" style="font-weight: 600; margin-left: 6px;">
+                                    ${sideIcon}
                                 </span>
                                 <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
-                                    ${trade.order_type === 'market' ? 'Market' : 'Limit'}
+                                    ${typeLabel}
                                 </span>
                             </div>
                             <div style="color: var(--text-dim); font-size: 0.85em;">
@@ -1354,13 +1367,9 @@ async function fetchUserTrades() {
                                 <div style="font-size: 0.85em; color: var(--text-secondary);">
                                     Round: <span style="color: var(--text-primary);">${roundName}</span>
                                 </div>
-                                ${trade.profit !== undefined ? `
-                                    <div style="font-size: 0.85em; color: var(--text-secondary);">
-                                        P&L: <span style="color: ${trade.profit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}; font-weight: 600;">
-                                            ${trade.profit >= 0 ? '+' : ''}${trade.profit.toFixed(2)} $MERC
-                                        </span>
-                                    </div>
-                                ` : ''}
+                                <div style="font-size: 0.85em; color: var(--text-secondary);">
+                                    Total: <span style="color: var(--accent-yellow); font-weight: 600;">${trade.total_cost.toFixed(0)} $MERC</span>
+                                </div>
                             </div>
                         </div>
                     </div>
