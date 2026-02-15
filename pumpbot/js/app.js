@@ -890,18 +890,20 @@ function renderOrderBook() {
     // Polymarket-style orderbook:
     // Asks = sell orders on current side + complement buy orders on opposite side
     // Bids = buy orders on current side
-    let complementAsks, directSells, bidsRaw;
+    let complementAsks, directSells, bidsRaw, oppositeSells;
     let asksSide, bidsSide;
     if (side === 'higher') {
         complementAsks = orderBookData.lower || [];   // LOWER buy orders = complement asks
         directSells = orderBookData.higherSells || []; // Direct HIGHER sell orders
         bidsRaw = orderBookData.higher || [];          // HIGHER buy orders = bids
+        oppositeSells = orderBookData.lowerSells || []; // LOWER sells mirror as HIGHER bids
         asksSide = 'lower';
         bidsSide = 'higher';
     } else {
         complementAsks = orderBookData.higher || [];   // HIGHER buy orders = complement asks
         directSells = orderBookData.lowerSells || [];  // Direct LOWER sell orders
         bidsRaw = orderBookData.lower || [];           // LOWER buy orders = bids
+        oppositeSells = orderBookData.higherSells || []; // HIGHER sells mirror as LOWER bids
         asksSide = 'higher';
         bidsSide = 'lower';
     }
@@ -932,12 +934,31 @@ function renderOrderBook() {
     }
     const asksData = Array.from(allAsksMap.values()).sort((a, b) => a.displayPrice - b.displayPrice);
     
-    // Bids keep original prices
-    const bidsData = bidsRaw.map(o => ({
+    // Bids = direct buy orders + opposite-side sells mirrored at (1-price)
+    const directBids = bidsRaw.map(o => ({
         ...o,
         displayPrice: Math.round(o.price * 100) / 100,
-        rawPrice: o.price
-    })).sort((a, b) => b.displayPrice - a.displayPrice); // highest bid first
+        rawPrice: o.price,
+        source: 'buy'
+    }));
+    const mirroredBids = oppositeSells.map(o => ({
+        ...o,
+        displayPrice: Math.round((1 - o.price) * 100) / 100,
+        rawPrice: o.price,
+        source: 'mirror-sell'
+    }));
+    // Merge and deduplicate bids by displayPrice
+    const allBidsMap = new Map();
+    for (const b of [...directBids, ...mirroredBids]) {
+        const key = b.displayPrice.toFixed(2);
+        if (allBidsMap.has(key)) {
+            const existing = allBidsMap.get(key);
+            existing.amount += b.amount;
+        } else {
+            allBidsMap.set(key, { ...b });
+        }
+    }
+    const bidsData = Array.from(allBidsMap.values()).sort((a, b) => b.displayPrice - a.displayPrice);
     // Reverse asks so highest is at top, lowest near spread
     const asksReversed = [...asksData].reverse();
     // Helper: check if this price level has user's order
@@ -987,7 +1008,9 @@ function renderOrderBook() {
         const maxAmount = Math.max(...bidsData.map(o => o.amount));
         lowerEl.innerHTML = bidsData.map(order => {
             const pct = (order.amount / maxAmount) * 100;
-            const isUser = isUserBuyOrder(bidsSide, order.rawPrice);
+            const isUser = order.source === 'mirror-sell' 
+                ? isUserSellOrder(asksSide, order.rawPrice)  // Mirrored sell: check opposite side sells
+                : isUserBuyOrder(bidsSide, order.rawPrice);  // Direct bid: check current side buys
             const userStyle = isUser ? 'border-left: 3px solid var(--accent-yellow); background: rgba(255, 204, 0, 0.08);' : '';
             const userMarker = isUser ? '<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 4px;" title="Your order">★</span>' : '';
             return `
@@ -1029,20 +1052,23 @@ function fillFromOrderBook(price, amount) {
 }
 window.fillFromOrderBook = fillFromOrderBook;
 function updatePriceStats() {
-    // Use orderbook mid-price when available, fallback to AMM
+    // Use orderbook best prices, including mirrored sells
     const ob = orderBookData;
     let higherPrice = ammPrices.higher;
     let lowerPrice = ammPrices.lower;
     
-    // Best HIGHER bid = highest buy price on higher side
+    // Direct buys on each side
     const higherBids = (ob.higher || []).map(o => parseFloat(o.price)).filter(p => p > 0);
     const lowerBids = (ob.lower || []).map(o => parseFloat(o.price)).filter(p => p > 0);
+    // Mirrored sells: LOWER sell @ X → HIGHER bid @ (1-X), HIGHER sell @ X → LOWER bid @ (1-X)
+    const higherFromLowerSells = (ob.lowerSells || []).map(o => 1 - parseFloat(o.price)).filter(p => p > 0);
+    const lowerFromHigherSells = (ob.higherSells || []).map(o => 1 - parseFloat(o.price)).filter(p => p > 0);
     
-    if (higherBids.length > 0 || lowerBids.length > 0) {
-        // Best bid on each side = the "price" for that outcome
-        if (higherBids.length > 0) higherPrice = Math.max(...higherBids);
-        if (lowerBids.length > 0) lowerPrice = Math.max(...lowerBids);
-    }
+    const allHigher = [...higherBids, ...higherFromLowerSells];
+    const allLower = [...lowerBids, ...lowerFromHigherSells];
+    
+    if (allHigher.length > 0) higherPrice = Math.max(...allHigher);
+    if (allLower.length > 0) lowerPrice = Math.max(...allLower);
     
     document.getElementById('statHigherPrice').textContent = higherPrice.toFixed(3);
     document.getElementById('statLowerPrice').textContent = lowerPrice.toFixed(3);
@@ -1089,7 +1115,7 @@ function renderTradeHistory() {
                     <div class="trade-time">${time}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div>${trade.amount.toFixed(0)} pcs</div>
+                    <div>${trade.amount.toFixed(0)} $MERC</div>
                     <div class="trade-time">@ ${trade.price.toFixed(3)}</div>
                 </div>
             </div>
