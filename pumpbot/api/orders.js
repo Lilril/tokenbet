@@ -587,6 +587,76 @@ async function getBuyOrdersForSeller(roundId, side, sellPrice, excludeUserId = n
 }
 
 // ============================================
+// CROSS-SELL MATCHING: Find opposite-side SELL orders for cross-sell resolution
+// e.g., selling HIGHER @ 0.80 → find LOWER sell orders where price <= 0.20
+// Both positions cancel out, $1.00 per pair split between sellers
+// ============================================
+async function getCrossSellOrders(roundId, mySide, myPrice, excludeUserId = null) {
+    try {
+        const oppositeSide = mySide === 'higher' ? 'lower' : 'higher';
+        const maxOppositePrice = myPrice !== null && myPrice !== undefined 
+            ? roundPrice(1 - myPrice) 
+            : null;
+        
+        let result;
+        if (maxOppositePrice !== null && excludeUserId) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND order_type = 'sell'
+                AND user_id != ${excludeUserId}
+                AND status = 'active' AND amount > filled
+                AND price <= ${maxOppositePrice}
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
+        } else if (maxOppositePrice !== null) {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND order_type = 'sell'
+                AND status = 'active' AND amount > filled
+                AND price <= ${maxOppositePrice}
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
+        } else if (excludeUserId) {
+            // Market sell: match any opposite sell order
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND order_type = 'sell'
+                AND user_id != ${excludeUserId}
+                AND status = 'active' AND amount > filled
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
+        } else {
+            result = await sql`
+                SELECT id, user_id, side, amount, filled, price
+                FROM limit_orders
+                WHERE round_id = ${roundId} AND side = ${oppositeSide}
+                AND order_type = 'sell'
+                AND status = 'active' AND amount > filled
+                ORDER BY price ASC, created_at ASC
+                LIMIT 50
+                FOR UPDATE SKIP LOCKED
+            `;
+        }
+        return result.rows;
+    } catch (error) {
+        console.error('❌ getCrossSellOrders error:', error);
+        throw error;
+    }
+}
+
+// ============================================
 // BUY MATCHING: Find same-side SELL orders for when a buyer comes in
 // e.g., buying HIGHER at 0.9 → find HIGHER sell orders at <= 0.9
 // ============================================
@@ -734,7 +804,7 @@ const db = {
     getLatestPoolSnapshot, savePoolSnapshot, getAggregatedOrderBook,
     placeLimitOrder, recordTrade, getRecentTrades, upsertUserPosition,
     getUserPositions, getUserOrders, getMatchableOrders, getBuyOrdersForSeller,
-    getSellOrdersForBuyer, updateOrderFilled, cancelOrder,
+    getSellOrdersForBuyer, getCrossSellOrders, updateOrderFilled, cancelOrder,
     checkRateLimit, logAction, sql
 };
 
@@ -1797,6 +1867,54 @@ if (action === 'orderbook') {
                         soldAmount += matchAmount;
                     }
                     
+                    // ============================================
+                    // CROSS-SELL MATCHING: opposite-side sell orders
+                    // e.g., selling HIGHER @ 0.80 → match LOWER sell orders where price <= 0.20
+                    // Both positions cancel out, $1.00 per pair split between sellers
+                    // ============================================
+                    if (soldAmount < sellAmount) {
+                        const crossOrders = await db.getCrossSellOrders(round.id, side, sellPrice, user.id);
+                        
+                        for (const crossOrder of crossOrders) {
+                            const remaining = sellAmount - soldAmount;
+                            if (remaining <= 0) break;
+                            
+                            if (crossOrder.user_id === user.id) continue;
+                            
+                            const orderRemaining = parseFloat(crossOrder.amount) - parseFloat(crossOrder.filled);
+                            const matchAmount = Math.min(remaining, orderRemaining);
+                            const crossPrice = roundPrice(parseFloat(crossOrder.price));
+                            
+                            // Resting order price determines match
+                            // I get: (1 - crossPrice), they get: crossPrice
+                            const myProceedsPerToken = roundPrice(1 - crossPrice);
+                            
+                            const fillResult = await db.updateOrderFilled(crossOrder.id, matchAmount);
+                            if (!fillResult) continue;
+                            
+                            const trade = await db.recordTrade({
+                                roundId: round.id,
+                                buyerId: crossOrder.user_id,  // counterparty
+                                sellerId: user.id,
+                                buyOrderId: crossOrder.id,
+                                sellOrderId: null,
+                                side,
+                                amount: matchAmount,
+                                price: myProceedsPerToken,
+                                totalCost: matchAmount * myProceedsPerToken,
+                                tradeType: 'cross-sell'
+                            });
+                            trades.push(trade);
+                            
+                            // Credit resting seller (opposite-side) their proceeds
+                            const crossProceeds = matchAmount * crossPrice;
+                            await creditBalance(crossOrder.user_id, crossProceeds, `Cross-sell filled: ${matchAmount} ${crossOrder.side}`);
+                            
+                            totalProceeds += matchAmount * myProceedsPerToken;
+                            soldAmount += matchAmount;
+                        }
+                    }
+                    
                     // If not fully filled, create a SELL limit order that sits in the orderbook
                     const unfilledSell = sellAmount - soldAmount;
                     if (unfilledSell > 0.001) {
@@ -1848,6 +1966,47 @@ if (action === 'orderbook') {
                         totalProceeds += proceeds;
                         soldAmount += matchAmount;
                     }
+                    
+                    // Cross-sell matching for market sell: opposite-side sell orders
+                    if (soldAmount < sellAmount) {
+                        const crossOrders = await db.getCrossSellOrders(round.id, side, null, user.id);
+                        
+                        for (const crossOrder of crossOrders) {
+                            const remaining = sellAmount - soldAmount;
+                            if (remaining <= 0) break;
+                            
+                            if (crossOrder.user_id === user.id) continue;
+                            
+                            const orderRemaining = parseFloat(crossOrder.amount) - parseFloat(crossOrder.filled);
+                            const matchAmount = Math.min(remaining, orderRemaining);
+                            const crossPrice = roundPrice(parseFloat(crossOrder.price));
+                            
+                            const myProceedsPerToken = roundPrice(1 - crossPrice);
+                            
+                            const fillResult = await db.updateOrderFilled(crossOrder.id, matchAmount);
+                            if (!fillResult) continue;
+                            
+                            const trade = await db.recordTrade({
+                                roundId: round.id,
+                                buyerId: crossOrder.user_id,
+                                sellerId: user.id,
+                                buyOrderId: crossOrder.id,
+                                sellOrderId: null,
+                                side,
+                                amount: matchAmount,
+                                price: myProceedsPerToken,
+                                totalCost: matchAmount * myProceedsPerToken,
+                                tradeType: 'cross-sell'
+                            });
+                            trades.push(trade);
+                            
+                            const crossProceeds = matchAmount * crossPrice;
+                            await creditBalance(crossOrder.user_id, crossProceeds, `Cross-sell filled: ${matchAmount} ${crossOrder.side}`);
+                            
+                            totalProceeds += matchAmount * myProceedsPerToken;
+                            soldAmount += matchAmount;
+                        }
+                    }
                 }
                 
                 if (soldAmount <= 0 && type === 'market') {
@@ -1859,7 +2018,7 @@ if (action === 'orderbook') {
                     `;
                     return res.status(400).json({ 
                         success: false, 
-                        error: 'No buyers in order book. Try placing a limit sell order.' 
+                        error: 'No matching orders found. Try placing a limit sell order.' 
                     });
                 }
                 
