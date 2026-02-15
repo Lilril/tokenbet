@@ -2482,27 +2482,26 @@ window.addEventListener('load', async () => {
 });
 
 // ============================================
-// UI HOVER SOUND — soft pip (WoT gold counter style)
+// UI HOVER SOUND — percussive tick (triangle osc + freq ramp)
 // ============================================
 (function() {
     let audioCtx = null;
     let lastPip = 0;
     const COOLDOWN = 70;
     
-    function ensureCtx() {
-        if (!audioCtx) {
-            try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
-            catch(e) { return false; }
-        }
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        return audioCtx.state === 'running';
+    function init() {
+        if (audioCtx) return;
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
+        catch(e) {}
     }
     
     function playPip() {
+        if (!audioCtx) return;
         const now = Date.now();
         if (now - lastPip < COOLDOWN) return;
-        if (!ensureCtx()) return;
         lastPip = now;
+        
+        if (audioCtx.state === 'suspended') audioCtx.resume();
         
         const t = audioCtx.currentTime;
         const osc = audioCtx.createOscillator();
@@ -2510,17 +2509,21 @@ window.addEventListener('load', async () => {
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         
-        // Tiny soft pip: 1400Hz, 15ms, very quiet
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1400, t);
+        // Square wave + sharp freq drop = dry mechanical "click"
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(2400, t);
+        osc.frequency.exponentialRampToValueAtTime(150, t + 0.05);
         
-        gain.gain.setValueAtTime(0.06, t);
-        gain.gain.setValueAtTime(0.06, t + 0.008);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+        // Instant attack, very fast decay
+        gain.gain.setValueAtTime(0.08, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
         
         osc.start(t);
-        osc.stop(t + 0.02);
+        osc.stop(t + 0.06);
     }
+    
+    document.addEventListener('click', init, { once: true });
+    document.addEventListener('mouseover', function() { init(); }, { once: true });
     
     let lastTarget = null;
     document.addEventListener('mouseover', function(e) {
