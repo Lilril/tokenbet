@@ -2480,3 +2480,49 @@ window.addEventListener('load', async () => {
     window.closeSettlementsModal = closeSettlementsModal;
     window.switchSettlementTab = switchSettlementTab;
 });
+
+// ============================================
+// METRONOME CLICK ON BUTTON HOVER (Web Audio API, no files needed)
+// ============================================
+(function() {
+    let audioCtx = null;
+    let lastClick = 0;
+    const COOLDOWN = 60; // ms between sounds to avoid spam
+    
+    function playClick() {
+        const now = Date.now();
+        if (now - lastClick < COOLDOWN) return;
+        lastClick = now;
+        
+        if (!audioCtx) {
+            try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
+            catch(e) { return; }
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        const t = audioCtx.currentTime;
+        
+        // Short percussive click — sounds like a metronome tick
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.frequency.setValueAtTime(800, t);
+        osc.frequency.exponentialRampToValueAtTime(400, t + 0.03);
+        osc.type = 'sine';
+        
+        gain.gain.setValueAtTime(0.15, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+        
+        osc.start(t);
+        osc.stop(t + 0.06);
+    }
+    
+    // Attach to all buttons via event delegation
+    document.addEventListener('mouseenter', function(e) {
+        if (e.target.matches('button, .wallet-option, .order-type-btn, .interval-tab, .order-book-row')) {
+            playClick();
+        }
+    }, true);
+})();
