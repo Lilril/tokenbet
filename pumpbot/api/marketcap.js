@@ -26,7 +26,7 @@ function saveMarketCap(marketCap, price, source) {
 let priceCache = {
   price: null,
   timestamp: 0,
-  duration: 8000 
+  duration: 3000 
 };
 
 export default async function handler(req, res) {
@@ -38,18 +38,14 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   
-  const tokenAddress = req.query.token || 'HytpLmXEFm9HUJypoQDdJ4mD9NnoqPbEiRKqxPhCpump';
+  const tokenAddress = req.query.token || 'ExAY9GdUsEJ162s9hR2PqiRCdKKB4aQ2d3VGjuutUqRP';
   const TOTAL_SUPPLY = 1000000000;
-  
-  
   
   const now = Date.now();
   if (priceCache.price && (now - priceCache.timestamp) < priceCache.duration) {
-    const marketCap = priceCache.price * TOTAL_SUPPLY;
-    
     return res.status(200).json({
       success: true,
-      marketCap: marketCap,
+      marketCap: priceCache.price * TOTAL_SUPPLY,
       price: priceCache.price,
       supply: TOTAL_SUPPLY,
       token: tokenAddress,
@@ -58,219 +54,90 @@ export default async function handler(req, res) {
     });
   }
   
-  
-  try {
-    
+  // Helper: fetch with timeout
+  async function fetchWithTimeout(url, headers, timeoutMs = 3000) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    
-    const response = await fetch(
-      `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
-      { 
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0'
-        }
-      }
-    );
-    
-    clearTimeout(timeout);
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.pairs && data.pairs.length > 0) {
-        
-        const bestPair = data.pairs.sort((a, b) => 
-          (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
-        )[0];
-        
-        const price = parseFloat(bestPair.priceUsd);
-        
-        if (price > 0 && !isNaN(price)) {
-          priceCache = { price, timestamp: now };
-          const marketCap = price * TOTAL_SUPPLY;
-          saveMarketCap(marketCap, price, 'auto');
-          
-          
-          return res.status(200).json({
-            success: true,
-            marketCap: marketCap,
-            price: price,
-            supply: TOTAL_SUPPLY,
-            token: tokenAddress,
-            pairAddress: bestPair.pairAddress,
-            liquidity: bestPair.liquidity?.usd || 0,
-            method: 'dexscreener',
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json', ...headers } });
+      clearTimeout(timer);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    } catch(e) {
+      clearTimeout(timer);
+      throw e;
     }
-    
-  } catch (error) {
   }
   
+  // All sources in parallel — first valid price wins
+  const sources = [
+    // DexScreener
+    fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`, { 'User-Agent': 'Mozilla/5.0' })
+      .then(data => {
+        const pair = data.pairs?.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+        const p = parseFloat(pair?.priceUsd);
+        if (p > 0) return { price: p, method: 'dexscreener' };
+        throw new Error('no price');
+      }),
+    // Jupiter
+    fetchWithTimeout(`https://api.jup.ag/price/v2?ids=${tokenAddress}`, {})
+      .then(data => {
+        const p = parseFloat(data.data?.[tokenAddress]?.price);
+        if (p > 0) return { price: p, method: 'jupiter' };
+        throw new Error('no price');
+      }),
+    // GeckoTerminal
+    fetchWithTimeout(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenAddress}`, {})
+      .then(data => {
+        const p = parseFloat(data.data?.attributes?.price_usd);
+        if (p > 0) return { price: p, method: 'geckoterminal' };
+        throw new Error('no price');
+      }),
+    // Birdeye
+    fetchWithTimeout(`https://public-api.birdeye.so/defi/price?address=${tokenAddress}`, {})
+      .then(data => {
+        const p = parseFloat(data.data?.value);
+        if (p > 0) return { price: p, method: 'birdeye' };
+        throw new Error('no price');
+      }),
+  ];
   
   try {
+    // Promise.any — resolves with first successful result
+    const result = await Promise.any(sources);
     
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    
-    const response = await fetch(
-      `https://api.jup.ag/price/v2?ids=${tokenAddress}`,
-      { 
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json' }
-      }
-    );
-    
-    clearTimeout(timeout);
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.data?.[tokenAddress]?.price) {
-        const price = parseFloat(data.data[tokenAddress].price);
-        
-        if (price > 0 && !isNaN(price)) {
-          priceCache = { price, timestamp: now };
-          const marketCap = price * TOTAL_SUPPLY;
-          saveMarketCap(marketCap, price, 'auto');
-          
-          
-          return res.status(200).json({
-            success: true,
-            marketCap: marketCap,
-            price: price,
-            supply: TOTAL_SUPPLY,
-            token: tokenAddress,
-            method: 'jupiter',
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
-    }
-    
-  } catch (error) {
-  }
-  
-  
-  try {
-    
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    
-    const response = await fetch(
-      `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenAddress}`,
-      { 
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json' }
-      }
-    );
-    
-    clearTimeout(timeout);
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.data?.attributes?.price_usd) {
-        const price = parseFloat(data.data.attributes.price_usd);
-        
-        if (price > 0 && !isNaN(price)) {
-          priceCache = { price, timestamp: now };
-          const marketCap = price * TOTAL_SUPPLY;
-          saveMarketCap(marketCap, price, 'auto');
-          
-          
-          return res.status(200).json({
-            success: true,
-            marketCap: marketCap,
-            price: price,
-            supply: TOTAL_SUPPLY,
-            token: tokenAddress,
-            method: 'geckoterminal',
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
-    }
-    
-  } catch (error) {
-  }
-  
-  
-  try {
-    
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    
-    const response = await fetch(
-      `https://public-api.birdeye.so/defi/price?address=${tokenAddress}`,
-      { 
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json' }
-      }
-    );
-    
-    clearTimeout(timeout);
-    
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.data?.value) {
-        const price = parseFloat(data.data.value);
-        
-        if (price > 0 && !isNaN(price)) {
-          priceCache = { price, timestamp: now };
-          const marketCap = price * TOTAL_SUPPLY;
-          saveMarketCap(marketCap, price, 'auto');
-          
-          
-          return res.status(200).json({
-            success: true,
-            marketCap: marketCap,
-            price: price,
-            supply: TOTAL_SUPPLY,
-            token: tokenAddress,
-            method: 'birdeye',
-            timestamp: new Date().toISOString()
-          });
-        }
-      }
-    }
-    
-  } catch (error) {
-  }
-  
-  
-  if (priceCache.price) {
-    const age = Math.floor((now - priceCache.timestamp) / 1000);
-    const marketCap = priceCache.price * TOTAL_SUPPLY;
-    
+    priceCache = { price: result.price, timestamp: Date.now(), duration: 3000 };
+    const marketCap = result.price * TOTAL_SUPPLY;
+    saveMarketCap(marketCap, result.price, result.method);
     
     return res.status(200).json({
       success: true,
-      marketCap: marketCap,
-      price: priceCache.price,
+      marketCap,
+      price: result.price,
       supply: TOTAL_SUPPLY,
       token: tokenAddress,
-      method: 'stale-cache',
-      cacheAge: age + 's',
-      warning: 'Using cached data, all APIs temporarily unavailable',
+      method: result.method,
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    // All failed — use stale cache
+    if (priceCache.price) {
+      return res.status(200).json({
+        success: true,
+        marketCap: priceCache.price * TOTAL_SUPPLY,
+        price: priceCache.price,
+        supply: TOTAL_SUPPLY,
+        token: tokenAddress,
+        method: 'stale-cache',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    return res.status(503).json({
+      success: false,
+      error: 'All price sources unavailable',
+      token: tokenAddress,
       timestamp: new Date().toISOString()
     });
   }
-  
-  
-  console.error('❌ All methods failed, no cache available');
-  
-  return res.status(503).json({
-    success: false,
-    error: 'Unable to fetch price from any source',
-    token: tokenAddress,
-    timestamp: new Date().toISOString()
-  });
 }
-
