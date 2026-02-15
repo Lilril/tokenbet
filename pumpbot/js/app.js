@@ -2521,7 +2521,7 @@ window.addEventListener('load', async () => {
         noiseFilter.type = 'highpass';
         noiseFilter.frequency.setValueAtTime(5000, t);
         const noiseGain = audioCtx.createGain();
-        noiseGain.gain.setValueAtTime(0.07, t);
+        noiseGain.gain.setValueAtTime(0.042, t); // 40% quieter
         noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
         noise.connect(noiseFilter);
         noiseFilter.connect(noiseGain);
@@ -2535,7 +2535,7 @@ window.addEventListener('load', async () => {
         oscFilter.frequency.setValueAtTime(8000, t);
         oscFilter.Q.value = 15;
         const oscGain = audioCtx.createGain();
-        oscGain.gain.setValueAtTime(0.03, t);
+        oscGain.gain.setValueAtTime(0.018, t); // 40% quieter
         oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
         osc.connect(oscFilter);
         oscFilter.connect(oscGain);
@@ -2550,16 +2550,18 @@ window.addEventListener('load', async () => {
     document.addEventListener('click', init, { once: true });
     document.addEventListener('mouseover', function() { init(); }, { once: true });
     
+    const CLICK_SELECTOR = 'button, a, [onclick], .wallet-option, .order-type-btn, .interval-tab, .order-book-row, .round-tab, .settlement-tab';
+    
     let lastTarget = null;
     document.addEventListener('mouseover', function(e) {
-        const btn = e.target.closest('button, .wallet-option, .order-type-btn, .interval-tab, .order-book-row');
+        const btn = e.target.closest(CLICK_SELECTOR);
         if (btn && btn !== lastTarget) {
             lastTarget = btn;
             playPip();
         }
     });
     document.addEventListener('mouseout', function(e) {
-        if (!e.target.closest('button, .wallet-option, .order-type-btn, .interval-tab, .order-book-row')) {
+        if (!e.target.closest(CLICK_SELECTOR)) {
             lastTarget = null;
         }
     });
