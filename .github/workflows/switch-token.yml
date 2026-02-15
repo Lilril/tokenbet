@@ -29,58 +29,111 @@ jobs:
           CURRENT=$(grep -oP "const TOKEN_ADDRESS = '\K[^']+" pumpbot/js/app.js || echo "")
           CURRENT_PUMP=$(grep -oP 'id="buyMercLink"[^>]*href="\K[^"]+' pumpbot/index.html || echo "")
           
+          echo "========================================"
           echo "Current token: $CURRENT"
           echo "New token:     $NEW"
+          echo "========================================"
           
-          if [ -n "$CURRENT" ] && [ "$CURRENT" != "$NEW" ]; then
-            echo "Replacing $CURRENT with $NEW in all files..."
+          if [ -z "$CURRENT" ]; then
+            echo "WARNING: Could not extract current token from app.js"
+            echo "Content of app.js (first 30 lines):"
+            head -n 30 pumpbot/js/app.js
+            exit 1
+          fi
+          
+          if [ "$CURRENT" = "$NEW" ]; then
+            echo "No replacement needed (tokens are the same)"
+          else
+            echo "Starting token replacement..."
+            echo ""
             
             FILES=("pumpbot/js/app.js" "pumpbot/index.html" "pumpbot/api/orders.js" "pumpbot/api/balance.js" "pumpbot/api/marketcap.js" "pumpbot/api/cron/settle-rounds.js")
             TOTAL=0
             
             for FILE in "${FILES[@]}"; do
-              if [ -f "$FILE" ]; then
-                COUNT=$(grep -c "$CURRENT" "$FILE" 2>/dev/null || echo "0")
-                if [ "$COUNT" -gt 0 ]; then
-                  sed -i "s|$CURRENT|$NEW|g" "$FILE"
-                  echo "$FILE -- $COUNT replacements"
+              echo "Processing: $FILE"
+              
+              if [ ! -f "$FILE" ]; then
+                echo "  [WARNING] File not found, skipping"
+                continue
+              fi
+              
+              # Проверяем наличие токена в файле
+              if grep -qF "$CURRENT" "$FILE" 2>/dev/null; then
+                COUNT=$(grep -oF "$CURRENT" "$FILE" 2>/dev/null | wc -l)
+                echo "  [OK] Found $COUNT occurrence(s) of current token"
+                
+                # Показываем контекст для отладки (особенно для settle-rounds.js)
+                if [[ "$FILE" == *"settle-rounds.js"* ]]; then
+                  echo "  [DEBUG] Context in settle-rounds.js:"
+                  grep -n -C 2 "$CURRENT" "$FILE" || echo "  (grep context failed)"
+                fi
+                
+                # Используем perl для более надежной замены с экранированием
+                perl -i -pe "s/\Q$CURRENT\E/$NEW/g" "$FILE"
+                
+                # Проверяем что замена прошла успешно
+                if grep -qF "$NEW" "$FILE" 2>/dev/null; then
+                  echo "  [SUCCESS] Successfully replaced $COUNT occurrence(s)"
                   TOTAL=$((TOTAL + COUNT))
+                else
+                  echo "  [ERROR] Replacement failed!"
+                fi
+              else
+                echo "  [INFO] Current token not found in this file"
+                
+                # Дополнительная отладка для settle-rounds.js
+                if [[ "$FILE" == *"settle-rounds.js"* ]]; then
+                  echo "  [DEBUG] First 50 lines of settle-rounds.js:"
+                  head -n 50 "$FILE"
+                  echo "  [DEBUG] Searching for any address-like strings:"
+                  grep -E "[A-Za-z0-9]{32,44}" "$FILE" || echo "  (no matches found)"
                 fi
               fi
+              echo ""
             done
             
-            echo "Total: $TOTAL replacements"
-          else
-            echo "No replacement needed (tokens are the same or current token is empty)"
+            echo "========================================"
+            echo "Total replacements: $TOTAL"
+            echo "========================================"
+            
+            if [ "$TOTAL" -eq 0 ]; then
+              echo "[WARNING] No replacements were made!"
+              echo "This might indicate a problem with token detection."
+            fi
           fi
           
-          # Обновляем pump_url - используем perl для безопасности
+          echo ""
+          echo "Processing pump URL..."
           if [ -n "$PUMP" ] && [ "$PUMP" != "null" ] && [ "$PUMP" != "" ]; then
             if [ -n "$CURRENT_PUMP" ] && [ "$CURRENT_PUMP" != "$PUMP" ]; then
               perl -i -pe "s#\Q$CURRENT_PUMP\E#$PUMP#g" pumpbot/index.html
-              echo "Pump link updated from $CURRENT_PUMP to $PUMP"
+              echo "[SUCCESS] Pump link updated from $CURRENT_PUMP to $PUMP"
             else
-              echo "Pump URL already up to date or empty"
+              echo "[INFO] Pump URL already up to date or empty"
             fi
           else
-            echo "No pump URL to update (empty or null)"
+            echo "[INFO] No pump URL to update (empty or null)"
           fi
           
-          # Обновляем PLATFORM_PAUSED - заменяем всю строку 3
+          # Обновляем PLATFORM_PAUSED
+          echo ""
+          echo "Updating PLATFORM_PAUSED check..."
           sed -i "3s/.*/const PLATFORM_PAUSED = !TOKEN_ADDRESS || TOKEN_ADDRESS === 'AWAITING_TOKEN' || TOKEN_ADDRESS.length < 30;/" pumpbot/js/app.js
-          echo "PLATFORM_PAUSED check updated"
+          echo "[SUCCESS] PLATFORM_PAUSED check updated"
           
       - name: Full database wipe
         env:
           POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
         run: |
           if [ -z "$POSTGRES_URL" ]; then
-            echo "POSTGRES_URL not set, skip DB"
+            echo "[INFO] POSTGRES_URL not set, skipping database wipe"
             exit 0
           fi
+          
           echo "Wiping database..."
           psql --dbname="$POSTGRES_URL" -c "DELETE FROM user_settlements; DELETE FROM trades; DELETE FROM limit_orders; DELETE FROM user_positions; DELETE FROM pool_snapshots; DELETE FROM rounds; DELETE FROM balance_transactions; DELETE FROM deposits; DELETE FROM withdrawals; DELETE FROM audit_log; DELETE FROM rate_limits; DELETE FROM market_cap_history; UPDATE user_balances SET available=0, locked=0, total_deposited=0, total_withdrawn=0, updated_at=NOW();"
-          echo "Database wiped"
+          echo "[SUCCESS] Database wiped successfully"
 
       - name: Update Vercel env TOKEN_MINT
         env:
@@ -89,27 +142,29 @@ jobs:
           NEW_TOKEN: ${{ steps.cfg.outputs.token }}
         run: |
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
-            echo "Vercel secrets not set, skip"
+            echo "[INFO] Vercel secrets not set, skipping"
             exit 0
           fi
+          
           echo "Updating TOKEN_MINT in Vercel..."
           ENV_ID=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
             "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env" \
             | jq -r '.envs[] | select(.key=="TOKEN_MINT") | .id')
+          
           if [ -n "$ENV_ID" ] && [ "$ENV_ID" != "null" ]; then
             curl -s -X PATCH \
               -H "Authorization: Bearer $VERCEL_TOKEN" \
               -H "Content-Type: application/json" \
               -d "{\"value\":\"$NEW_TOKEN\"}" \
               "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env/$ENV_ID"
-            echo "TOKEN_MINT updated"
+            echo "[SUCCESS] TOKEN_MINT updated"
           else
             curl -s -X POST \
               -H "Authorization: Bearer $VERCEL_TOKEN" \
               -H "Content-Type: application/json" \
               -d "{\"key\":\"TOKEN_MINT\",\"value\":\"$NEW_TOKEN\",\"type\":\"encrypted\",\"target\":[\"production\",\"preview\"]}" \
               "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env"
-            echo "TOKEN_MINT created"
+            echo "[SUCCESS] TOKEN_MINT created"
           fi
 
       - name: Commit and push
@@ -117,18 +172,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet && echo "No changes" && exit 0
+          
+          if git diff --cached --quiet; then
+            echo "[INFO] No changes to commit"
+            exit 0
+          fi
+          
           git commit -m "Launch ${{ steps.cfg.outputs.token }}"
           git push
+          echo "[SUCCESS] Changes committed and pushed"
 
       - name: Trigger Vercel Deploy Hook
         env:
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: |
           if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
-            echo "WARNING: VERCEL_DEPLOY_HOOK_URL not set, skipping redeploy"
-            echo "INFO: To enable auto-redeploy:"
-            echo "  1. Go to Vercel Dashboard -> Settings -> Git"
+            echo "[WARNING] VERCEL_DEPLOY_HOOK_URL not set, skipping redeploy"
+            echo ""
+            echo "[INFO] To enable auto-redeploy:"
+            echo "  1. Go to Vercel Dashboard → Settings → Git"
             echo "  2. Create a Deploy Hook for the 'main' branch"
             echo "  3. Add the URL as VERCEL_DEPLOY_HOOK_URL secret in GitHub"
             exit 0
@@ -136,14 +198,16 @@ jobs:
           
           echo "Triggering Vercel deployment via Deploy Hook..."
           
-          RESPONSE=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK_URL")
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$VERCEL_DEPLOY_HOOK_URL")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
           
-          if echo "$RESPONSE" | grep -q '"job"'; then
-            echo "SUCCESS: Vercel deployment triggered successfully"
-            echo "Response: $RESPONSE"
+          if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
+            echo "[SUCCESS] Vercel deployment triggered successfully"
+            echo "Response: $BODY"
           else
-            echo "ERROR: Failed to trigger deployment"
-            echo "Response: $RESPONSE"
+            echo "[ERROR] Failed to trigger deployment (HTTP $HTTP_CODE)"
+            echo "Response: $BODY"
             exit 1
           fi
           
