@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
   
-  const tokenAddress = req.query.token || 'AWAITING_TOKEN';
+  const tokenAddress = req.query.token || 'Gr17f6egxCETWUVZYmGmXsitrGZspDY2sqArVdQ1pump';
   const TOTAL_SUPPLY = 1000000000;
   
   const now = Date.now();
