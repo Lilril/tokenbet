@@ -1630,14 +1630,11 @@ if (action === 'orderbook') {
                         t.price,
                         t.total_cost,
                         t.trade_type,
+                        t.buyer_id,
+                        t.seller_id,
                         t.created_at as timestamp,
                         r.interval_minutes,
-                        r.id as round_id,
-                        CASE 
-                            WHEN t.buyer_id = ${user.id} THEN t.side
-                            WHEN t.trade_type = 'sell' THEN t.side
-                            ELSE (CASE WHEN t.side = 'higher' THEN 'lower' ELSE 'higher' END)
-                        END as user_side
+                        r.id as round_id
                     FROM trades t
                     JOIN rounds r ON t.round_id = r.id
                     WHERE (t.buyer_id = ${user.id} OR t.seller_id = ${user.id})
@@ -1648,17 +1645,38 @@ if (action === 'orderbook') {
                 
                 return res.status(200).json({
                     success: true,
-                    trades: trades.rows.map(t => ({
-                        id: t.id,
-                        side: t.user_side,
-                        amount: parseFloat(t.amount),
-                        price: parseFloat(t.price),
-                        total_cost: parseFloat(t.total_cost),
-                        order_type: t.trade_type,
-                        timestamp: t.timestamp,
-                        interval_minutes: t.interval_minutes,
-                        round_id: t.round_id
-                    }))
+                    trades: trades.rows.map(t => {
+                        const isBuyer = t.buyer_id === user.id;
+                        const isSeller = t.seller_id === user.id;
+                        // Determine user's role in this trade
+                        let role = 'buy';
+                        if (t.trade_type === 'sell' && isSeller) role = 'sell';
+                        else if (t.trade_type === 'cross-sell' && isSeller) role = 'sell';
+                        else if (t.trade_type === 'sell' && isBuyer) role = 'buy';
+                        else if (isBuyer) role = 'buy';
+                        else if (isSeller) role = 'sell';
+                        
+                        // For sell trades: P&L = proceeds - cost (price is what seller received)
+                        // We don't have cost_basis in trade record, so show proceeds
+                        const userSide = (role === 'buy') 
+                            ? (t.trade_type === 'complement' && isBuyer 
+                                ? (t.side === 'higher' ? 'lower' : 'higher') 
+                                : t.side)
+                            : t.side;
+                        
+                        return {
+                            id: t.id,
+                            side: userSide,
+                            amount: parseFloat(t.amount),
+                            price: parseFloat(t.price),
+                            total_cost: parseFloat(t.total_cost),
+                            order_type: t.trade_type,
+                            role,
+                            timestamp: t.timestamp,
+                            interval_minutes: t.interval_minutes,
+                            round_id: t.round_id
+                        };
+                    })
                 });
             }
             
