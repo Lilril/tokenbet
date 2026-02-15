@@ -127,7 +127,7 @@ body::before {
 
 @media (max-width: 768px) {
     .floating-character { display: none; }
-    .header-character { width: 120px; left: 10px; opacity: 0.15 !important; }
+    .header-character { display: none; }
 }
 
 /* ============================================
