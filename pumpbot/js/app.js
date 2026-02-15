@@ -2482,21 +2482,30 @@ window.addEventListener('load', async () => {
 });
 
 // ============================================
-// UI HOVER SOUND — percussive tick (triangle osc + freq ramp)
+// UI HOVER SOUND — metallic scratch click
 // ============================================
 (function() {
     let audioCtx = null;
+    let noiseBuffer = null;
     let lastPip = 0;
     const COOLDOWN = 70;
     
     function init() {
         if (audioCtx) return;
         try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
-        catch(e) {}
+        catch(e) { return; }
+        
+        // Pre-generate white noise buffer (0.1s)
+        const bufferSize = audioCtx.sampleRate * 0.1;
+        noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
     }
     
     function playPip() {
-        if (!audioCtx) return;
+        if (!audioCtx || !noiseBuffer) return;
         const now = Date.now();
         if (now - lastPip < COOLDOWN) return;
         lastPip = now;
@@ -2504,22 +2513,38 @@ window.addEventListener('load', async () => {
         if (audioCtx.state === 'suspended') audioCtx.resume();
         
         const t = audioCtx.currentTime;
+        
+        // Channel 1: White noise (scratch/friction)
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = noiseBuffer;
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'highpass';
+        noiseFilter.frequency.setValueAtTime(5000, t);
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime(0.07, t);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+        noise.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(audioCtx.destination);
+        
+        // Channel 2: Metallic ring (sawtooth + bandpass)
         const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
+        osc.type = 'sawtooth';
+        const oscFilter = audioCtx.createBiquadFilter();
+        oscFilter.type = 'bandpass';
+        oscFilter.frequency.setValueAtTime(8000, t);
+        oscFilter.Q.value = 15;
+        const oscGain = audioCtx.createGain();
+        oscGain.gain.setValueAtTime(0.03, t);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        osc.connect(oscFilter);
+        oscFilter.connect(oscGain);
+        oscGain.connect(audioCtx.destination);
         
-        // Square wave + sharp freq drop = dry mechanical "click"
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(2400, t);
-        osc.frequency.exponentialRampToValueAtTime(150, t + 0.05);
-        
-        // Instant attack, very fast decay
-        gain.gain.setValueAtTime(0.08, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-        
+        noise.start(t);
         osc.start(t);
-        osc.stop(t + 0.06);
+        noise.stop(t + 0.05);
+        osc.stop(t + 0.05);
     }
     
     document.addEventListener('click', init, { once: true });
