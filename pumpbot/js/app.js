@@ -2482,47 +2482,57 @@ window.addEventListener('load', async () => {
 });
 
 // ============================================
-// METRONOME CLICK ON BUTTON HOVER (Web Audio API, no files needed)
+// UI HOVER SOUND — soft pip (WoT gold counter style)
 // ============================================
 (function() {
     let audioCtx = null;
-    let lastClick = 0;
-    const COOLDOWN = 60; // ms between sounds to avoid spam
+    let lastPip = 0;
+    const COOLDOWN = 70;
     
-    function playClick() {
-        const now = Date.now();
-        if (now - lastClick < COOLDOWN) return;
-        lastClick = now;
-        
+    function ensureCtx() {
         if (!audioCtx) {
             try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
-            catch(e) { return; }
+            catch(e) { return false; }
         }
         if (audioCtx.state === 'suspended') audioCtx.resume();
+        return audioCtx.state === 'running';
+    }
+    
+    function playPip() {
+        const now = Date.now();
+        if (now - lastPip < COOLDOWN) return;
+        if (!ensureCtx()) return;
+        lastPip = now;
         
         const t = audioCtx.currentTime;
-        
-        // Short percussive click — sounds like a metronome tick
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         
-        osc.frequency.setValueAtTime(800, t);
-        osc.frequency.exponentialRampToValueAtTime(400, t + 0.03);
+        // Tiny soft pip: 1400Hz, 15ms, very quiet
         osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, t);
         
-        gain.gain.setValueAtTime(0.15, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+        gain.gain.setValueAtTime(0.06, t);
+        gain.gain.setValueAtTime(0.06, t + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
         
         osc.start(t);
-        osc.stop(t + 0.06);
+        osc.stop(t + 0.02);
     }
     
-    // Attach to all buttons via event delegation
-    document.addEventListener('mouseenter', function(e) {
-        if (e.target.matches('button, .wallet-option, .order-type-btn, .interval-tab, .order-book-row')) {
-            playClick();
+    let lastTarget = null;
+    document.addEventListener('mouseover', function(e) {
+        const btn = e.target.closest('button, .wallet-option, .order-type-btn, .interval-tab, .order-book-row');
+        if (btn && btn !== lastTarget) {
+            lastTarget = btn;
+            playPip();
         }
-    }, true);
+    });
+    document.addEventListener('mouseout', function(e) {
+        if (!e.target.closest('button, .wallet-option, .order-type-btn, .interval-tab, .order-book-row')) {
+            lastTarget = null;
+        }
+    });
 })();
