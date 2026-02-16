@@ -1664,12 +1664,22 @@ if (action === 'orderbook') {
                                 : t.side)
                             : t.side;
                         
+                        // FIX: For cross-sell, buyer sees inverted price
+                        let displayPrice = parseFloat(t.price);
+                        let displayTotalCost = parseFloat(t.total_cost);
+                        
+                        if (t.trade_type === 'cross-sell' && isBuyer) {
+                            // Buyer in cross-sell pays (1 - seller_price)
+                            displayPrice = 1 - parseFloat(t.price);
+                            displayTotalCost = parseFloat(t.amount) * displayPrice;
+                        }
+                        
                         return {
                             id: t.id,
                             side: userSide,
                             amount: parseFloat(t.amount),
-                            price: parseFloat(t.price),
-                            total_cost: parseFloat(t.total_cost),
+                            price: displayPrice,
+                            total_cost: displayTotalCost,
                             order_type: t.trade_type,
                             role,
                             timestamp: t.timestamp,
