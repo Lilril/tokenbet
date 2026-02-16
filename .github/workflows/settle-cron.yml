@@ -17,7 +17,7 @@ jobs:
           echo "Time: $(date -u)"
           
           response=$(curl -s -w "\n%{http_code}" -X GET \
-            https://tokenbet.vercel.app/api/cron/settle-rounds \
+            https://mercurome.vercel.app/api/cron/settle-rounds \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json")
           
