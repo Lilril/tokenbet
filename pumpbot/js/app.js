@@ -177,7 +177,7 @@ async function connectWallet(walletType) {
         const walletAddress = pubKey.toString();
         
         // Sign authentication message
-        const message = `Login to PumpBot: ${Date.now()}`;
+        const message = `Login to Mercurome: ${Date.now()}`;
         const encodedMessage = new TextEncoder().encode(message);
         let signatureBytes;
         try {
@@ -2601,3 +2601,4 @@ window.addEventListener('load', async () => {
         }
     });
 })();
+
