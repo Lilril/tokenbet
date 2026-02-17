@@ -1648,6 +1648,7 @@ if (action === 'orderbook') {
                     trades: trades.rows.map(t => {
                         const isBuyer = t.buyer_id === user.id;
                         const isSeller = t.seller_id === user.id;
+
                         // Determine user's role in this trade
                         let role = 'buy';
                         if (t.trade_type === 'sell' && isSeller) role = 'sell';
@@ -1655,25 +1656,25 @@ if (action === 'orderbook') {
                         else if (t.trade_type === 'sell' && isBuyer) role = 'buy';
                         else if (isBuyer) role = 'buy';
                         else if (isSeller) role = 'sell';
-                        
-                        // For sell trades: P&L = proceeds - cost (price is what seller received)
-                        // We don't have cost_basis in trade record, so show proceeds
-                        const userSide = (role === 'buy') 
-                            ? (t.trade_type === 'complement' && isBuyer 
-                                ? (t.side === 'higher' ? 'lower' : 'higher') 
+
+                        // Determine displayed side
+                        const userSide = (role === 'buy')
+                            ? (t.trade_type === 'complement' && isBuyer
+                                ? (t.side === 'higher' ? 'lower' : 'higher')
                                 : t.side)
                             : t.side;
-                        
-                        // FIX: For cross-sell, buyer sees inverted price
+
+                        // price in DB is always stored from the perspective of buyer_id
+                        // seller_id always gets (1 - price)
                         let displayPrice = parseFloat(t.price);
                         let displayTotalCost = parseFloat(t.total_cost);
-                        
-                        if (t.trade_type === 'cross-sell' && isBuyer) {
-                            // Buyer in cross-sell pays (1 - seller_price)
-                            displayPrice = 1 - parseFloat(t.price);
+
+                        if (isSeller) {
+                            // Seller always sees inverted price
+                            displayPrice = Math.round((1 - parseFloat(t.price)) * 1000) / 1000;
                             displayTotalCost = parseFloat(t.amount) * displayPrice;
                         }
-                        
+
                         return {
                             id: t.id,
                             side: userSide,
