@@ -91,7 +91,7 @@ const WALLETS = {
     },
     solflare: {
         name: 'Solflare',
-        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjEyOCIgaGVpZ2h0PSIxMjgiIHJ4PSIyNiIgZmlsbD0iIzEyMTIxQiIvPgogIDxwYXRoIGQ9Ik02NCAyMEw4MiA1NEw2NCA3NEw0NiA1NEwzNiA3NEw2NCAxMTJMOTIgNzRMODIgNTRMNjQgMjBaIiBmaWxsPSJ1cmwoI3NmKSIvPgogIDxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0ic2YiIHgxPSI2NCIgeTE9IjIwIiB4Mj0iNjQiIHkyPSIxMTIiPjxzdG9wIHN0b3AtY29sb3I9IiNGQ0M1M0EiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGQzZDMkMiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz4KPC9zdmc+Cg==',
+        icon: 'https://lh3.googleusercontent.com/zM_6iwPw_NFTLt3GJL2uumACv0Wj4TZS0RS7MZt1zkV9aIsJN71ekVWQc10mrMP4WhJks1512Qioiea8e9RN9FguQw=s120',
         color: '#FC6C2C',
         get: () => window.solflare || (window.solana?.isSolflare ? window.solana : null)
     },
@@ -2601,4 +2601,5 @@ window.addEventListener('load', async () => {
         }
     });
 })();
+
 
