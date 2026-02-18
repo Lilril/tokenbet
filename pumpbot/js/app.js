@@ -1267,24 +1267,32 @@ function updateMyOrdersModalList() {
     const currentInterval = getCurrentInterval();
 
     // Aggregate orders with same side + price + order_type into one display row
+    console.log('🔍 userOrders raw:', JSON.stringify(userOrders));
     const aggregatedMap = new Map();
     for (const order of userOrders) {
-        const key = `${order.side}|${order.price}|${order.order_type || 'buy'}`;
+        const key = `${order.side}|${parseFloat(order.price).toFixed(3)}|${order.order_type || 'buy'}`;
+        const filledQty = order.filled || 0;
         if (aggregatedMap.has(key)) {
             const agg = aggregatedMap.get(key);
             agg.amount += order.amount;
-            agg.filled += (order.filled || 0);
+            agg.filled += filledQty;
+            agg.totalFilledCost += filledQty * parseFloat(order.price);
             agg.ids.push(order.id);
         } else {
             aggregatedMap.set(key, {
                 ...order,
                 amount: order.amount,
-                filled: order.filled || 0,
+                filled: filledQty,
+                totalFilledCost: filledQty * parseFloat(order.price),
                 ids: [order.id]
             });
         }
     }
-    const displayOrders = Array.from(aggregatedMap.values());
+    // Compute avgFillPrice for each aggregated order
+    const displayOrders = Array.from(aggregatedMap.values()).map(agg => ({
+        ...agg,
+        avgFillPrice: agg.filled > 0 ? agg.totalFilledCost / agg.filled : null
+    }));
 
     list.innerHTML = displayOrders.map(order => {
         let roundName = 'undefined';
@@ -1330,7 +1338,8 @@ function updateMyOrdersModalList() {
                             ${showRemaining ? `<span style="color: var(--accent-yellow); font-size: 0.75em; margin-left: 5px;">(${((filled / order.amount) * 100).toFixed(1)}% filled)</span>` : ''}
                         </div>
                         <div style="font-size: 0.85em; color: var(--text-secondary);">
-                            Price: <span style="color: var(--accent-yellow); font-weight: 600;">${order.price.toFixed(3)}</span>
+                            Limit: <span style="color: var(--accent-yellow); font-weight: 600;">${order.price.toFixed(3)}</span>
+                            ${order.avgFillPrice ? `&nbsp;&nbsp;Avg fill: <span style="color: var(--accent-green); font-weight: 600;">${order.avgFillPrice.toFixed(3)}</span>` : ''}
                         </div>
                     </div>
                     <button 
@@ -1365,7 +1374,30 @@ async function fetchUserTrades() {
         const response = await fetch(`${API_BASE}/api/orders?action=user-trades&wallet=${wallet}&intervalMinutes=${intervalMinutes}`);
         const data = await response.json();
         if (data.success && data.trades && data.trades.length > 0) {
-            list.innerHTML = data.trades.map(trade => {
+            // Aggregate trades by (side + round_id + role) to show avg fill price
+            const tradeMap = new Map();
+            for (const trade of data.trades) {
+                const key = `${trade.side}|${trade.round_id}|${trade.role}`;
+                if (tradeMap.has(key)) {
+                    const agg = tradeMap.get(key);
+                    agg.totalCost += trade.total_cost;
+                    agg.amount += trade.amount;
+                    agg.avgPrice = agg.totalCost / agg.amount;
+                    // keep earliest timestamp for display
+                    if (new Date(trade.timestamp) < new Date(agg.timestamp)) {
+                        agg.timestamp = trade.timestamp;
+                    }
+                } else {
+                    tradeMap.set(key, {
+                        ...trade,
+                        totalCost: trade.total_cost,
+                        avgPrice: trade.price
+                    });
+                }
+            }
+            const aggregatedTrades = Array.from(tradeMap.values());
+
+            list.innerHTML = aggregatedTrades.map(trade => {
                 const timestamp = new Date(trade.timestamp).toLocaleString('en-US', {
                     day: '2-digit',
                     month: '2-digit',
@@ -1382,11 +1414,6 @@ async function fetchUserTrades() {
                 const sideIcon = trade.side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
                 const roleLabel = isSell ? '⤵ SELL' : '⤴ BUY';
                 const roleColor = isSell ? 'var(--accent-red)' : 'var(--accent-green)';
-                const typeLabel = trade.order_type === 'cross-sell' ? 'Cross-sell' 
-                    : trade.order_type === 'sell' ? 'Sell' 
-                    : trade.order_type === 'market' ? 'Market' 
-                    : trade.order_type === 'complement' ? 'Complement'
-                    : 'Limit';
                 
                 return `
                     <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px; border-left: 3px solid ${roleColor};">
@@ -1396,29 +1423,23 @@ async function fetchUserTrades() {
                                 <span class="${sideColor}" style="font-weight: 600; margin-left: 6px;">
                                     ${sideIcon}
                                 </span>
-                                <span style="color: var(--text-dim); margin-left: 10px; font-size: 0.85em;">
-                                    ${typeLabel}
-                                </span>
                             </div>
                             <div style="color: var(--text-dim); font-size: 0.85em;">
-                                ${timestamp}
+                                ${timestamp} &nbsp;Round ${roundName}
                             </div>
                         </div>
                         <div style="display: flex; justify-content: space-between;">
                             <div>
                                 <div style="font-size: 0.85em; color: var(--text-secondary);">
-                                    Qty: <span style="color: var(--text-primary); font-weight: 600;">${trade.amount} $MERC</span>
+                                    Qty: <span style="color: var(--text-primary); font-weight: 600;">${trade.amount.toFixed(0)} $MERC</span>
                                 </div>
                                 <div style="font-size: 0.85em; color: var(--text-secondary);">
-                                    Price: <span style="color: var(--accent-yellow); font-weight: 600;">${trade.price.toFixed(3)}</span>
+                                    Avg price: <span style="color: var(--accent-yellow); font-weight: 600;">${trade.avgPrice.toFixed(3)}</span>
                                 </div>
                             </div>
                             <div style="text-align: right;">
                                 <div style="font-size: 0.85em; color: var(--text-secondary);">
-                                    Round: <span style="color: var(--text-primary);">${roundName}</span>
-                                </div>
-                                <div style="font-size: 0.85em; color: var(--text-secondary);">
-                                    Total: <span style="color: var(--accent-yellow); font-weight: 600;">${trade.total_cost.toFixed(0)} $MERC</span>
+                                    Total: <span style="color: var(--accent-yellow); font-weight: 600;">${trade.totalCost.toFixed(0)} $MERC</span>
                                 </div>
                             </div>
                         </div>
