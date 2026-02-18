@@ -1592,19 +1592,51 @@ if (action === 'orderbook') {
                 const user = await db.getOrCreateUser(wallet);
                 const orders = await db.getUserOrders(user.id, round.id);
                 
+                // Aggregate orders by side + price + order_type
+                const aggregated = {};
+                
+                for (const o of orders) {
+                    const key = `${o.side}_${parseFloat(o.price).toFixed(3)}_${o.order_type || 'buy'}`;
+                    
+                    if (!aggregated[key]) {
+                        aggregated[key] = {
+                            ids: [],
+                            side: o.side,
+                            price: parseFloat(o.price),
+                            amount: 0,
+                            filled: 0,
+                            order_type: o.order_type || 'buy',
+                            interval_minutes: round.interval_minutes,
+                            round_id: round.id,
+                            created: o.created_at,
+                            status: o.status
+                        };
+                    }
+                    
+                    aggregated[key].ids.push(o.id);
+                    aggregated[key].amount += parseFloat(o.amount);
+                    aggregated[key].filled += parseFloat(o.filled || 0);
+                    
+                    // Keep earliest created_at
+                    if (new Date(o.created_at) < new Date(aggregated[key].created)) {
+                        aggregated[key].created = o.created_at;
+                    }
+                }
+                
                 return res.status(200).json({
                     success: true,
-                    orders: orders.map(o => ({
-                        id: o.id,
+                    orders: Object.values(aggregated).map(o => ({
+                        id: o.ids[0], // Primary ID for cancel action
+                        ids: o.ids,   // All IDs for multi-cancel
                         side: o.side,
-                        amount: parseFloat(o.amount),
-                        price: parseFloat(o.price),
-                        filled: parseFloat(o.filled),
+                        amount: o.amount,
+                        price: o.price,
+                        filled: o.filled,
                         status: o.status,
-                        order_type: o.order_type || 'buy',
-                        interval_minutes: round.interval_minutes,
-                        round_id: round.id,
-                        created: o.created_at
+                        order_type: o.order_type,
+                        interval_minutes: o.interval_minutes,
+                        round_id: o.round_id,
+                        created: o.created
                     }))
                 });
             }
