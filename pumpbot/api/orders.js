@@ -2470,10 +2470,12 @@ if (action === 'orderbook') {
                 // ============================================
                 // STEP 2: EXECUTE ALL MATCHED TRADES
                 // ============================================
+                // Create ONE order for the full amount upfront (will have filled updated below)
                 let createdOrderForTrades = null;
                 
                 if (totalMatched > 0) {
-                    createdOrderForTrades = await db.placeLimitOrder(user.id, round.id, side, totalMatched, prc);
+                    // Create a single order for the full requested amount
+                    createdOrderForTrades = await db.placeLimitOrder(user.id, round.id, side, amt, prc);
                     
                     let actualMatched = 0;
                     let actualBuyerCost = 0;
@@ -2530,14 +2532,16 @@ if (action === 'orderbook') {
                 }
                 
                 // ============================================
-                // STEP 3: CREATE LIMIT ORDER ONLY FOR UNFILLED AMOUNT
+                // STEP 3: HANDLE CASE WITH NO MATCHES (create fresh limit order)
                 // ============================================
                 const unfilledAmount = amt - totalMatched;
                 let limitOrder = null;
                 
-                if (unfilledAmount > 0.001) {
-                    limitOrder = await db.placeLimitOrder(user.id, round.id, side, unfilledAmount, prc);
+                if (totalMatched === 0) {
+                    // No matches at all — create a fresh limit order for the full amount
+                    limitOrder = await db.placeLimitOrder(user.id, round.id, side, amt, prc);
                 }
+                // If totalMatched > 0, createdOrderForTrades already holds the single order for full amt
                 
                 const orderBook = await db.getAggregatedOrderBook(round.id);
                 
@@ -2565,7 +2569,7 @@ if (action === 'orderbook') {
                     return res.status(200).json({
                         success: true,
                         order: {
-                            id: limitOrder ? limitOrder.id : createdOrderForTrades.id,
+                            id: createdOrderForTrades.id,
                             side,
                             amount: amt,
                             price: prc,
@@ -2575,7 +2579,7 @@ if (action === 'orderbook') {
                         },
                         matched: totalMatched,
                         averagePrice: totalBuyerCost / totalMatched,
-                        message: `Partially filled: ${totalMatched.toFixed(2)} at ${(totalBuyerCost / totalMatched).toFixed(2)}¢, limit order for ${unfilledAmount.toFixed(2)} at ${prc.toFixed(2)}¢`,
+                        message: `Partially filled: ${totalMatched.toFixed(2)} at ${(totalBuyerCost / totalMatched).toFixed(2)}¢, limit order for ${unfilledAmount.toFixed(2)} remaining at ${prc.toFixed(2)}¢`,
                         orderBook
                     });
                 } else {
