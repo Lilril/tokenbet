@@ -119,7 +119,7 @@ export default async function handler(req, res) {
         }
         
         // Validate message format
-        const match = message.match(/^Login to PumpBot: (\d+)$/);
+        const match = message.match(/^Login to Mercurome: (\d+)$/);
         if (!match) {
             return res.status(400).json({ success: false, error: 'Invalid message format' });
         }
