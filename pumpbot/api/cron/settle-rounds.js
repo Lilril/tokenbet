@@ -76,8 +76,9 @@ async function settleRound(roundId) {
         // ============================================
         // CASE 2: Tie - price unchanged -> refund
         // ============================================
-        if (finalMarketCap === initialMarketCap) {
-            console.log(`⚠️ Round ${roundId}: price unchanged (${initialMarketCap} === ${finalMarketCap}), refunding all`);
+        const capChangePercent = initialMarketCap > 0 ? Math.abs((finalMarketCap - initialMarketCap) / initialMarketCap * 100) : 0;
+        if (finalMarketCap === initialMarketCap || capChangePercent < 0.01) {
+            console.log(`⚠️ Round ${roundId}: price change ${capChangePercent.toFixed(4)}% < 0.01% threshold, refunding all`);
             
             const positions = await sql`
                 SELECT user_id, side, amount, avg_price, total_cost
