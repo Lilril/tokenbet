@@ -440,16 +440,24 @@ async function getUserPositions(userId, roundId) {
 
 async function getUserOrders(userId, roundId) {
     try {
-        // Return active orders + recently filled ones so frontend can show correct filled% when aggregating
+        // Aggregate all orders (active + filled) by side+price to get correct filled totals
+        // Only return groups that still have unfilled amount (active orders exist)
         const result = await sql`
-            SELECT *, COALESCE(order_type, 'buy') as order_type FROM limit_orders
+            SELECT 
+                MIN(id) as id,
+                side,
+                price,
+                COALESCE(order_type, 'buy') as order_type,
+                SUM(amount) as amount,
+                SUM(filled) as filled,
+                ARRAY_AGG(id ORDER BY created_at ASC) as ids
+            FROM limit_orders
             WHERE user_id = ${userId} 
             AND round_id = ${roundId}
-            AND (
-                (status = 'active' AND amount > filled)
-                OR (status = 'filled' AND filled_at > NOW() - INTERVAL '2 hours')
-            )
-            ORDER BY created_at DESC
+            AND (status = 'active' OR status = 'filled')
+            GROUP BY side, price, order_type
+            HAVING SUM(amount) > SUM(filled)
+            ORDER BY MIN(created_at) DESC
         `;
         return result.rows;
     } catch (error) {
@@ -1599,6 +1607,7 @@ if (action === 'orderbook') {
                     success: true,
                     orders: orders.map(o => ({
                         id: o.id,
+                        ids: o.ids || [o.id],
                         side: o.side,
                         amount: parseFloat(o.amount),
                         price: parseFloat(o.price),
