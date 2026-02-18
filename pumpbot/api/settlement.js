@@ -50,7 +50,8 @@ async function settleRound(roundId) {
         
         
         
-        if (finalMarketCap === initialMarketCap || initialMarketCap <= 0) {
+        const capChangePercent = initialMarketCap > 0 ? Math.abs((finalMarketCap - initialMarketCap) / initialMarketCap * 100) : 0;
+        if (finalMarketCap === initialMarketCap || initialMarketCap <= 0 || capChangePercent < 0.01) {
             
             const positions = await sql`
                 SELECT user_id, side, amount, avg_price, total_cost
@@ -341,7 +342,8 @@ async function quickSettleForUser(userId) {
             
             if (finalMC > 0) {
                 
-                if (finalMC === startMC) {
+                const changePercent2 = startMC > 0 ? Math.abs((finalMC - startMC) / startMC * 100) : 0;
+                if (finalMC === startMC || changePercent2 < 0.01) {
                     const positions = await sql`SELECT user_id,side,amount,avg_price,total_cost FROM user_positions WHERE round_id=${round.id}`;
                     for (const pos of positions.rows) {
                         const tc = parseFloat(pos.total_cost);
