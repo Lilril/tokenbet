@@ -2348,7 +2348,7 @@ window.addEventListener('load', async () => {
             return;
         }
         try {
-            container.innerHTML = userSettlements.map(s => renderSettlementCard(s, false)).join('');
+            container.innerHTML = groupSettlementsByRound(userSettlements).map(s => renderSettlementCard(s, false)).join('');
         } catch(e) {
             console.error('Render settlement cards error:', e);
             container.innerHTML = `
@@ -2385,7 +2385,7 @@ window.addEventListener('load', async () => {
             `;
             return;
         }
-        container.innerHTML = data.settlements.map(s => renderSettlementCard(s, true)).join('');
+        container.innerHTML = groupSettlementsByRound(data.settlements).map(s => renderSettlementCard(s, true)).join('');
     } catch (error) {
         console.error('❌ Error loading history:', error);
         container.innerHTML = `
@@ -2469,24 +2469,73 @@ window.addEventListener('load', async () => {
             `;
         }
     }
+    function groupSettlementsByRound(settlements) {
+        const map = new Map();
+        for (const s of settlements) {
+            if (map.has(s.roundId)) {
+                const g = map.get(s.roundId);
+                g.totalCost += s.totalCost;
+                g.payout += s.payout;
+                g.profitLoss += s.profitLoss;
+                g.amount += s.amount;
+                // If any position won, mark as won (for TIE both won)
+                // Determine overall status: if all won → win/tie, if any lost → show combined
+                g.positions.push({ side: s.side, amount: s.amount, totalCost: s.totalCost, won: s.won, payout: s.payout, profitLoss: s.profitLoss });
+                // Claimed only if all are claimed
+                g.claimed = g.claimed && s.claimed;
+                g.claimedAt = s.claimedAt || g.claimedAt;
+                g.claimTxHash = s.claimTxHash || g.claimTxHash;
+            } else {
+                map.set(s.roundId, {
+                    ...s,
+                    positions: [{ side: s.side, amount: s.amount, totalCost: s.totalCost, won: s.won, payout: s.payout, profitLoss: s.profitLoss }]
+                });
+            }
+        }
+        // Determine overall won status from grouped positions
+        return Array.from(map.values()).map(g => {
+            const allWon = g.positions.every(p => p.won);
+            const anyWon = g.positions.some(p => p.won);
+            return { ...g, won: anyWon, _allWon: allWon };
+        });
+    }
+
     function renderSettlementCard(settlement, showClaimed) {
         const {
-            roundId, roundSlug, intervalMinutes, side, amount, totalCost,
-            won, payout, profitLoss, claimed, claimedAt, claimTxHash
+            roundId, roundSlug, intervalMinutes,
+            won, payout, profitLoss, claimed, claimedAt, claimTxHash,
+            positions = []
         } = settlement;
+        const totalCost = settlement.totalCost;
         const startMarketCap = parseFloat(settlement.startMarketCap) || 0;
         const finalMarketCap = parseFloat(settlement.finalMarketCap) || 0;
-        const intervalName = intervalMinutes === 15 ? '15m' : 
-                            intervalMinutes === 60 ? '1h' : '4h';
-        const sideName = side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
-        const sideColor = side === 'higher' ? 'text-green' : 'text-red';
-        const isTie = Math.abs(profitLoss) < 0.01 && won && payout > 0;
+        const intervalName = intervalMinutes === 15 ? '15m' : intervalMinutes === 60 ? '1h' : '4h';
+        const isTie = settlement._allWon && Math.abs(profitLoss) < 0.01;
         const statusClass = isTie ? 'refund' : (won ? 'won' : 'lost');
         const statusText = isTie ? '↔ TIE' : (won ? '▲ WIN' : '▼ LOSS');
-        const capChange = startMarketCap > 0 
+        const capChange = startMarketCap > 0
             ? ((finalMarketCap - startMarketCap) / startMarketCap * 100).toFixed(2)
             : '0.00';
         const capArrow = finalMarketCap > startMarketCap ? '↗' : (finalMarketCap < startMarketCap ? '↘' : '→');
+
+        // Build positions rows
+        const positionsHTML = positions.map(p => {
+            const sideName = p.side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
+            const sideColor = p.side === 'higher' ? 'text-green' : 'text-red';
+            const posIsTie = settlement._allWon && Math.abs(p.profitLoss) < 0.01;
+            const posStatus = posIsTie ? 'TIE' : (p.won ? `+${p.profitLoss.toFixed(2)}` : `-${p.totalCost.toFixed(2)}`);
+            const posColor = posIsTie ? 'var(--accent-yellow)' : (p.won ? 'var(--accent-green)' : 'var(--accent-red)');
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0; border-top: 1px solid var(--border);">
+                    <div style="display:flex; gap:12px; align-items:center;">
+                        <span class="${sideColor}" style="font-weight:600; font-size:0.9em;">${sideName}</span>
+                        <span style="color:var(--text-dim); font-size:0.85em;">${p.amount.toFixed(0)} qty &nbsp;·&nbsp; invested ${p.totalCost.toFixed(2)}</span>
+                    </div>
+                    <span style="font-weight:600; color:${posColor};">${posStatus}</span>
+                </div>
+            `;
+        }).join('');
+
         return `
             <div class="settlement-card ${statusClass}">
                 <div class="settlement-header">
@@ -2517,27 +2566,22 @@ window.addEventListener('load', async () => {
                         ${capChange > 0 ? '+' : ''}${capChange}%
                     </div>
                 </div>
-                <div class="settlement-details">
+                <div style="padding: 0 4px;">
+                    ${positionsHTML}
+                </div>
+                <div class="settlement-details" style="margin-top:8px;">
                     <div class="settlement-detail">
-                        <div class="settlement-detail-label">Your position</div>
-                        <div class="settlement-detail-value ${sideColor}">${sideName}</div>
-                    </div>
-                    <div class="settlement-detail">
-                        <div class="settlement-detail-label">Quantity</div>
-                        <div class="settlement-detail-value">${amount.toFixed(2)}</div>
-                    </div>
-                    <div class="settlement-detail">
-                        <div class="settlement-detail-label">Invested</div>
+                        <div class="settlement-detail-label">Total invested</div>
                         <div class="settlement-detail-value">${totalCost.toFixed(2)}</div>
                     </div>
                     <div class="settlement-detail">
-                        <div class="settlement-detail-label">${won ? 'Payout' : 'Loss'}</div>
-                        <div class="settlement-detail-value ${won ? 'settlement-payout' : 'settlement-loss'}">
-                            ${won ? '+' : ''}${(won ? profitLoss : totalCost).toFixed(2)}
+                        <div class="settlement-detail-label">${isTie ? 'Refund' : (won ? 'Net P&L' : 'Total loss')}</div>
+                        <div class="settlement-detail-value ${isTie ? '' : (won ? 'settlement-payout' : 'settlement-loss')}">
+                            ${isTie ? totalCost.toFixed(2) : (profitLoss >= 0 ? '+' : '') + profitLoss.toFixed(2)}
                         </div>
                     </div>
                 </div>
-                ${showClaimed ? renderClaimedStatus(claimed, claimedAt, claimTxHash) : renderClaimButton(roundId, won, payout)}
+                ${showClaimed ? renderClaimedStatus(claimed, claimedAt, claimTxHash) : renderClaimButton(roundId, won || isTie, payout)}
             </div>
         `;
     }
