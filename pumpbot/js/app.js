@@ -1200,6 +1200,31 @@ async function cancelOrder(orderId) {
         showNotification('Order cancel error', 'error');
     }
 }
+// Cancel multiple orders at once (for aggregated display rows)
+async function cancelOrders(orderIds) {
+    if (!wallet) {
+        showNotification('Connect wallet', 'error');
+        return;
+    }
+    try {
+        await Promise.all(orderIds.map(orderId =>
+            fetch(`${API_BASE}/api/orders?orderId=${orderId}&wallet=${wallet}`, {
+                method: 'DELETE',
+                headers: authHeaders()
+            })
+        ));
+        showNotification('Orders cancelled!', 'success');
+        await Promise.all([
+            fetchUserOrders(),
+            fetchOrderBook(),
+            fetchTokenBalance()
+        ]);
+    } catch (error) {
+        console.error('❌ Failed to cancel orders:', error);
+        showNotification('Order cancel error', 'error');
+    }
+}
+
 // MODAL FUNCTIONS FOR MY ORDERS AND MY TRADES
 function openMyOrdersModal() {
     const modal = document.getElementById('myOrdersModal');
@@ -1240,7 +1265,28 @@ function updateMyOrdersModalList() {
         return;
     }
     const currentInterval = getCurrentInterval();
-    list.innerHTML = userOrders.map(order => {
+
+    // Aggregate orders with same side + price + order_type into one display row
+    const aggregatedMap = new Map();
+    for (const order of userOrders) {
+        const key = `${order.side}|${order.price}|${order.order_type || 'buy'}`;
+        if (aggregatedMap.has(key)) {
+            const agg = aggregatedMap.get(key);
+            agg.amount += order.amount;
+            agg.filled += (order.filled || 0);
+            agg.ids.push(order.id);
+        } else {
+            aggregatedMap.set(key, {
+                ...order,
+                amount: order.amount,
+                filled: order.filled || 0,
+                ids: [order.id]
+            });
+        }
+    }
+    const displayOrders = Array.from(aggregatedMap.values());
+
+    list.innerHTML = displayOrders.map(order => {
         let roundName = 'undefined';
         if (order.interval_minutes) {
             if (order.interval_minutes === 15) roundName = '15m';
@@ -1256,6 +1302,10 @@ function updateMyOrdersModalList() {
         const showRemaining = filled > 0;
         const isSell = order.order_type === 'sell';
         const orderType = isSell ? 'Sell Limit' : (order.price === 0 ? 'Market' : 'Limit');
+        // For cancel: if multiple orders aggregated, cancel all ids
+        const cancelCall = order.ids.length > 1
+            ? `cancelOrders([${order.ids.join(',')}])`
+            : `cancelOrder(${order.ids[0]})`;
         return `
             <div class="trade-item" style="background: var(--bg-tertiary); padding: 15px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
@@ -1284,7 +1334,7 @@ function updateMyOrdersModalList() {
                         </div>
                     </div>
                     <button 
-                        onclick="cancelOrder(${order.id})" 
+                        onclick="${cancelCall}" 
                         style="padding: 8px 16px; background: var(--accent-red); color: #000; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; font-size: 0.85em;"
                     >
                         Cancel
@@ -2601,6 +2651,3 @@ window.addEventListener('load', async () => {
         }
     });
 })();
-
-
-
