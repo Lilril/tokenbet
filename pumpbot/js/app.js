@@ -1266,32 +1266,12 @@ function updateMyOrdersModalList() {
     }
     const currentInterval = getCurrentInterval();
 
-    // Aggregate orders with same side + price + order_type into one display row
-    console.log('🔍 userOrders raw:', JSON.stringify(userOrders));
-    const aggregatedMap = new Map();
-    for (const order of userOrders) {
-        const key = `${order.side}|${parseFloat(order.price).toFixed(3)}|${order.order_type || 'buy'}`;
-        const filledQty = order.filled || 0;
-        if (aggregatedMap.has(key)) {
-            const agg = aggregatedMap.get(key);
-            agg.amount += order.amount;
-            agg.filled += filledQty;
-            agg.totalFilledCost += filledQty * parseFloat(order.price);
-            agg.ids.push(order.id);
-        } else {
-            aggregatedMap.set(key, {
-                ...order,
-                amount: order.amount,
-                filled: filledQty,
-                totalFilledCost: filledQty * parseFloat(order.price),
-                ids: [order.id]
-            });
-        }
-    }
-    // Compute avgFillPrice for each aggregated order
-    const displayOrders = Array.from(aggregatedMap.values()).map(agg => ({
-        ...agg,
-        avgFillPrice: agg.filled > 0 ? agg.totalFilledCost / agg.filled : null
+    // Backend already aggregates by side+price, just map directly
+    const displayOrders = userOrders.map(order => ({
+        ...order,
+        ids: order.ids || [order.id],
+        filled: order.filled || 0,
+        avgFillPrice: (order.filled > 0) ? order.price : null
     }));
 
     list.innerHTML = displayOrders.map(order => {
@@ -2480,7 +2460,7 @@ window.addEventListener('load', async () => {
                 g.amount += s.amount;
                 // If any position won, mark as won (for TIE both won)
                 // Determine overall status: if all won → win/tie, if any lost → show combined
-                g.positions.push({ side: s.side, amount: s.amount, totalCost: s.totalCost, won: s.won, payout: s.payout, profitLoss: s.profitLoss });
+                g.positions.push({ side: s.side, amount: s.amount, totalCost: s.totalCost, won: s.won, payout: s.payout, profitLoss: s.profitLoss, avgPrice: s.avgPrice });
                 // Claimed only if all are claimed
                 g.claimed = g.claimed && s.claimed;
                 g.claimedAt = s.claimedAt || g.claimedAt;
@@ -2488,7 +2468,7 @@ window.addEventListener('load', async () => {
             } else {
                 map.set(s.roundId, {
                     ...s,
-                    positions: [{ side: s.side, amount: s.amount, totalCost: s.totalCost, won: s.won, payout: s.payout, profitLoss: s.profitLoss }]
+                    positions: [{ side: s.side, amount: s.amount, totalCost: s.totalCost, won: s.won, payout: s.payout, profitLoss: s.profitLoss, avgPrice: s.avgPrice }]
                 });
             }
         }
@@ -2529,7 +2509,7 @@ window.addEventListener('load', async () => {
                 <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0; border-top: 1px solid var(--border);">
                     <div style="display:flex; gap:12px; align-items:center;">
                         <span class="${sideColor}" style="font-weight:600; font-size:0.9em;">${sideName}</span>
-                        <span style="color:var(--text-dim); font-size:0.85em;">${p.amount.toFixed(0)} qty &nbsp;·&nbsp; invested ${p.totalCost.toFixed(2)}</span>
+                        <span style="color:var(--text-dim); font-size:0.85em;">${p.amount.toFixed(0)} qty &nbsp;·&nbsp; invested ${p.totalCost.toFixed(2)}${p.avgPrice ? ` &nbsp;·&nbsp; avg price <span style="color:var(--accent-yellow)">${p.avgPrice.toFixed(3)}</span>` : ''}</span>
                     </div>
                     <span style="font-weight:600; color:${posColor};">${posStatus}</span>
                 </div>
