@@ -1153,11 +1153,15 @@ async function inlineSettleRound(roundId) {
         
         // ============================================
         if (startMC <= 0) {
+            // No valid market cap → refund at $0.50 per token (safe: never overpays pool)
             for (const pos of positions.rows) {
+                const amt = parseFloat(pos.amount);
                 const tc = parseFloat(pos.total_cost);
+                const payout = amt * 0.50;
+                const pl = payout - tc;
                 await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
-                    VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
-                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
+                    VALUES (${pos.user_id},${roundId},${pos.side},${amt},${pos.avg_price},${tc},true,${payout},${pl},false)
+                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${payout},profit_loss=${pl}`;
             }
             // Mark positions as settled
             await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
@@ -1213,11 +1217,15 @@ async function inlineSettleRound(roundId) {
         // ============================================
         const capChangePercent = startMC > 0 ? Math.abs((finalMC - startMC) / startMC * 100) : 0;
         if (finalMC === startMC || capChangePercent < 0.01) {
+            // TIE: Each token is worth $0.50 (both sides split the $1.00 pair equally)
             for (const pos of positions.rows) {
+                const amt = parseFloat(pos.amount);
                 const tc = parseFloat(pos.total_cost);
+                const payout = amt * 0.50;
+                const pl = payout - tc;
                 await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
-                    VALUES (${pos.user_id},${roundId},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
-                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
+                    VALUES (${pos.user_id},${roundId},${pos.side},${amt},${pos.avg_price},${tc},true,${payout},${pl},false)
+                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${payout},profit_loss=${pl}`;
             }
             // Mark positions as settled
             await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
@@ -1726,26 +1734,34 @@ if (action === 'orderbook') {
 
                         // Determine user's role in this trade
                         let role = 'buy';
-                        if (t.trade_type === 'sell' && isSeller) role = 'sell';
+                        if (t.trade_type === 'complement') {
+                            // Both sides are buyers in complement match
+                            role = 'buy';
+                        } else if (t.trade_type === 'sell' && isSeller) role = 'sell';
                         else if (t.trade_type === 'cross-sell' && isSeller) role = 'sell';
                         else if (t.trade_type === 'sell' && isBuyer) role = 'buy';
                         else if (isBuyer) role = 'buy';
                         else if (isSeller) role = 'sell';
 
                         // Determine displayed side
-                        const userSide = (role === 'buy')
-                            ? (t.trade_type === 'complement' && isBuyer
-                                ? (t.side === 'higher' ? 'lower' : 'higher')
-                                : t.side)
-                            : t.side;
+                        let userSide;
+                        if (t.trade_type === 'complement') {
+                            // buyer_id bought t.side, seller_id bought opposite side
+                            userSide = isBuyer ? t.side : (t.side === 'higher' ? 'lower' : 'higher');
+                        } else {
+                            userSide = t.side;
+                        }
 
-                        // price in DB is always stored from the perspective of buyer_id
-                        // seller_id always gets (1 - price)
+                        // price in DB is stored from buyer_id perspective
                         let displayPrice = parseFloat(t.price);
                         let displayTotalCost = parseFloat(t.total_cost);
 
-                        if (isSeller) {
-                            // Seller always sees inverted price
+                        if (t.trade_type === 'complement' && isSeller) {
+                            // Complement seller bought opposite side at (1 - price)
+                            displayPrice = Math.round((1 - parseFloat(t.price)) * 1000) / 1000;
+                            displayTotalCost = parseFloat(t.amount) * displayPrice;
+                        } else if (isSeller && t.trade_type !== 'complement') {
+                            // Real seller sees inverted price
                             displayPrice = Math.round((1 - parseFloat(t.price)) * 1000) / 1000;
                             displayTotalCost = parseFloat(t.amount) * displayPrice;
                         }
@@ -2314,7 +2330,7 @@ if (action === 'orderbook') {
                         amount: matchAmount,
                         price: buyerPrice,
                         totalCost: buyerCost,
-                        tradeType: 'market'
+                        tradeType: 'complement'
                     });
                     
                     trades.push(trade);
@@ -2595,7 +2611,7 @@ if (action === 'orderbook') {
                             amount: matchAmount,
                             price: effectiveBuyerPrice,
                             totalCost: buyerCost,
-                            tradeType: 'limit'
+                            tradeType: isSellOrder ? 'limit' : 'complement'
                         });
                         
                         // Buyer always gets position on their requested side
