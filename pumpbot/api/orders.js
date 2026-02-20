@@ -1037,6 +1037,63 @@ async function cancelExpiredOrders() {
     }
 }
 
+// ============================================
+// EMERGENCY: Cancel ALL active orders (used when TRADING_PAUSED=true)
+// Returns funds: buy orders → unlock balance, sell orders → restore position
+// ============================================
+let pauseCancelDone = false;
+async function cancelAllOrdersForPause() {
+    if (pauseCancelDone) return; // Only run once per deploy
+    pauseCancelDone = true;
+    
+    try {
+        const cancelled = await sql`
+            UPDATE limit_orders
+            SET status = 'cancelled', cancelled_at = NOW()
+            WHERE status = 'active'
+            RETURNING id, user_id, amount, filled, price, order_type, round_id, side, cost_basis
+        `;
+        
+        if (cancelled.rows.length === 0) {
+            console.log('⏸️ Pause: No active orders to cancel');
+            return;
+        }
+        
+        console.log(`⏸️ Pause: Cancelling ${cancelled.rows.length} active orders...`);
+        
+        for (const order of cancelled.rows) {
+            try {
+                const unfilled = parseFloat(order.amount) - parseFloat(order.filled);
+                if (unfilled < 0.001) continue;
+                
+                const isSellOrder = order.order_type === 'sell';
+                
+                if (isSellOrder) {
+                    // Sell order: restore position
+                    const costPerToken = order.cost_basis 
+                        ? parseFloat(order.cost_basis)
+                        : parseFloat(order.price);
+                    const restoredCost = unfilled * costPerToken;
+                    await upsertUserPosition(order.user_id, order.round_id, order.side, unfilled, costPerToken, restoredCost);
+                } else {
+                    // Buy order: unlock balance
+                    const cost = unfilled * parseFloat(order.price);
+                    if (cost > 0.001) {
+                        await unlockBalance(order.user_id, cost);
+                    }
+                }
+            } catch (orderErr) {
+                console.error(`⏸️ Pause: Failed to refund order #${order.id}:`, orderErr.message);
+            }
+        }
+        
+        console.log(`⏸️ Pause: ${cancelled.rows.length} orders cancelled and refunded`);
+    } catch (e) {
+        console.error('⏸️ cancelAllOrdersForPause error:', e.message);
+        pauseCancelDone = false; // Allow retry on error
+    }
+}
+
 
 
 async function fixOrphanedLocks() {
@@ -1224,6 +1281,11 @@ export default async function handler(req, res) {
             
             
             inlineSettlementCheck().catch(() => {});
+            
+            // If paused, cancel all orders on first GET too
+            if (process.env.TRADING_PAUSED === 'true') {
+                cancelAllOrdersForPause().catch(() => {});
+            }
             
             const rateLimitError = await enforceRateLimit(req, res, clientIP, `GET:${action}`);
             if (rateLimitError) return;
@@ -1746,12 +1808,15 @@ if (action === 'orderbook') {
             
             // ============================================
             // EMERGENCY PAUSE: blocks new orders/sells when TRADING_PAUSED=true
-            // Balances, withdrawals, claims remain accessible
+            // Cancels all active orders and returns funds on first request
             // ============================================
             if (process.env.TRADING_PAUSED === 'true') {
+                // Cancel all active orders on first paused request
+                cancelAllOrdersForPause().catch(e => console.error('Pause cancel error:', e));
+                
                 return res.status(503).json({
                     success: false,
-                    error: 'Trading is temporarily paused for maintenance. Your funds are safe.',
+                    error: 'Trading is temporarily paused for maintenance. All open orders have been cancelled and funds returned.',
                     paused: true
                 });
             }
@@ -1794,10 +1859,10 @@ if (action === 'orderbook') {
                 });
             }
             
-            if (action === 'sell' && amt < 500) {
+            if (action === 'sell' && amt < 1) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Minimum sell: 500 $MERC'
+                    error: 'Minimum sell: 1 $MERC'
                 });
             }
             
