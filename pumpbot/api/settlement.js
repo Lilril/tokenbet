@@ -58,17 +58,20 @@ async function settleRound(roundId) {
             `;
             
             for (const pos of positions.rows) {
+                const amount = parseFloat(pos.amount);
                 const totalCost = parseFloat(pos.total_cost);
+                const payout = amount * 0.50;
+                const profitLoss = payout - totalCost;
                 await sql`
                     INSERT INTO user_settlements (
                         user_id, round_id, side, amount, avg_price, total_cost,
                         won, payout, profit_loss, claimed
                     ) VALUES (
-                        ${pos.user_id}, ${roundId}, ${pos.side}, ${parseFloat(pos.amount)}, 
-                        ${pos.avg_price}, ${totalCost}, true, ${totalCost}, 0, false
+                        ${pos.user_id}, ${roundId}, ${pos.side}, ${amount}, 
+                        ${pos.avg_price}, ${totalCost}, true, ${payout}, ${profitLoss}, false
                     )
                     ON CONFLICT (user_id, round_id, side)
-                    DO UPDATE SET won = true, payout = ${totalCost}, profit_loss = 0
+                    DO UPDATE SET won = true, payout = ${payout}, profit_loss = ${profitLoss}
                 `;
             }
             
@@ -329,10 +332,13 @@ async function quickSettleForUser(userId) {
                     FROM user_positions WHERE round_id = ${round.id}
                 `;
                 for (const pos of positions.rows) {
+                    const amt = parseFloat(pos.amount);
                     const tc = parseFloat(pos.total_cost);
+                    const payout = amt * 0.50;
+                    const pl = payout - tc;
                     await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
-                        VALUES (${pos.user_id},${round.id},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
-                        ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
+                        VALUES (${pos.user_id},${round.id},${pos.side},${amt},${pos.avg_price},${tc},true,${payout},${pl},false)
+                        ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${payout},profit_loss=${pl}`;
                 }
                 await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${round.id}`;
                 continue;
@@ -344,10 +350,13 @@ async function quickSettleForUser(userId) {
                 if (finalMC === startMC) {
                     const positions = await sql`SELECT user_id,side,amount,avg_price,total_cost FROM user_positions WHERE round_id=${round.id}`;
                     for (const pos of positions.rows) {
+                        const amt = parseFloat(pos.amount);
                         const tc = parseFloat(pos.total_cost);
+                        const payout = amt * 0.50;
+                        const pl = payout - tc;
                         await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
-                            VALUES (${pos.user_id},${round.id},${pos.side},${parseFloat(pos.amount)},${pos.avg_price},${tc},true,${tc},0,false)
-                            ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${tc},profit_loss=0`;
+                            VALUES (${pos.user_id},${round.id},${pos.side},${amt},${pos.avg_price},${tc},true,${payout},${pl},false)
+                            ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${payout},profit_loss=${pl}`;
                     }
                     await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${round.id}`;
                     continue;
