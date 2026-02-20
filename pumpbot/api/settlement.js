@@ -151,7 +151,7 @@ async function settleRound(roundId) {
         
         await sql`
             UPDATE rounds 
-            SET settlement_status = 'settled', settled_at = NOW()
+            SET settlement_status = 'settled', settled_at = NOW(), winning_side = ${winningSide}
             WHERE id = ${roundId}
         `;
         
