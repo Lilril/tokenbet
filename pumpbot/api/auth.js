@@ -4,7 +4,7 @@
 // ============================================
 
 import { sql } from '@vercel/postgres';
-import { createHmac, createPublicKey, verify } from 'crypto';
+import { createHmac, createPublicKey, verify, timingSafeEqual } from 'crypto';
 
 const TOKEN_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-in-production';
 const TOKEN_TTL_SEC = 86400; // 24 hours
@@ -83,7 +83,8 @@ export function verifyToken(authHeader) {
         const payload = Buffer.from(payloadB64, 'base64').toString();
         
         const expectedHmac = createHmac('sha256', TOKEN_SECRET).update(payload).digest('hex');
-        if (receivedHmac !== expectedHmac) return null;
+        if (receivedHmac.length !== expectedHmac.length || 
+            !timingSafeEqual(Buffer.from(receivedHmac), Buffer.from(expectedHmac))) return null;
         
         const colonIndex = payload.lastIndexOf(':');
         const wallet = payload.slice(0, colonIndex);
