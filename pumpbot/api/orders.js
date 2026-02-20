@@ -111,7 +111,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
-        const TOKEN_ADDR = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
+        const TOKEN_ADDR = 'F1CjqLUTM3B4b7LreJKMZmLV3p5mDnfs1vpQSFJL4E8e';
         
         try {
             const controller = new AbortController();
@@ -988,8 +988,9 @@ async function inlineSettlementCheck() {
             AND id IN (SELECT id FROM rounds WHERE status = 'closed' AND (settlement_status IS NULL OR settlement_status = 'pending') AND end_time < NOW() LIMIT 50)
         `;
         
-        // Safety net: orphaned locks
-        await fixOrphanedLocks();
+        // fixOrphanedLocks REMOVED — caused double-refund bug:
+        // cancelExpiredOrders does individual unlocks, then fixOrphanedLocks
+        // would also move remaining locked→available, creating money from air.
     } catch (e) {
         console.error('Settlement error:', e.message);
     }
@@ -1174,7 +1175,7 @@ async function inlineSettleRound(roundId) {
         // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
-            const TOKEN = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
+            const TOKEN = 'F1CjqLUTM3B4b7LreJKMZmLV3p5mDnfs1vpQSFJL4E8e';
             
             
             try {
