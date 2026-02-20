@@ -27,17 +27,20 @@ async function settleRound(roundId) {
             `;
             
             for (const pos of positions.rows) {
+                const amount = parseFloat(pos.amount);
                 const totalCost = parseFloat(pos.total_cost);
+                const payout = amount * 0.50;
+                const profitLoss = payout - totalCost;
                 await sql`
                     INSERT INTO user_settlements (
                         user_id, round_id, side, amount, avg_price, total_cost,
                         won, payout, profit_loss, claimed
                     ) VALUES (
-                        ${pos.user_id}, ${roundId}, ${pos.side}, ${parseFloat(pos.amount)}, 
-                        ${pos.avg_price}, ${totalCost}, true, ${totalCost}, 0, false
+                        ${pos.user_id}, ${roundId}, ${pos.side}, ${amount}, 
+                        ${pos.avg_price}, ${totalCost}, true, ${payout}, ${profitLoss}, false
                     )
                     ON CONFLICT (user_id, round_id, side) 
-                    DO UPDATE SET won = true, payout = ${totalCost}, profit_loss = 0
+                    DO UPDATE SET won = true, payout = ${payout}, profit_loss = ${profitLoss}
                 `;
             }
             
@@ -87,17 +90,20 @@ async function settleRound(roundId) {
             `;
             
             for (const pos of positions.rows) {
+                const amount = parseFloat(pos.amount);
                 const totalCost = parseFloat(pos.total_cost);
+                const payout = amount * 0.50;
+                const profitLoss = payout - totalCost;
                 await sql`
                     INSERT INTO user_settlements (
                         user_id, round_id, side, amount, avg_price, total_cost,
                         won, payout, profit_loss, claimed
                     ) VALUES (
-                        ${pos.user_id}, ${roundId}, ${pos.side}, ${parseFloat(pos.amount)}, 
-                        ${pos.avg_price}, ${totalCost}, true, ${totalCost}, 0, false
+                        ${pos.user_id}, ${roundId}, ${pos.side}, ${amount}, 
+                        ${pos.avg_price}, ${totalCost}, true, ${payout}, ${profitLoss}, false
                     )
                     ON CONFLICT (user_id, round_id, side) 
-                    DO UPDATE SET won = true, payout = ${totalCost}, profit_loss = 0
+                    DO UPDATE SET won = true, payout = ${payout}, profit_loss = ${profitLoss}
                 `;
             }
             
