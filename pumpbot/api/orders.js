@@ -1257,7 +1257,8 @@ export default async function handler(req, res) {
                 
                 return res.status(200).json({
                     success: true,
-                    rounds
+                    rounds,
+                    paused: process.env.TRADING_PAUSED === 'true'
                 });
             }
             
@@ -1731,7 +1732,8 @@ if (action === 'orderbook') {
                 })),
                 roundId: round.id,
                 roundSlug: round.slug,
-                roundNumber: round.round_number
+                roundNumber: round.round_number,
+                paused: process.env.TRADING_PAUSED === 'true'
             });
         }
         
@@ -1741,6 +1743,18 @@ if (action === 'orderbook') {
         if (method === 'POST') {
             const { wallet, side, amount, price, type, roundId, intervalMinutes, action } = 
                 typeof body === 'string' ? JSON.parse(body) : body;
+            
+            // ============================================
+            // EMERGENCY PAUSE: blocks new orders/sells when TRADING_PAUSED=true
+            // Balances, withdrawals, claims remain accessible
+            // ============================================
+            if (process.env.TRADING_PAUSED === 'true') {
+                return res.status(503).json({
+                    success: false,
+                    error: 'Trading is temporarily paused for maintenance. Your funds are safe.',
+                    paused: true
+                });
+            }
             
             if (!wallet || !side || !amount) {
                 return res.status(400).json({
@@ -1777,6 +1791,13 @@ if (action === 'orderbook') {
                 return res.status(400).json({
                     success: false,
                     error: 'Minimum: 500 $MERC'
+                });
+            }
+            
+            if (action === 'sell' && amt < 500) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Minimum sell: 500 $MERC'
                 });
             }
             
