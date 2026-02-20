@@ -1,4 +1,5 @@
 import { sql } from '@vercel/postgres';
+import { verifyToken } from './auth.js';
 import {
     Connection,
     PublicKey,
@@ -275,13 +276,17 @@ async function verifyAndCreditDeposit(txSignature, walletAddress) {
     const deposit = await sql`
         INSERT INTO deposits (user_id, wallet_address, amount, tx_signature, status, slot, confirmed_at)
         VALUES (${userId}, ${walletAddress}, ${depositAmount}, ${txSignature}, 'confirmed', ${txInfo.slot || 0}, NOW())
-        ON CONFLICT (tx_signature) DO UPDATE SET status = 'confirmed', confirmed_at = NOW()
-        RETURNING id
+        ON CONFLICT (tx_signature) DO NOTHING
     `;
+
+    // If no row was inserted, this tx was already credited
+    if (deposit.rowCount === 0) {
+        return { success: false, error: 'This transaction has already been credited' };
+    }
 
     const newBalance = await creditBalance(
         userId, depositAmount, 'deposit',
-        deposit.rows[0].id, 'deposits',
+        null, 'deposits',
         `Deposit ${depositAmount} tokens, tx: ${txSignature.substring(0, 16)}...`
     );
 
@@ -423,7 +428,7 @@ async function processWithdrawal(userId, walletAddress, amount) {
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -554,6 +559,15 @@ export default async function handler(req, res) {
                 const { amount } = body;
                 if (!wallet || !amount) {
                     return res.status(400).json({ success: false, error: 'wallet and amount required' });
+                }
+
+                // AUTH: Verify wallet ownership
+                const auth = verifyToken(req.headers['authorization']);
+                if (!auth || auth.wallet !== wallet) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Unauthorized. Please reconnect your wallet.'
+                    });
                 }
 
                 const amt = parseFloat(amount);
