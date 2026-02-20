@@ -841,6 +841,16 @@ async function fetchAllRounds() {
             if (allRounds[currentInterval]) {
                 roundEndTime = allRounds[currentInterval].end_time;
             }
+            
+            // PAUSE BANNER
+            const pauseBanner = document.getElementById('pauseBanner');
+            if (pauseBanner) {
+                if (data.paused) {
+                    pauseBanner.style.display = 'block';
+                } else {
+                    pauseBanner.style.display = 'none';
+                }
+            }
             ;
         }
     } catch (error) {
