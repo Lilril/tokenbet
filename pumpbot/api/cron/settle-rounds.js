@@ -150,13 +150,10 @@ async function settleRound(roundId) {
             let payout = 0;
             let profitLoss = 0;
             
-            if (won && totalWinningAmount > 0) {
-                // Winners get refund + share of losers
-                const returnAmount = totalCost;
-                const winShare = amount / totalWinningAmount;
-                const winnings = totalLosingCost * winShare;
-                
-                payout = returnAmount + winnings;
+            if (won && amount > 0) {
+                // Each winning token is worth exactly $1.00
+                // (every token pair was created via complement match at $1.00 total)
+                payout = amount * 1.0;
                 profitLoss = payout - totalCost;
             } else if (!won) {
                 // Losers lose everything
