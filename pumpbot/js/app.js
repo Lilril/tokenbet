@@ -2500,7 +2500,7 @@ window.addEventListener('load', async () => {
         const startMarketCap = parseFloat(settlement.startMarketCap) || 0;
         const finalMarketCap = parseFloat(settlement.finalMarketCap) || 0;
         const intervalName = intervalMinutes === 15 ? '15m' : intervalMinutes === 60 ? '1h' : '4h';
-        const isTie = settlement._allWon && Math.abs(profitLoss) < 0.01;
+        const isTie = settlement.winningSide === 'tie';
         const statusClass = isTie ? 'refund' : (won ? 'won' : 'lost');
         const statusText = isTie ? '↔ TIE' : (won ? '▲ WIN' : '▼ LOSS');
         const capChange = startMarketCap > 0
@@ -2512,8 +2512,10 @@ window.addEventListener('load', async () => {
         const positionsHTML = positions.map(p => {
             const sideName = p.side === 'higher' ? '↑ HIGHER' : '↓ LOWER';
             const sideColor = p.side === 'higher' ? 'text-green' : 'text-red';
-            const posIsTie = settlement._allWon && Math.abs(p.profitLoss) < 0.01;
-            const posStatus = posIsTie ? 'TIE' : (p.won ? `+${p.profitLoss.toFixed(2)}` : `-${p.totalCost.toFixed(2)}`);
+            const posIsTie = settlement.winningSide === 'tie';
+            const posStatus = posIsTie 
+                ? (p.profitLoss >= 0 ? `+${p.profitLoss.toFixed(2)}` : `${p.profitLoss.toFixed(2)}`)
+                : (p.won ? `+${p.profitLoss.toFixed(2)}` : `-${p.totalCost.toFixed(2)}`);
             const posColor = posIsTie ? 'var(--accent-yellow)' : (p.won ? 'var(--accent-green)' : 'var(--accent-red)');
             return `
                 <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0; border-top: 1px solid var(--border);">
