@@ -185,7 +185,8 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
                     r.start_time,
                     r.end_time,
                     r.final_market_cap,
-                    r.target_market_cap
+                    r.target_market_cap,
+                    r.winning_side
                 FROM user_settlements s
                 JOIN rounds r ON s.round_id = r.id
                 WHERE s.user_id = ${userId} AND s.claimed = false AND s.payout > 0
@@ -199,7 +200,8 @@ async function getUserSettlements(userId, includeUnclaimed = false) {
                     r.start_time,
                     r.end_time,
                     r.final_market_cap,
-                    r.target_market_cap
+                    r.target_market_cap,
+                    r.winning_side
                 FROM user_settlements s
                 JOIN rounds r ON s.round_id = r.id
                 WHERE s.user_id = ${userId}
@@ -440,7 +442,8 @@ export default async function handler(req, res) {
                         profitLoss: parseFloat(s.profit_loss),
                         endTime: s.end_time,
                         startMarketCap: parseFloat(s.target_market_cap) || 0,
-                        finalMarketCap: parseFloat(s.final_market_cap) || 0
+                        finalMarketCap: parseFloat(s.final_market_cap) || 0,
+                        winningSide: s.winning_side || null
                     }))
                 });
             }
@@ -468,7 +471,8 @@ export default async function handler(req, res) {
                         claimTxHash: s.claim_tx_hash,
                         endTime: s.end_time,
                         startMarketCap: parseFloat(s.target_market_cap) || 0,
-                        finalMarketCap: parseFloat(s.final_market_cap) || 0
+                        finalMarketCap: parseFloat(s.final_market_cap) || 0,
+                        winningSide: s.winning_side || null
                     }))
                 });
             }
