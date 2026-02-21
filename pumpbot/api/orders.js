@@ -2281,8 +2281,22 @@ if (action === 'orderbook') {
             
             // MARKET ORDER
             if (type === 'market') {
-                // Self-trade protection is handled in matching loop:
-                // oppositeOrder.user_id === user.id → skip
+                // Check for crossing own orders: market buy matches at ANY price,
+                // so block if user has ANY opposite-side buy orders (they'd be arb-able)
+                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
+                const ownOppOrders = await sql`
+                    SELECT COUNT(*) as cnt FROM limit_orders
+                    WHERE round_id = ${round.id} AND user_id = ${user.id}
+                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
+                    AND status = 'active' AND amount > filled
+                `;
+                if (parseInt(ownOppOrders.rows[0].cnt) > 0) {
+                    await unlockBalance(user.id, estimatedCost);
+                    return res.status(400).json({
+                        success: false,
+                        error: `You have active ${oppSideCheck.toUpperCase()} buy orders. Use limit order instead, or cancel them first.`
+                    });
+                }
                 
                 // Step 1: Match against opposite-side buy orders (complement matching)
                 // Self-trade protection: user's own orders skipped
@@ -2470,8 +2484,24 @@ if (action === 'orderbook') {
                 }
                 
                 
-                // Self-trade protection is handled in matching loop:
-                // oppositeOrder.user_id === user.id → skip
+                // Check for crossing own orders: if user's opposite-side buy price
+                // would create a complement pair with this price (sum > 1.00), block it
+                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
+                const minOppPrice = roundPrice(1 - prc);
+                const ownCrossingOrders = await sql`
+                    SELECT COUNT(*) as cnt FROM limit_orders
+                    WHERE round_id = ${round.id} AND user_id = ${user.id}
+                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
+                    AND status = 'active' AND amount > filled
+                    AND price >= ${minOppPrice}
+                `;
+                if (parseInt(ownCrossingOrders.rows[0].cnt) > 0) {
+                    await unlockBalance(user.id, estimatedCost);
+                    return res.status(400).json({
+                        success: false,
+                        error: `This price crosses your own ${oppSideCheck.toUpperCase()} buy order (combined > $1.00). Use a lower price or cancel the other order.`
+                    });
+                }
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
