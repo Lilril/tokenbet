@@ -111,7 +111,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
-        const TOKEN_ADDR = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
+        const TOKEN_ADDR = 'F1CjqLUTM3B4b7LreJKMZmLV3p5mDnfs1vpQSFJL4E8e';
         
         try {
             const controller = new AbortController();
@@ -1175,7 +1175,7 @@ async function inlineSettleRound(roundId) {
         // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
-            const TOKEN = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
+            const TOKEN = 'F1CjqLUTM3B4b7LreJKMZmLV3p5mDnfs1vpQSFJL4E8e';
             
             
             try {
@@ -2281,21 +2281,8 @@ if (action === 'orderbook') {
             
             // MARKET ORDER
             if (type === 'market') {
-                // Reject if user has opposite-side buy orders
-                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
-                const ownOppOrders = await sql`
-                    SELECT COUNT(*) as cnt FROM limit_orders
-                    WHERE round_id = ${round.id} AND user_id = ${user.id}
-                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
-                    AND status = 'active' AND amount > filled
-                `;
-                if (parseInt(ownOppOrders.rows[0].cnt) > 0) {
-                    await unlockBalance(user.id, estimatedCost);
-                    return res.status(400).json({
-                        success: false,
-                        error: `You have active ${oppSideCheck.toUpperCase()} buy orders. Cancel them first before buying ${side.toUpperCase()}.`
-                    });
-                }
+                // Self-trade protection is handled in matching loop:
+                // oppositeOrder.user_id === user.id → skip
                 
                 // Step 1: Match against opposite-side buy orders (complement matching)
                 // Self-trade protection: user's own orders skipped
@@ -2483,25 +2470,8 @@ if (action === 'orderbook') {
                 }
                 
                 
-                // ============================================
-                // Reject if user has opposite-side buy orders that would cross
-                // ============================================
-                const oppSideCheck = side === 'higher' ? 'lower' : 'higher';
-                const minOppPrice = roundPrice(1 - prc);
-                const ownOppOrders = await sql`
-                    SELECT COUNT(*) as cnt FROM limit_orders
-                    WHERE round_id = ${round.id} AND user_id = ${user.id}
-                    AND side = ${oppSideCheck} AND (order_type IS NULL OR order_type = 'buy')
-                    AND status = 'active' AND amount > filled
-                    AND price >= ${minOppPrice}
-                `;
-                if (parseInt(ownOppOrders.rows[0].cnt) > 0) {
-                    await unlockBalance(user.id, estimatedCost);
-                    return res.status(400).json({
-                        success: false,
-                        error: `You have active ${oppSideCheck.toUpperCase()} buy orders that conflict with this price. Cancel them first.`
-                    });
-                }
+                // Self-trade protection is handled in matching loop:
+                // oppositeOrder.user_id === user.id → skip
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
