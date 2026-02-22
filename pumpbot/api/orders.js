@@ -2294,8 +2294,8 @@ if (action === 'orderbook') {
                 // Self-trade protection in matching loop: own orders skipped
                 
                 // Step 1: Match against opposite-side buy orders (complement matching)
-                // Self-trade protection: skip own orders (they sit in book for others)
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
+                // Self-complement allowed (Polymarket-style)
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, null);
                 
                 let totalMatched = 0;
                 const trades = [];
@@ -2482,9 +2482,9 @@ if (action === 'orderbook') {
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
-                // Self-trade protection: skip own orders (they sit in book for others)
+                // Self-complement allowed (Polymarket-style)
                 // ============================================
-                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, null);
                 
                 let totalMatched = 0;
                 let totalBuyerCost = 0;
@@ -2601,6 +2601,12 @@ if (action === 'orderbook') {
                             // Matched against complement buy order: give them their position
                             await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
                             await deductLocked(oppositeOrder.user_id, sellerCost);
+                            // Refund surplus: seller locked at original price, effective may be lower
+                            const sellerOrigLock = matchAmount * roundPrice(parseFloat(oppositeOrder.price));
+                            const sellerSurplus = sellerOrigLock - sellerCost;
+                            if (sellerSurplus > 0.001) {
+                                await unlockBalance(oppositeOrder.user_id, sellerSurplus);
+                            }
                         }
                         
                         actualMatched += matchAmount;
