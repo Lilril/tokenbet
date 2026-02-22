@@ -1486,7 +1486,6 @@ if (action === 'orderbook') {
     
     
     let userOrderPrices = { higher: [], lower: [], higherSells: [], lowerSells: [] };
-    let userOrderAmounts = {}; // { "higher:0.60": 5000, "lower:0.41": 5000, ... }
     const reqWallet = req.query.wallet;
     if (reqWallet) {
         try {
@@ -1501,16 +1500,12 @@ if (action === 'orderbook') {
                 for (const o of userOrders.rows) {
                     const side = o.side;
                     const price = parseFloat(o.price);
-                    const remaining = parseFloat(o.remaining);
                     const isSell = o.order_type === 'sell';
-                    const key = isSell ? (side + 'Sells') : side;
+                    const key = isSell ? (side + 'Sells') : side; // e.g., 'higherSells' or 'higher'
                     if (!userOrderPrices[key]) userOrderPrices[key] = [];
                     if (!userOrderPrices[key].includes(price)) {
                         userOrderPrices[key].push(price);
                     }
-                    // Accumulate amounts per side:price
-                    const amtKey = `${key}:${price.toFixed(4)}`;
-                    userOrderAmounts[amtKey] = (userOrderAmounts[amtKey] || 0) + remaining;
                 }
             }
         } catch (e) { /* ignore */ }
@@ -1521,7 +1516,6 @@ if (action === 'orderbook') {
         orderBook,
         ammPrice,
         userOrderPrices,
-        userOrderAmounts,
         pool: poolSnapshot ? {
             higher: parseFloat(poolSnapshot.higher_reserve),
             lower: parseFloat(poolSnapshot.lower_reserve),
@@ -2294,7 +2288,7 @@ if (action === 'orderbook') {
                 // Self-trade protection in matching loop: own orders skipped
                 
                 // Step 1: Match against opposite-side buy orders (complement matching)
-                // Exclude own orders: they sit in book for other users to match
+                // No self-match: user's own orders skipped, wait for other users
                 const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
                 
                 let totalMatched = 0;
@@ -2482,7 +2476,7 @@ if (action === 'orderbook') {
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
-                // Exclude own orders: they sit in book for other users to match
+                // No self-match: user's own orders skipped, wait for other users
                 // ============================================
                 const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
                 
@@ -2601,9 +2595,10 @@ if (action === 'orderbook') {
                             // Matched against complement buy order: give them their position
                             await db.upsertUserPosition(oppositeOrder.user_id, round.id, oppositeOrder.side, matchAmount, effectiveSellerPrice, sellerCost);
                             await deductLocked(oppositeOrder.user_id, sellerCost);
-                            // Refund surplus: seller locked at original price, effective may be lower
-                            const sellerOrigLock = matchAmount * roundPrice(parseFloat(oppositeOrder.price));
-                            const sellerSurplus = sellerOrigLock - sellerCost;
+                            // Refund seller's price improvement surplus
+                            // Seller locked at oppositeOrder.price, but effective price is lower
+                            const sellerOriginalLock = matchAmount * roundPrice(parseFloat(oppositeOrder.price));
+                            const sellerSurplus = sellerOriginalLock - sellerCost;
                             if (sellerSurplus > 0.001) {
                                 await unlockBalance(oppositeOrder.user_id, sellerSurplus);
                             }
