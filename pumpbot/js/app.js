@@ -65,7 +65,6 @@ function getCurrentInterval() {
 // Trading state
 let orderBookData = { higher: [], lower: [], higherSells: [], lowerSells: [] };
 let userOrderPrices = { higher: [], lower: [], higherSells: [], lowerSells: [] };
-let userOrderAmounts = {}; // { "higher:0.6000": 5000, ... }
 let ammPrices = { higher: 0.5, lower: 0.5 };
 let recentTrades = [];
 let selectedSide = 'higher';
@@ -869,7 +868,6 @@ async function fetchOrderBook() {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
             userOrderPrices = data.userOrderPrices || { higher: [], lower: [], higherSells: [], lowerSells: [] };
-            userOrderAmounts = data.userOrderAmounts || {};
             if (data.startMarketCap && parseFloat(data.startMarketCap) > 0) {
                 targetMarketCap = parseFloat(data.startMarketCap);
                 ;
