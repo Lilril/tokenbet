@@ -65,6 +65,7 @@ function getCurrentInterval() {
 // Trading state
 let orderBookData = { higher: [], lower: [], higherSells: [], lowerSells: [] };
 let userOrderPrices = { higher: [], lower: [], higherSells: [], lowerSells: [] };
+let userOrderAmounts = {}; // { "higher:0.6000": 5000, ... }
 let ammPrices = { higher: 0.5, lower: 0.5 };
 let recentTrades = [];
 let selectedSide = 'higher';
@@ -868,6 +869,7 @@ async function fetchOrderBook() {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
             userOrderPrices = data.userOrderPrices || { higher: [], lower: [], higherSells: [], lowerSells: [] };
+            userOrderAmounts = data.userOrderAmounts || {};
             if (data.startMarketCap && parseFloat(data.startMarketCap) > 0) {
                 targetMarketCap = parseFloat(data.startMarketCap);
                 ;
@@ -918,12 +920,19 @@ function renderOrderBook() {
         bidsSide = 'lower';
     }
     // Convert complement asks to complementary prices (1 - price) + merge with direct sell orders
-    const complementData = complementAsks.map(o => ({
-        ...o,
-        displayPrice: Math.round((1 - o.price) * 100) / 100,
-        rawPrice: o.price,
-        source: 'complement'
-    }));
+    // IMPORTANT: Subtract user's own orders from complement side (can't trade against yourself)
+    const complementData = complementAsks.map(o => {
+        const amtKey = `${asksSide}:${o.price.toFixed(4)}`;
+        const userAmt = userOrderAmounts[amtKey] || 0;
+        const othersAmount = o.amount - userAmt;
+        return {
+            ...o,
+            amount: othersAmount,
+            displayPrice: Math.round((1 - o.price) * 100) / 100,
+            rawPrice: o.price,
+            source: 'complement'
+        };
+    }).filter(o => o.amount > 0);
     const directSellData = directSells.map(o => ({
         ...o,
         displayPrice: Math.round(o.price * 100) / 100,
