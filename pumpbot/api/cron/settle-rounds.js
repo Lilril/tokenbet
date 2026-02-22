@@ -205,7 +205,7 @@ async function settleRound(roundId) {
 }
 
 async function fetchFinalMarketCap(round) {
-    const TOKEN_ADDRESS = process.env.TOKEN_MINT || 'AWAITING_TOKEN';
+    const TOKEN_ADDRESS = process.env.TOKEN_MINT || 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
     const TOTAL_SUPPLY = 1000000000;
     
     // Method 1: DexScreener
