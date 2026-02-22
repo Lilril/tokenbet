@@ -65,6 +65,7 @@ function getCurrentInterval() {
 // Trading state
 let orderBookData = { higher: [], lower: [], higherSells: [], lowerSells: [] };
 let userOrderPrices = { higher: [], lower: [], higherSells: [], lowerSells: [] };
+let userOrderAmounts = {}; // { "higher:0.6000": 5000, ... }
 let ammPrices = { higher: 0.5, lower: 0.5 };
 let recentTrades = [];
 let selectedSide = 'higher';
@@ -868,6 +869,7 @@ async function fetchOrderBook() {
             orderBookData = data.orderBook;
             ammPrices = data.ammPrice;
             userOrderPrices = data.userOrderPrices || { higher: [], lower: [], higherSells: [], lowerSells: [] };
+            userOrderAmounts = data.userOrderAmounts || {};
             if (data.startMarketCap && parseFloat(data.startMarketCap) > 0) {
                 targetMarketCap = parseFloat(data.startMarketCap);
                 ;
@@ -2567,9 +2569,15 @@ window.addEventListener('load', async () => {
                         <div class="settlement-detail-value">${totalCost.toFixed(2)}</div>
                     </div>
                     <div class="settlement-detail">
-                        <div class="settlement-detail-label">${isTie ? 'Refund' : (won ? 'Net P&L' : 'Total loss')}</div>
+                        <div class="settlement-detail-label">${isTie ? 'Payout (0.50/token)' : (won ? 'Payout' : 'Total loss')}</div>
                         <div class="settlement-detail-value ${isTie ? '' : (won ? 'settlement-payout' : 'settlement-loss')}">
-                            ${isTie ? totalCost.toFixed(2) : (profitLoss >= 0 ? '+' : '') + profitLoss.toFixed(2)}
+                            ${isTie ? payout.toFixed(2) : (won ? payout.toFixed(2) : (-totalCost).toFixed(2))}
+                        </div>
+                    </div>
+                    <div class="settlement-detail">
+                        <div class="settlement-detail-label">Net P&L</div>
+                        <div class="settlement-detail-value ${profitLoss >= 0 ? 'settlement-payout' : 'settlement-loss'}">
+                            ${(profitLoss >= 0 ? '+' : '') + profitLoss.toFixed(2)}
                         </div>
                     </div>
                 </div>
