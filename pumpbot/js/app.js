@@ -920,19 +920,12 @@ function renderOrderBook() {
         bidsSide = 'lower';
     }
     // Convert complement asks to complementary prices (1 - price) + merge with direct sell orders
-    // IMPORTANT: Subtract user's own orders from complement side (can't trade against yourself)
-    const complementData = complementAsks.map(o => {
-        const amtKey = `${asksSide}:${o.price.toFixed(4)}`;
-        const userAmt = userOrderAmounts[amtKey] || 0;
-        const othersAmount = o.amount - userAmt;
-        return {
-            ...o,
-            amount: othersAmount,
-            displayPrice: Math.round((1 - o.price) * 100) / 100,
-            rawPrice: o.price,
-            source: 'complement'
-        };
-    }).filter(o => o.amount > 0);
+    const complementData = complementAsks.map(o => ({
+        ...o,
+        displayPrice: Math.round((1 - o.price) * 100) / 100,
+        rawPrice: o.price,
+        source: 'complement'
+    }));
     const directSellData = directSells.map(o => ({
         ...o,
         displayPrice: Math.round(o.price * 100) / 100,
