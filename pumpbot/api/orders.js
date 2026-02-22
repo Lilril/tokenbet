@@ -1158,7 +1158,7 @@ async function inlineSettleRound(roundId) {
         
         // ============================================
         if (startMC <= 0) {
-            // No valid market cap → refund at $0.50 per token (safe: never overpays pool)
+            // No valid market cap → TIE at $0.50/token (solvent: pairs always backed by $1.00)
             for (const pos of positions.rows) {
                 const amt = parseFloat(pos.amount);
                 const tc = parseFloat(pos.total_cost);
@@ -1222,7 +1222,8 @@ async function inlineSettleRound(roundId) {
         // ============================================
         const capChangePercent = startMC > 0 ? Math.abs((finalMC - startMC) / startMC * 100) : 0;
         if (finalMC === startMC || capChangePercent < 0.01) {
-            // TIE: Each token is worth $0.50 (both sides split the $1.00 pair equally)
+            // TIE: $0.50/token (solvent: each complement pair backed by exactly $1.00)
+            // Full refund is INSOLVENT when positions were resold at different prices
             for (const pos of positions.rows) {
                 const amt = parseFloat(pos.amount);
                 const tc = parseFloat(pos.total_cost);
