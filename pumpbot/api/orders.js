@@ -111,7 +111,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
-        const TOKEN_ADDR = 'F1CjqLUTM3B4b7LreJKMZmLV3p5mDnfs1vpQSFJL4E8e';
+        const TOKEN_ADDR = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
         
         try {
             const controller = new AbortController();
@@ -1175,7 +1175,7 @@ async function inlineSettleRound(roundId) {
         // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
-            const TOKEN = 'F1CjqLUTM3B4b7LreJKMZmLV3p5mDnfs1vpQSFJL4E8e';
+            const TOKEN = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
             
             
             try {
@@ -2284,14 +2284,13 @@ if (action === 'orderbook') {
                 // Self-trade protection in matching loop: own orders skipped
                 
                 // Step 1: Match against opposite-side buy orders (complement matching)
-                // Self-trade protection: user's own orders skipped
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
+                // Self-complement allowed: buying both sides is a valid strategy
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, null);
                 
                 let totalMatched = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
-                    if (oppositeOrder.user_id === user.id) continue;
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
                     
@@ -2473,16 +2472,15 @@ if (action === 'orderbook') {
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
-                // Self-trade protection: user's own orders skipped
+                // Self-complement allowed: buying both sides is valid
                 // ============================================
-                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, null);
                 
                 let totalMatched = 0;
                 let totalBuyerCost = 0;
                 const trades = [];
                 
                 for (const oppositeOrder of matchableOrders) {
-                    if (oppositeOrder.user_id === user.id) continue;
                     
                     const remainingToFill = amt - totalMatched;
                     const oppositeRemaining = parseFloat(oppositeOrder.amount) - parseFloat(oppositeOrder.filled);
