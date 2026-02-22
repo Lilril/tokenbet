@@ -884,29 +884,33 @@ async function lockBalance(userId, amount) {
 }
 
 async function unlockBalance(userId, amount) {
-    // Atomic unlock: update and return new values in one query
+    // Atomic unlock: only move to available what's actually in locked
+    // Prevents money-from-air if deductLocked already reduced locked
     const result = await sql`
         UPDATE user_balances 
-        SET available = available + ${amount},
-            locked = GREATEST(locked - ${amount}, 0),
+        SET available = available + LEAST(${amount}, locked),
+            locked = locked - LEAST(${amount}, locked),
             updated_at = NOW()
         WHERE user_id = ${userId}
-        RETURNING available
+        RETURNING available, available - LEAST(${amount}, locked) as balance_before, LEAST(${amount}, locked) as actual_unlocked
     `;
     
     if (result.rows.length > 0) {
-        const newAvail = parseFloat(result.rows[0].available);
-        await sql`
-            INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
-            VALUES (${userId}, 'order_unlock', ${amount}, ${newAvail - amount}, ${newAvail}, 'Unlock from order')
-        `;
+        const actualUnlocked = parseFloat(result.rows[0].actual_unlocked);
+        if (actualUnlocked > 0.001) {
+            const newAvail = parseFloat(result.rows[0].available);
+            await sql`
+                INSERT INTO balance_transactions (user_id, type, amount, balance_before, balance_after, description)
+                VALUES (${userId}, 'order_unlock', ${actualUnlocked}, ${newAvail - actualUnlocked}, ${newAvail}, 'Unlock from order')
+            `;
+        }
     }
 }
 
 async function deductLocked(userId, amount) {
     await sql`
         UPDATE user_balances 
-        SET locked = GREATEST(locked - ${amount}, 0),
+        SET locked = locked - LEAST(${amount}, locked),
             updated_at = NOW()
         WHERE user_id = ${userId}
     `;
