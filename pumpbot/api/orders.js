@@ -2288,8 +2288,8 @@ if (action === 'orderbook') {
                 // Self-trade protection in matching loop: own orders skipped
                 
                 // Step 1: Match against opposite-side buy orders (complement matching)
-                // Self-complement allowed: buying both sides is a valid strategy
-                const matchableOrders = await db.getMatchableOrders(round.id, side, null, null);
+                // Self-trade protection: skip own orders (they sit in book for others)
+                const matchableOrders = await db.getMatchableOrders(round.id, side, null, user.id);
                 
                 let totalMatched = 0;
                 const trades = [];
@@ -2476,9 +2476,9 @@ if (action === 'orderbook') {
                 
                 // ============================================
                 // STEP 1A: Match against opposite-side BUY orders (complement matching)
-                // Self-complement allowed: buying both sides is valid
+                // Self-trade protection: skip own orders (they sit in book for others)
                 // ============================================
-                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, null);
+                const matchableOrders = await db.getMatchableOrders(round.id, side, prc, user.id);
                 
                 let totalMatched = 0;
                 let totalBuyerCost = 0;
