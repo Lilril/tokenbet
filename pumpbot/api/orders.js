@@ -1141,6 +1141,57 @@ async function fixOrphanedLocks() {
     }
 }
 
+// ============================================
+// SMART TIE SETTLEMENT
+// Full refund if solvent (no P2P resales inflated costs beyond pool)
+// $0.50/token fallback if full refund would exceed pool backing
+// Pool = max(higher_tokens, lower_tokens) × $1.00 (each complement pair costs $1.00)
+// ============================================
+async function settleTie(positionRows, roundId) {
+    // Calculate pool backing: each complement pair contributes $1.00
+    // Total pool = total tokens on one side (HIGHER = LOWER always from complement matching)
+    let totalHigherTokens = 0, totalLowerTokens = 0;
+    let totalRefundNeeded = 0;
+    
+    for (const pos of positionRows) {
+        const amt = parseFloat(pos.amount);
+        const tc = parseFloat(pos.total_cost);
+        if (pos.side === 'higher') totalHigherTokens += amt;
+        else totalLowerTokens += amt;
+        totalRefundNeeded += tc;
+    }
+    
+    // Pool = max tokens on either side × $1.00
+    // (max because sells can move tokens within a side, but total pairs = max of either side)
+    const poolBacking = Math.max(totalHigherTokens, totalLowerTokens) * 1.0;
+    
+    // Can we afford full refund?
+    const canFullRefund = totalRefundNeeded <= poolBacking + 0.01; // tiny epsilon for rounding
+    
+    for (const pos of positionRows) {
+        const amt = parseFloat(pos.amount);
+        const tc = parseFloat(pos.total_cost);
+        let payout, pl;
+        
+        if (canFullRefund) {
+            // Full refund: everyone gets back what they invested
+            payout = tc;
+            pl = 0;
+        } else {
+            // Fallback: $0.50/token (always solvent)
+            payout = amt * 0.50;
+            pl = payout - tc;
+        }
+        
+        await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
+            VALUES (${pos.user_id},${roundId},${pos.side},${amt},${pos.avg_price},${tc},true,${payout},${pl},false)
+            ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${payout},profit_loss=${pl}`;
+    }
+    
+    await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
+    await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
+}
+
 async function inlineSettleRound(roundId) {
     try {
         const rr = await sql`SELECT * FROM rounds WHERE id = ${roundId} AND status = 'closed'`;
@@ -1158,19 +1209,8 @@ async function inlineSettleRound(roundId) {
         
         // ============================================
         if (startMC <= 0) {
-            // No valid market cap → TIE at $0.50/token (solvent: pairs always backed by $1.00)
-            for (const pos of positions.rows) {
-                const amt = parseFloat(pos.amount);
-                const tc = parseFloat(pos.total_cost);
-                const payout = amt * 0.50;
-                const pl = payout - tc;
-                await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
-                    VALUES (${pos.user_id},${roundId},${pos.side},${amt},${pos.avg_price},${tc},true,${payout},${pl},false)
-                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${payout},profit_loss=${pl}`;
-            }
-            // Mark positions as settled
-            await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
-            await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
+            // No valid market cap → TIE
+            await settleTie(positions.rows, roundId);
             return;
         }
         
@@ -1222,20 +1262,8 @@ async function inlineSettleRound(roundId) {
         // ============================================
         const capChangePercent = startMC > 0 ? Math.abs((finalMC - startMC) / startMC * 100) : 0;
         if (finalMC === startMC || capChangePercent < 0.01) {
-            // TIE: $0.50/token (solvent: each complement pair backed by exactly $1.00)
-            // Full refund is INSOLVENT when positions were resold at different prices
-            for (const pos of positions.rows) {
-                const amt = parseFloat(pos.amount);
-                const tc = parseFloat(pos.total_cost);
-                const payout = amt * 0.50;
-                const pl = payout - tc;
-                await sql`INSERT INTO user_settlements (user_id,round_id,side,amount,avg_price,total_cost,won,payout,profit_loss,claimed)
-                    VALUES (${pos.user_id},${roundId},${pos.side},${amt},${pos.avg_price},${tc},true,${payout},${pl},false)
-                    ON CONFLICT (user_id,round_id,side) DO UPDATE SET won=true,payout=${payout},profit_loss=${pl}`;
-            }
-            // Mark positions as settled
-            await sql`UPDATE user_positions SET settled = true, settled_at = NOW() WHERE round_id = ${roundId}`;
-            await sql`UPDATE rounds SET settlement_status='settled',settled_at=NOW(),winning_side='tie' WHERE id=${roundId}`;
+            // TIE: smart settlement — full refund if solvent, $0.50/token if not
+            await settleTie(positions.rows, roundId);
             return;
         }
         
