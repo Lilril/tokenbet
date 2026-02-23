@@ -2569,17 +2569,17 @@ window.addEventListener('load', async () => {
                         <div class="settlement-detail-value">${totalCost.toFixed(2)}</div>
                     </div>
                     <div class="settlement-detail">
-                        <div class="settlement-detail-label">${isTie ? 'Payout (0.50/token)' : (won ? 'Payout' : 'Total loss')}</div>
-                        <div class="settlement-detail-value ${isTie ? '' : (won ? 'settlement-payout' : 'settlement-loss')}">
+                        <div class="settlement-detail-label">${isTie ? (Math.abs(profitLoss) < 0.01 ? 'Refund' : 'Payout') : (won ? 'Payout' : 'Total loss')}</div>
+                        <div class="settlement-detail-value ${isTie ? (profitLoss >= 0 ? '' : 'settlement-loss') : (won ? 'settlement-payout' : 'settlement-loss')}">
                             ${isTie ? payout.toFixed(2) : (won ? payout.toFixed(2) : (-totalCost).toFixed(2))}
                         </div>
                     </div>
-                    <div class="settlement-detail">
+                    ${(!isTie || Math.abs(profitLoss) >= 0.01) ? `<div class="settlement-detail">
                         <div class="settlement-detail-label">Net P&L</div>
                         <div class="settlement-detail-value ${profitLoss >= 0 ? 'settlement-payout' : 'settlement-loss'}">
                             ${(profitLoss >= 0 ? '+' : '') + profitLoss.toFixed(2)}
                         </div>
-                    </div>
+                    </div>` : ''}
                 </div>
                 ${showClaimed ? renderClaimedStatus(claimed, claimedAt, claimTxHash) : renderClaimButton(roundId, won || isTie, payout)}
             </div>
