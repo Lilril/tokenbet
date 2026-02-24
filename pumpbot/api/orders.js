@@ -111,7 +111,7 @@ async function getOrCreateCurrentRound(intervalMinutes) {
         
         let startMarketCap = 0;
         const TOTAL_SUPPLY = 1000000000;
-        const TOKEN_ADDR = 'AWAITING_TOKEN';
+        const TOKEN_ADDR = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
         
         try {
             const controller = new AbortController();
@@ -1219,7 +1219,7 @@ async function inlineSettleRound(roundId) {
         // ============================================
         let finalMC = parseFloat(round.final_market_cap) || 0;
         if (finalMC <= 0) {
-            const TOKEN = 'AWAITING_TOKEN';
+            const TOKEN = 'ANPSK9Dw7nYXADgNYRuSSWNNfUd9qrHuBSXvrK6Cpump';
             
             
             try {
