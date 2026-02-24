@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="assets/styles.css?v=20260208v1">
     <link rel="icon" type="image/png" href="assets/image/mercurome.png">
     <style>
+        /* Updated animation for pharaoh_kirk with mirroring and smaller angle */
         @keyframes levitate-reverse {
             0%, 100% {
                 transform: translateY(0) scaleX(-1) rotate(-2deg);
@@ -16,6 +17,7 @@
             }
         }
         
+        /* Styles for header coin */
         .coin-icon-wrapper {
             display: inline-flex;
             align-items: center;
@@ -23,7 +25,7 @@
             position: relative;
             margin-right: 15px;
             vertical-align: middle;
-            transform: translateY(-5px);
+            transform: translateY(-5px); /* Raised 5px up */
         }
         
         .coin-icon {
@@ -35,11 +37,17 @@
             animation: coinFloat 3s ease-in-out infinite;
         }
         
+        /* Gentle coin wobble */
         @keyframes coinFloat {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-3px); }
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-3px);
+            }
         }
         
+        /* Inner bright glow */
         .coin-icon-wrapper::before {
             content: '';
             position: absolute;
@@ -61,6 +69,7 @@
             z-index: 1;
         }
         
+        /* Outer soft glow with waves */
         .coin-icon-wrapper::after {
             content: '';
             position: absolute;
@@ -81,17 +90,35 @@
             z-index: 0;
         }
         
+        /* Inner glow - faster and more intense */
         @keyframes glowPulseInner {
-            0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(0.95); }
-            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            0%, 100% {
+                opacity: 0.6;
+                transform: translate(-50%, -50%) scale(0.95);
+            }
+            50% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.1);
+            }
         }
         
+        /* Outer glow - slower and smoother */
         @keyframes glowPulseOuter {
-            0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.9); }
-            33% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.15); }
-            66% { opacity: 0.4; transform: translate(-50%, -50%) scale(1.05); }
+            0%, 100% {
+                opacity: 0.3;
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+            33% {
+                opacity: 0.6;
+                transform: translate(-50%, -50%) scale(1.15);
+            }
+            66% {
+                opacity: 0.4;
+                transform: translate(-50%, -50%) scale(1.05);
+            }
         }
         
+        /* ROUND SELECTOR STYLES */
         .round-selector {
             display: flex;
             gap: 10px;
@@ -408,17 +435,20 @@
     </style>
 </head>
 <body>
+    <!-- Mercury blob effect canvas -->
     <canvas id="mercuryCanvas"></canvas>
     
+    <!-- Floating chrome characters — fixed background decor with levitation -->
     <img src="assets/image/pharaoh_epstein.png" class="floating-character char-pharaoh-1" alt="" loading="lazy">
     <img src="assets/image/pharaoh_kirk.png" class="floating-character char-pharaoh-2" alt="" loading="lazy">
 
     <div class="container" style="position: relative;">
+        <!-- PAUSE BANNER -->
         <div id="pauseBanner" style="display:none; background: linear-gradient(90deg, #ff6b35, #ff4444); color: white; text-align: center; padding: 12px 20px; font-weight: 700; font-size: 0.95em; letter-spacing: 0.5px; border-radius: 6px; margin-bottom: 12px; animation: pausePulse 2s ease-in-out infinite;">
             ⚠️ TRADING PAUSED — All open orders cancelled, funds returned. Withdrawals available.
         </div>
         <style>@keyframes pausePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.8; } }</style>
-
+        <!-- HEADER with integrated trans_floyd character -->
         <div class="header slide-in">
             <img src="assets/image/trans_floyd.png" class="header-character" alt="" loading="lazy">
             <h1>
@@ -427,7 +457,7 @@
                 </span>
                 PISSBET PREDICTION MARKET
             </h1>
-            <p>Golden Gains • Order Book • Bet or Regret</p>
+            <p>🚽 Golden Gains • Order Book • Bet or Regret 🎰</p>
             <div style="margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
                 <div id="contractRow" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 2px; cursor: pointer; transition: all 0.2s;" onclick="copyContract()" onmouseover="this.style.borderColor='var(--border-bright)'" onmouseout="this.style.borderColor='var(--border)'">
                     <span style="font-size: 0.72em; color: var(--text-dim); letter-spacing: 0.5px; font-family: 'JetBrains Mono', monospace;" id="contractAddr">-</span>
@@ -443,8 +473,10 @@
             </div>
         </div>
 
+        <!-- MASTER GRID: 3 rows x 2 columns, blocks aligned per row -->
         <div class="main-grid">
 
+            <!-- ROW 1 LEFT: WALLET SECTION -->
             <div class="wallet-section slide-in" style="margin-bottom: 0;">
                 <div class="wallet-status">
                     <div>
@@ -478,6 +510,7 @@
                 </div>
             </div>
 
+            <!-- ROW 1 RIGHT: PRICE DISPLAY -->
             <div class="price-display slide-in" style="padding: 15px; align-self: stretch;">
                 <div class="price-label" style="font-size: 0.75em; margin-bottom: 5px;">CURRENT MARKET CAP</div>
                 <div class="price-value" id="currentCap" style="font-size: 2em;">Loading...</div>
@@ -497,6 +530,7 @@
                 </div>
             </div>
 
+            <!-- ROW 2 LEFT: ROUND SELECTOR -->
             <div class="round-selector slide-in" style="margin-bottom: 0; align-self: stretch;">
                 <div class="round-tab active" data-round-id="1" data-interval="15" onclick="selectRound(1, 15)">
                     <div class="round-tab-title">15m</div>
@@ -512,11 +546,13 @@
                 </div>
             </div>
 
+            <!-- ROW 2 RIGHT: COUNTDOWN -->
             <div class="countdown-section slide-in" style="padding: 10px 15px; align-self: stretch; display: flex; flex-direction: column; justify-content: center;">
                 <div class="countdown-label" style="font-size: 0.7em; margin-bottom: 3px;">ROUND CLOSES IN</div>
                 <div class="countdown-value" id="countdown" style="font-size: 1.8em;">--:--</div>
             </div>
 
+            <!-- ROW 3 LEFT: ORDER BOOK -->
             <div class="orderbook-panel slide-in" style="max-height: none; align-self: start;">
                 <div class="orderbook-header"><svg style="width:16px;height:16px;color:var(--text-dim);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> ORDER BOOK</div>
                 <div class="orderbook-content">
@@ -545,7 +581,9 @@
                 </div>
             </div>
 
+            <!-- ROW 3 RIGHT: POLYMARKET-STYLE TRADE PANEL -->
             <div style="background: var(--bg-secondary); border: 1px solid var(--border); padding: 15px; align-self: start; border-radius: 2px;" class="slide-in">
+                <!-- BUY/SELL toggle -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
                     <button id="tradeBuyBtn" onclick="switchTradeAction('buy')" style="padding: 10px; background: var(--accent-green); color: #000; border: none; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">BUY</button>
                     <button id="tradeSellBtn" onclick="switchTradeAction('sell')" style="padding: 10px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;">SELL</button>
@@ -554,6 +592,7 @@
                     <button id="sideHigherBtn" onclick="switchTradeSide('higher')" style="padding: 12px; background: var(--accent-green); color: #000; border: none; border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;"><svg style="width:12px;height:12px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg> HIGHER</button>
                     <button id="sideLowerBtn" onclick="switchTradeSide('lower')" style="padding: 12px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 0.95em;"><svg style="width:12px;height:12px;vertical-align:-1px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg> LOWER</button>
                 </div>
+                <!-- Position info for sell mode -->
                 <div id="sellPositionInfo" style="display: none; padding: 8px 12px; background: var(--bg-tertiary); border-radius: 6px; margin-bottom: 12px; font-size: 0.85em;">
                     <div style="display: flex; justify-content: space-between;">
                         <span style="color: var(--text-dim);">Your position:</span>
@@ -586,6 +625,7 @@
 
         </div>
 
+        <!-- WALLET MODAL -->
         <div class="modal" id="walletModal">
             <div class="modal-content">
                 <span class="close-modal" id="closeModal">×</span>
@@ -594,10 +634,12 @@
             </div>
         </div>
 
+        <!-- DEPOSIT MODAL -->
         <div class="modal" id="depositModal">
             <div class="modal-content" style="max-width: 500px;">
                 <span class="close-modal" onclick="closeDepositModal()">×</span>
                 <div class="modal-header"><svg style="width:20px;height:20px;color:var(--accent-green);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> DEPOSIT</div>
+                
                 <div id="depositStep1">
                     <div class="input-group" style="margin-bottom: 15px;">
                         <label class="input-label">Deposit amount ($MERC)</label>
@@ -606,6 +648,7 @@
                             <button onclick="setMaxDeposit()" style="padding: 10px 15px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--accent-yellow); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 4px;">MAX</button>
                         </div>
                     </div>
+                    
                     <div style="padding: 12px; background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.3); border-radius: 8px; margin-bottom: 15px; font-size: 0.85em;">
                         <strong style="color: var(--accent-yellow);">How it works:</strong><br>
                         • Wallet will ask to sign a transaction<br>
@@ -613,23 +656,29 @@
                         • Balance will be credited automatically<br>
                         • Min: <span id="minDepositAmount">1000</span> $MERC
                     </div>
+
                     <button onclick="executeDeposit()" id="executeDepositBtn" style="width: 100%; padding: 14px; background: var(--accent-green); color: #000; border: none; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 1.1em; border-radius: 6px;">
                         DEPOSIT
                     </button>
                 </div>
-                <div id="depositResult" style="display: none; padding: 20px; text-align: center;"></div>
+
+                <div id="depositResult" style="display: none; padding: 20px; text-align: center;">
+                </div>
             </div>
         </div>
 
+        <!-- WITHDRAW MODAL -->
         <div class="modal" id="withdrawModal">
             <div class="modal-content" style="max-width: 500px;">
                 <span class="close-modal" onclick="closeWithdrawModal()">×</span>
                 <div class="modal-header"><svg style="width:20px;height:20px;color:var(--accent-red);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> WITHDRAW $MERC</div>
+                
                 <div id="withdrawStep1">
                     <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: var(--text-dim); font-size: 0.9em;">Available for withdrawal:</span>
                         <span style="font-weight: 700; color: var(--accent-green); font-size: 1.1em;" id="withdrawAvailable">0</span>
                     </div>
+
                     <div class="input-group" style="margin-bottom: 10px;">
                         <label class="input-label">Withdrawal amount</label>
                         <div style="display: flex; gap: 8px;">
@@ -637,33 +686,42 @@
                             <button onclick="setMaxWithdraw()" style="padding: 10px 15px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--accent-yellow); font-weight: 700; cursor: pointer; font-family: inherit; border-radius: 4px;">MAX</button>
                         </div>
                     </div>
+
                     <div style="padding: 10px; background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.3); border-radius: 8px; margin-bottom: 15px; font-size: 0.85em;">
                         <strong style="color: var(--accent-yellow);">Info:</strong><br>
                         • Min withdrawal: <span id="minWithdrawAmount">1000</span> $MERC<br>
                         • $MERC will be sent to your connected wallet<br>
                         • Processing: 1-2 minutes
                     </div>
+
                     <button onclick="processWithdraw()" id="processWithdrawBtn" style="width: 100%; padding: 14px; background: var(--accent-red); color: #fff; border: none; font-weight: 700; font-family: inherit; cursor: pointer; font-size: 1.1em; border-radius: 6px;">
                         WITHDRAW
                     </button>
                 </div>
-                <div id="withdrawResult" style="display: none; padding: 20px; text-align: center;"></div>
+
+                <div id="withdrawResult" style="display: none; padding: 20px; text-align: center;">
+                </div>
             </div>
         </div>
 
+        <!-- TRADE HISTORY -->
         <div class="trade-history slide-in" style="margin-bottom: 20px;">
             <div class="trade-history-header">
                 <svg style="width:16px;height:16px;color:var(--text-dim);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> TRADE HISTORY
             </div>
             <div class="trade-history-list" id="tradeHistory">
-                <div style="padding: 20px; text-align: center; color: var(--text-dim);">Loading...</div>
+                <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                    Loading...
+                </div>
             </div>
         </div>
 
+        <!-- INFO BOX -->
         <div style="border: 1px solid var(--border); padding: 20px; margin-top: 30px; background: var(--bg-secondary); font-size: 0.9em; line-height: 1.8; border-radius: 2px;">
             <div style="font-weight: 600; margin-bottom: 15px; color: var(--accent-gold); font-size: 1.1em; font-family: 'Fredoka One', cursive; letter-spacing: 2px; display: flex; align-items: center; gap: 8px;">
                 🚽 HOW IT WORKS
             </div>
+            
             <div style="margin-bottom: 10px;">
                 <span style="color: var(--accent-yellow);">•</span> <strong>Choose round</strong> - 15 min, 1 hour, or 4 hours
             </div>
@@ -676,50 +734,76 @@
             <div style="margin-bottom: 10px;">
                 <span style="color: var(--accent-yellow);">•</span> <strong>Settlement</strong> - at round end, payouts go to correct position holders
             </div>
+            
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.85em;">
                 Rounds are synced to global time. Bet HIGHER or LOWER!
             </div>
         </div>
 
+        <!-- MY ORDERS MODAL -->
         <div class="modal" id="myOrdersModal">
             <div class="modal-content" style="max-width: 900px;">
                 <span class="close-modal" onclick="closeMyOrdersModal()">×</span>
                 <div class="modal-header"><svg style="width:20px;height:20px;color:var(--accent-green);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> MY ACTIVE ORDERS</div>
                 <div class="trade-history-list" id="myOrdersModalList" style="max-height: 60vh; overflow-y: auto;">
-                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">No active orders</div>
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        No active orders
+                    </div>
                 </div>
             </div>
         </div>
 
+        <!-- MY TRADES MODAL -->
         <div class="modal" id="myTradesModal">
             <div class="modal-content" style="max-width: 900px;">
                 <span class="close-modal" onclick="closeMyTradesModal()">×</span>
                 <div class="modal-header"><svg style="width:20px;height:20px;color:var(--accent-yellow);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg> MY TRADES</div>
                 <div class="trade-history-list" id="myTradesModalList" style="max-height: 60vh; overflow-y: auto;">
-                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">No completed trades</div>
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        No completed trades
+                    </div>
                 </div>
             </div>
         </div>
 
+        <!-- HISTORY MODAL -->
         <div class="modal" id="settlementsModal">
             <div class="modal-content" style="max-width: 1000px;">
                 <span class="close-modal" onclick="closeSettlementsModal()">×</span>
                 <div class="modal-header"><svg style="width:20px;height:20px;color:var(--accent-yellow);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> HISTORY</div>
+                
+                <!-- Tabs -->
                 <div class="settlements-tabs">
                     <button class="settlement-tab active" onclick="switchSettlementTab('unclaimed')" id="tab-unclaimed">
                         <svg style="width:14px;height:14px;vertical-align:-2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"/><path d="M12 3v12M8 7l4-4 4 4"/></svg> Claim (<span id="unclaimedCount">0</span>)
                     </button>
-                    <button class="settlement-tab" onclick="switchSettlementTab('history')" id="tab-history">Rounds</button>
-                    <button class="settlement-tab" onclick="switchSettlementTab('transactions')" id="tab-transactions">Transactions</button>
+                    <button class="settlement-tab" onclick="switchSettlementTab('history')" id="tab-history">
+                        Rounds
+                    </button>
+                    <button class="settlement-tab" onclick="switchSettlementTab('transactions')" id="tab-transactions">
+                        Transactions
+                    </button>
                 </div>
+                
+                <!-- Unclaimed settlements -->
                 <div id="settlementsUnclaimed" class="settlements-list">
-                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">Loading...</div>
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Loading...
+                    </div>
                 </div>
+                
+                <!-- Round History -->
                 <div id="settlementsHistory" class="settlements-list" style="display: none;">
-                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">Loading...</div>
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Loading...
+                    </div>
                 </div>
+                
+                <!-- Transactions -->
                 <div id="settlementsTransactions" class="settlements-list" style="display: none;">
-                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">Loading...</div>
+                    <div style="padding: 20px; text-align: center; color: var(--text-dim);">
+                        Loading...
+                    </div>
                 </div>
             </div>
         </div>
@@ -728,10 +812,14 @@
     <script src="https://unpkg.com/@solana/web3.js@1.95.0/lib/index.iife.min.js"></script>
     <script src="js/app.js?v=20260208v1"></script>
     <script>
-        window.currentRoundId = 1;
+        // Global variable for current round
+        window.currentRoundId = 1; // Default to 15m round
         
+        // Round selection function
         function selectRound(roundId, intervalMinutes) {
             window.currentRoundId = roundId;
+            
+            // Update active tab
             document.querySelectorAll('.round-tab').forEach(tab => {
                 tab.classList.remove('active');
             });
@@ -739,19 +827,25 @@
             if (selectedTab) {
                 selectedTab.classList.add('active');
             }
+            
+            // Reload market data for selected round
             if (typeof window.loadMarketData === 'function') {
                 window.loadMarketData();
             }
+            
         }
 
+        // Copy contract address
         function copyContract() {
             const addr = document.getElementById('contractAddr').textContent;
             navigator.clipboard.writeText(addr).then(() => {
+                const row = document.getElementById('contractRow');
                 const icon = document.getElementById('copyIcon');
                 const addrEl = document.getElementById('contractAddr');
                 const origColor = addrEl.style.color;
                 addrEl.style.color = 'var(--accent-green)';
                 icon.style.color = 'var(--accent-green)';
+                // Briefly show check icon
                 icon.innerHTML = '<polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2" fill="none"/>';
                 setTimeout(() => {
                     addrEl.style.color = origColor || 'var(--text-dim)';
@@ -762,6 +856,7 @@
         }
     </script>
     
+    <!-- Gold shimmer cursor tracking for price-display and countdown-section -->
     <script>
     (function() {
         const panels = document.querySelectorAll('.price-display, .countdown-section');
@@ -777,12 +872,13 @@
     })();
     </script>
 
+    <!-- Water Drop Effect -->
     <script>
     (function() {
         const canvas = document.getElementById('mercuryCanvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        
+
         let W, H;
         function resize() {
             W = canvas.width = window.innerWidth;
@@ -790,173 +886,178 @@
         }
         resize();
         window.addEventListener('resize', resize);
-        
-        class MercuryBlob {
+
+        class WaterDrop {
             constructor() {
-                this.x = Math.random() * W;
+                this.reset();
                 this.y = Math.random() * H;
-                this.baseR = 10 + Math.random() * 28;
-                this.r = this.baseR;
-                this.vx = (Math.random() - 0.5) * 0.3;
-                this.vy = (Math.random() - 0.5) * 0.3;
-                this.ax = 0; this.ay = 0;
-                this.phase = Math.random() * Math.PI * 2;
-                this.wobbleSpeed = 0.006 + Math.random() * 0.01;
-                this.opacity = 0.07 + Math.random() * 0.11;
-                this.points = 7 + Math.floor(Math.random() * 5);
-                this.offsets = [];
-                for (let i = 0; i < this.points; i++) {
-                    this.offsets.push({
-                        phase: Math.random() * Math.PI * 2,
-                        speed: 0.008 + Math.random() * 0.018,
-                        amp: 0.12 + Math.random() * 0.2
-                    });
-                }
-                this.specAngle = Math.random() * Math.PI * 2;
-                this.specTargetAngle = this.specAngle;
-                this.envPhase = Math.random() * Math.PI * 2;
+                this.age = Math.random() * Math.PI * 2;
             }
-            
+
+            reset() {
+                this.x = Math.random() * W;
+                this.y = -30;
+                this.r = 6 + Math.random() * 22;
+                this.vx = (Math.random() - 0.5) * 0.15;
+                this.vy = 0.08 + Math.random() * 0.18;
+                this.age = 0;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = 0.008 + Math.random() * 0.012;
+                this.wobbleAmt = 0.06 + Math.random() * 0.1;
+                this.opacity = 0.12 + Math.random() * 0.18;
+                this.refractAngle = Math.random() * Math.PI * 2;
+                this.causticPhase = Math.random() * Math.PI * 2;
+                this.causticSpeed = 0.005 + Math.random() * 0.008;
+                this.tilt = (Math.random() - 0.5) * 0.3;
+            }
+
             update() {
-                this.phase += this.wobbleSpeed;
-                this.envPhase += 0.003;
-                if (Math.random() < 0.01) {
-                    this.ax = (Math.random() - 0.5) * 0.003;
-                    this.ay = (Math.random() - 0.5) * 0.003;
-                }
-                this.vx += this.ax + Math.sin(this.phase * 0.7) * 0.002;
-                this.vy += this.ay + Math.cos(this.phase * 0.5) * 0.002;
-                this.vx *= 0.998;
-                this.vy *= 0.998;
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                if (speed > 0.5) {
-                    this.vx = (this.vx / speed) * 0.5;
-                    this.vy = (this.vy / speed) * 0.5;
-                }
-                this.x += this.vx;
+                this.age += 0.008;
+                this.wobble += this.wobbleSpeed;
+                this.causticPhase += this.causticSpeed;
+                this.refractAngle += 0.004;
+
+                this.x += this.vx + Math.sin(this.age * 0.7) * 0.12;
                 this.y += this.vy;
-                this.r = this.baseR * (1 + Math.sin(this.phase) * 0.06);
-                for (let o of this.offsets) {
-                    o.phase += o.speed;
-                }
-                if (speed > 0.02) {
-                    this.specTargetAngle = Math.atan2(-this.vy, -this.vx) - 0.5;
-                }
-                let diff = this.specTargetAngle - this.specAngle;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                this.specAngle += diff * 0.03;
-                const margin = this.r * 3;
-                if (this.x < -margin) this.x = W + margin * 0.5;
-                if (this.x > W + margin) this.x = -margin * 0.5;
-                if (this.y < -margin) this.y = H + margin * 0.5;
-                if (this.y > H + margin) this.y = -margin * 0.5;
+
+                this.currentR = this.r * (1 + Math.sin(this.wobble) * this.wobbleAmt);
+
+                if (this.y > H + 40) this.reset();
+                if (this.x < -40) this.x = W + 40;
+                if (this.x > W + 40) this.x = -40;
             }
-            
-            getPoints() {
-                const pts = [];
-                for (let i = 0; i < this.points; i++) {
-                    const angle = (i / this.points) * Math.PI * 2;
-                    const o = this.offsets[i];
-                    const wobble = 1 + Math.sin(o.phase) * o.amp;
-                    const rr = this.r * wobble;
-                    pts.push({ x: Math.cos(angle) * rr, y: Math.sin(angle) * rr });
-                }
-                return pts;
-            }
-            
-            drawBlobPath(pts) {
-                ctx.beginPath();
-                for (let i = 0; i < pts.length; i++) {
-                    const curr = pts[i];
-                    const next = pts[(i + 1) % pts.length];
-                    const cpx = (curr.x + next.x) / 2;
-                    const cpy = (curr.y + next.y) / 2;
-                    if (i === 0) {
-                        const prev = pts[pts.length - 1];
-                        ctx.moveTo((prev.x + curr.x) / 2, (prev.y + curr.y) / 2);
-                    }
-                    ctx.quadraticCurveTo(curr.x, curr.y, cpx, cpy);
-                }
-                ctx.closePath();
-            }
-            
+
             draw() {
                 ctx.save();
                 ctx.translate(this.x, this.y);
-                const pts = this.getPoints();
-                
-                this.drawBlobPath(pts);
-                const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.r * 1.3);
-                grad.addColorStop(0, `rgba(255, 230, 80, ${this.opacity * 1.3})`);
-                grad.addColorStop(0.4, `rgba(220, 170, 30, ${this.opacity})`);
-                grad.addColorStop(0.7, `rgba(180, 120, 10, ${this.opacity * 0.7})`);
-                grad.addColorStop(1, `rgba(100, 60, 0, ${this.opacity * 0.15})`);
-                ctx.fillStyle = grad;
-                ctx.fill();
-                
-                this.drawBlobPath(pts);
-                const shadowAngle = this.specAngle + Math.PI;
-                const edgeGrad = ctx.createLinearGradient(
-                    Math.cos(shadowAngle) * this.r * 0.8,
-                    Math.sin(shadowAngle) * this.r * 0.8,
-                    Math.cos(this.specAngle) * this.r * 0.8,
-                    Math.sin(this.specAngle) * this.r * 0.8
-                );
-                edgeGrad.addColorStop(0, `rgba(80, 40, 0, ${this.opacity * 0.5})`);
-                edgeGrad.addColorStop(0.5, `rgba(80, 40, 0, 0)`);
-                edgeGrad.addColorStop(1, `rgba(80, 40, 0, 0)`);
-                ctx.fillStyle = edgeGrad;
-                ctx.fill();
-                
-                const specDist = this.r * 0.35;
-                const sx = Math.cos(this.specAngle) * specDist;
-                const sy = Math.sin(this.specAngle) * specDist;
+                ctx.rotate(this.tilt);
+
+                const r = this.currentR;
+
+                // === WATER BODY ===
+                const bodyGrad = ctx.createRadialGradient(-r * 0.2, -r * 0.25, 0, 0, 0, r * 1.1);
+                bodyGrad.addColorStop(0,    `rgba(210, 200, 170, ${this.opacity * 0.9})`);
+                bodyGrad.addColorStop(0.3,  `rgba(180, 200, 210, ${this.opacity * 0.7})`);
+                bodyGrad.addColorStop(0.65, `rgba(140, 175, 200, ${this.opacity * 0.45})`);
+                bodyGrad.addColorStop(1,    `rgba(100, 140, 180, ${this.opacity * 0.05})`);
+
                 ctx.beginPath();
-                ctx.ellipse(sx, sy, this.r * 0.38, this.r * 0.2, this.specAngle + 0.3, 0, Math.PI * 2);
-                const specGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, this.r * 0.4);
-                specGrad.addColorStop(0, `rgba(255, 248, 150, ${this.opacity * 1.5})`);
-                specGrad.addColorStop(0.3, `rgba(255, 220, 80, ${this.opacity * 0.8})`);
-                specGrad.addColorStop(0.7, `rgba(220, 180, 40, ${this.opacity * 0.2})`);
-                specGrad.addColorStop(1, `rgba(200, 150, 20, 0)`);
+                ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
+                ctx.fillStyle = bodyGrad;
+                ctx.fill();
+
+                // === REFRACTION BAND ===
+                ctx.save();
+                ctx.beginPath();
+                ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
+                ctx.clip();
+
+                const refGrad = ctx.createLinearGradient(
+                    Math.cos(this.refractAngle) * r * 0.6,
+                    Math.sin(this.refractAngle) * r * 0.6,
+                    -Math.cos(this.refractAngle) * r * 0.6,
+                    -Math.sin(this.refractAngle) * r * 0.6
+                );
+                refGrad.addColorStop(0,   `rgba(200, 220, 230, ${this.opacity * 0.35})`);
+                refGrad.addColorStop(0.4, `rgba(180, 210, 220, 0)`);
+                refGrad.addColorStop(0.7, `rgba(160, 190, 210, ${this.opacity * 0.2})`);
+                refGrad.addColorStop(1,   `rgba(140, 180, 200, 0)`);
+
+                ctx.fillStyle = refGrad;
+                ctx.fillRect(-r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
+                ctx.restore();
+
+                // === CAUSTIC SHIMMER ===
+                const cx = Math.cos(this.causticPhase) * r * 0.28;
+                const cy = Math.sin(this.causticPhase * 0.7) * r * 0.22;
+                const causGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.45);
+                causGrad.addColorStop(0,   `rgba(220, 210, 170, ${this.opacity * 0.6})`);
+                causGrad.addColorStop(0.5, `rgba(200, 215, 225, ${this.opacity * 0.2})`);
+                causGrad.addColorStop(1,   `rgba(180, 200, 215, 0)`);
+
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, r * 0.42, r * 0.28, this.causticPhase * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = causGrad;
+                ctx.fill();
+
+                // === PRIMARY SPECULAR ===
+                const hx = -r * 0.28;
+                const hy = -r * 0.32;
+                const specGrad = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.38);
+                specGrad.addColorStop(0,    `rgba(240, 235, 220, ${this.opacity * 1.8})`);
+                specGrad.addColorStop(0.25, `rgba(220, 225, 230, ${this.opacity * 0.9})`);
+                specGrad.addColorStop(0.6,  `rgba(200, 215, 225, ${this.opacity * 0.2})`);
+                specGrad.addColorStop(1,    `rgba(180, 205, 220, 0)`);
+
+                ctx.beginPath();
+                ctx.ellipse(hx, hy, r * 0.28, r * 0.16, -0.6, 0, Math.PI * 2);
                 ctx.fillStyle = specGrad;
                 ctx.fill();
-                
+
+                // === PINPOINT ===
                 ctx.beginPath();
-                const pinX = sx + Math.cos(this.specAngle) * this.r * 0.05;
-                const pinY = sy + Math.sin(this.specAngle) * this.r * 0.05;
-                ctx.arc(pinX, pinY, this.r * 0.08, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 240, 120, ${this.opacity * 2})`;
+                ctx.arc(hx - r * 0.04, hy - r * 0.04, r * 0.055, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(245, 240, 235, ${this.opacity * 2.2})`;
                 ctx.fill();
-                
-                const envX = Math.cos(this.specAngle + Math.PI + 0.8) * this.r * 0.4;
-                const envY = Math.sin(this.specAngle + Math.PI + 0.8) * this.r * 0.4;
+
+                // === BOTTOM REFLECTION ===
+                const bx = r * 0.2;
+                const by = r * 0.45;
+                const botGrad = ctx.createRadialGradient(bx, by, 0, bx, by, r * 0.3);
+                botGrad.addColorStop(0, `rgba(180, 200, 215, ${this.opacity * 0.4})`);
+                botGrad.addColorStop(1, `rgba(160, 190, 210, 0)`);
+
                 ctx.beginPath();
-                ctx.ellipse(envX, envY, this.r * 0.15, this.r * 0.1, this.envPhase, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(220, 180, 50, ${this.opacity * 0.35})`;
+                ctx.ellipse(bx, by, r * 0.22, r * 0.13, 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = botGrad;
                 ctx.fill();
-                
-                this.drawBlobPath(pts);
-                ctx.strokeStyle = `rgba(255, 220, 80, ${this.opacity * 0.35})`;
-                ctx.lineWidth = 0.5;
+
+                // === RIM ===
+                ctx.beginPath();
+                ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(190, 210, 225, ${this.opacity * 0.5})`;
+                ctx.lineWidth = 0.6;
                 ctx.stroke();
-                
+
                 ctx.restore();
             }
         }
-        
-        const blobs = [];
-        const blobCount = Math.min(16, Math.max(7, Math.floor(W / 130)));
-        for (let i = 0; i < blobCount; i++) {
-            blobs.push(new MercuryBlob());
+
+        class Ripple {
+            constructor() { this.reset(); }
+            reset() {
+                this.x = Math.random() * W;
+                this.y = Math.random() * H;
+                this.r = 0;
+                this.maxR = 40 + Math.random() * 60;
+                this.speed = 0.4 + Math.random() * 0.5;
+                this.opacity = 0.06 + Math.random() * 0.08;
+                this.delay = Math.random() * 400;
+            }
+            update() {
+                if (this.delay > 0) { this.delay--; return; }
+                this.r += this.speed;
+                if (this.r > this.maxR) this.reset();
+            }
+            draw() {
+                if (this.delay > 0 || this.r <= 0) return;
+                const fade = 1 - this.r / this.maxR;
+                ctx.beginPath();
+                ctx.ellipse(this.x, this.y, this.r, this.r * 0.35, 0, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(180, 210, 230, ${this.opacity * fade})`;
+                ctx.lineWidth = 0.8;
+                ctx.stroke();
+            }
         }
-        
+
+        const count = Math.min(18, Math.max(8, Math.floor(W / 110)));
+        const drops = Array.from({ length: count }, () => new WaterDrop());
+        const ripples = Array.from({ length: 6 }, () => new Ripple());
+
         function animate() {
             ctx.clearRect(0, 0, W, H);
-            for (const b of blobs) {
-                b.update();
-                b.draw();
-            }
+            for (const rip of ripples) { rip.update(); rip.draw(); }
+            for (const d of drops) { d.update(); d.draw(); }
             requestAnimationFrame(animate);
         }
         animate();
