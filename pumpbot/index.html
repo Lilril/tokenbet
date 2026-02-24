@@ -872,7 +872,7 @@
     })();
     </script>
 
-    <!-- Golden Water Effect -->
+    <!-- Water Drop Effect -->
     <script>
     (function() {
         const canvas = document.getElementById('mercuryCanvas');
@@ -887,249 +887,152 @@
         resize();
         window.addEventListener('resize', resize);
 
-        // --- Organic blob path with control points ---
-        function drawOrganicBlob(pts) {
-            ctx.beginPath();
-            const n = pts.length;
-            for (let i = 0; i < n; i++) {
-                const p0 = pts[(i - 1 + n) % n];
-                const p1 = pts[i];
-                const p2 = pts[(i + 1) % n];
-                const p3 = pts[(i + 2) % n];
-                // Catmull-Rom to bezier
-                const cp1x = p1.x + (p2.x - p0.x) / 6;
-                const cp1y = p1.y + (p2.y - p0.y) / 6;
-                const cp2x = p2.x - (p3.x - p1.x) / 6;
-                const cp2y = p2.y - (p3.y - p1.y) / 6;
-                if (i === 0) ctx.moveTo(p1.x, p1.y);
-                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
-            }
-            ctx.closePath();
-        }
-
-        class GoldenDrop {
-            constructor(scatter) {
-                this.scatter = scatter;
-                this.init();
-                if (scatter) {
-                    this.x = Math.random() * W;
-                    this.y = Math.random() * H;
-                }
+        class WaterDrop {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * H;
+                this.age = Math.random() * Math.PI * 2;
             }
 
-            init() {
+            reset() {
                 this.x = Math.random() * W;
-                this.y = -40 - Math.random() * 60;
-                this.baseR = 8 + Math.random() * 24;
-
-                // velocity
-                this.vx = (Math.random() - 0.5) * 0.5;
-                this.vy = 0.12 + Math.random() * 0.28;
-
-                this.opacity = 0.13 + Math.random() * 0.17;
-
-                // blob shape: N points around center with individual phases
-                this.nPts = 8 + Math.floor(Math.random() * 4);
-                this.pts = [];
-                for (let i = 0; i < this.nPts; i++) {
-                    this.pts.push({
-                        phase: Math.random() * Math.PI * 2,
-                        speed: 0.012 + Math.random() * 0.018,
-                        amp:   0.10 + Math.random() * 0.22,
-                        // stretch axis for tentacle-like arms
-                        stretchPhase: Math.random() * Math.PI * 2,
-                        stretchSpeed: 0.006 + Math.random() * 0.01,
-                        stretchAmp:   0.15 + Math.random() * 0.35,
-                    });
-                }
-
-                // caustic / refraction
-                this.causticPhase = Math.random() * Math.PI * 2;
-                this.causticSpeed = 0.006 + Math.random() * 0.009;
+                this.y = -30;
+                this.r = 6 + Math.random() * 22;
+                this.vx = (Math.random() - 0.5) * 0.15;
+                this.vy = 0.08 + Math.random() * 0.18;
+                this.age = 0;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = 0.008 + Math.random() * 0.012;
+                this.wobbleAmt = 0.06 + Math.random() * 0.1;
+                this.opacity = 0.12 + Math.random() * 0.18;
                 this.refractAngle = Math.random() * Math.PI * 2;
-
-                // specular tracks velocity direction
-                this.specAngle = -Math.PI / 4;
-                this.specTarget = this.specAngle;
-
-                // global rotation drift
-                this.rot = Math.random() * Math.PI * 2;
-                this.rotSpeed = (Math.random() - 0.5) * 0.004;
-
-                // elongation along velocity — squash & stretch
-                this.stretch = 1;
+                this.causticPhase = Math.random() * Math.PI * 2;
+                this.causticSpeed = 0.005 + Math.random() * 0.008;
+                this.tilt = (Math.random() - 0.5) * 0.3;
             }
 
             update() {
-                // drift vx
-                this.vx += (Math.random() - 0.5) * 0.008;
-                this.vx *= 0.995;
-
-                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-
-                // squash & stretch: faster = more elongated along direction
-                const targetStretch = 1 + Math.min(speed * 2.5, 1.2);
-                this.stretch += (targetStretch - this.stretch) * 0.08;
-
-                this.x += this.vx;
-                this.y += this.vy;
-                this.rot += this.rotSpeed;
-
-                // advance per-point phases
-                for (const p of this.pts) {
-                    p.phase += p.speed;
-                    p.stretchPhase += p.stretchSpeed;
-                }
-
+                this.age += 0.008;
+                this.wobble += this.wobbleSpeed;
                 this.causticPhase += this.causticSpeed;
-                this.refractAngle += 0.003;
+                this.refractAngle += 0.004;
 
-                // specular follows velocity
-                if (speed > 0.05) {
-                    this.specTarget = Math.atan2(-this.vy, -this.vx) - 0.5;
-                }
-                let d = this.specTarget - this.specAngle;
-                while (d >  Math.PI) d -= Math.PI * 2;
-                while (d < -Math.PI) d += Math.PI * 2;
-                this.specAngle += d * 0.05;
+                this.x += this.vx + Math.sin(this.age * 0.7) * 0.12;
+                this.y += this.vy;
 
-                if (this.y > H + 60) this.init();
-                if (this.x < -60) this.x = W + 60;
-                if (this.x > W + 60) this.x = -60;
-            }
+                this.currentR = this.r * (1 + Math.sin(this.wobble) * this.wobbleAmt);
 
-            getBlob() {
-                const pts = [];
-                const n = this.nPts;
-                for (let i = 0; i < n; i++) {
-                    const angle = (i / n) * Math.PI * 2;
-                    const p = this.pts[i];
-                    // base wobble
-                    const wobble = 1 + Math.sin(p.phase) * p.amp;
-                    // extra stretch arm — occasional elongated tentacle
-                    const arm = 1 + Math.max(0, Math.sin(p.stretchPhase)) * p.stretchAmp;
-                    const r = this.baseR * wobble * arm;
-
-                    // apply squash/stretch along velocity axis
-                    const velAngle = Math.atan2(this.vy, this.vx);
-                    const relAngle = angle - velAngle;
-                    const elongate = 1 + (this.stretch - 1) * Math.abs(Math.cos(relAngle));
-                    const squeeze  = 1 - (this.stretch - 1) * 0.35 * Math.abs(Math.sin(relAngle));
-
-                    const rx = Math.cos(angle) * r * squeeze;
-                    const ry = Math.sin(angle) * r * elongate;
-
-                    // rotate back to world
-                    pts.push({
-                        x: rx * Math.cos(-velAngle) - ry * Math.sin(-velAngle),
-                        y: rx * Math.sin(-velAngle) + ry * Math.cos(-velAngle),
-                    });
-                }
-                return pts;
+                if (this.y > H + 40) this.reset();
+                if (this.x < -40) this.x = W + 40;
+                if (this.x > W + 40) this.x = -40;
             }
 
             draw() {
                 ctx.save();
                 ctx.translate(this.x, this.y);
-                ctx.rotate(this.rot);
+                ctx.rotate(this.tilt);
 
-                const blobPts = this.getBlob();
-                const r = this.baseR;
-                const op = this.opacity;
+                const r = this.currentR;
 
-                // clip to blob shape for inner effects
+                // === WATER BODY ===
+                const bodyGrad = ctx.createRadialGradient(-r * 0.2, -r * 0.25, 0, 0, 0, r * 1.1);
+                bodyGrad.addColorStop(0,    `rgba(210, 200, 170, ${this.opacity * 0.9})`);
+                bodyGrad.addColorStop(0.3,  `rgba(180, 200, 210, ${this.opacity * 0.7})`);
+                bodyGrad.addColorStop(0.65, `rgba(140, 175, 200, ${this.opacity * 0.45})`);
+                bodyGrad.addColorStop(1,    `rgba(100, 140, 180, ${this.opacity * 0.05})`);
+
+                ctx.beginPath();
+                ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
+                ctx.fillStyle = bodyGrad;
+                ctx.fill();
+
+                // === REFRACTION BAND ===
                 ctx.save();
-                drawOrganicBlob(blobPts);
+                ctx.beginPath();
+                ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
                 ctx.clip();
 
-                // === GOLDEN WATER BODY ===
-                const body = ctx.createRadialGradient(-r * 0.15, -r * 0.2, 0, 0, 0, r * 1.5);
-                body.addColorStop(0,    `rgba(230, 210, 140, ${op * 1.1})`);  // warm gold center
-                body.addColorStop(0.25, `rgba(195, 185, 145, ${op * 0.85})`); // golden mid
-                body.addColorStop(0.5,  `rgba(160, 185, 205, ${op * 0.6})`);  // aqua transition
-                body.addColorStop(0.75, `rgba(130, 165, 195, ${op * 0.35})`); // blue water edge
-                body.addColorStop(1,    `rgba(100, 140, 180, ${op * 0.05})`);
-                ctx.fillStyle = body;
-                ctx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
-
-                // === REFRACTION SWEEP — moving light band ===
                 const refGrad = ctx.createLinearGradient(
-                    Math.cos(this.refractAngle) * r,
-                    Math.sin(this.refractAngle) * r,
-                    -Math.cos(this.refractAngle) * r,
-                    -Math.sin(this.refractAngle) * r
+                    Math.cos(this.refractAngle) * r * 0.6,
+                    Math.sin(this.refractAngle) * r * 0.6,
+                    -Math.cos(this.refractAngle) * r * 0.6,
+                    -Math.sin(this.refractAngle) * r * 0.6
                 );
-                refGrad.addColorStop(0,   `rgba(220, 200, 130, ${op * 0.4})`);
-                refGrad.addColorStop(0.35, `rgba(200, 215, 225, 0)`);
-                refGrad.addColorStop(0.65, `rgba(170, 195, 215, ${op * 0.18})`);
-                refGrad.addColorStop(1,   `rgba(150, 185, 210, 0)`);
+                refGrad.addColorStop(0,   `rgba(200, 220, 230, ${this.opacity * 0.35})`);
+                refGrad.addColorStop(0.4, `rgba(180, 210, 220, 0)`);
+                refGrad.addColorStop(0.7, `rgba(160, 190, 210, ${this.opacity * 0.2})`);
+                refGrad.addColorStop(1,   `rgba(140, 180, 200, 0)`);
+
                 ctx.fillStyle = refGrad;
-                ctx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+                ctx.fillRect(-r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
+                ctx.restore();
 
-                // === CAUSTIC SHIMMER — golden moving spot ===
-                const cx = Math.cos(this.causticPhase) * r * 0.3;
-                const cy = Math.sin(this.causticPhase * 0.75) * r * 0.25;
-                const caus = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.5);
-                caus.addColorStop(0,   `rgba(240, 210, 120, ${op * 0.75})`);
-                caus.addColorStop(0.4, `rgba(210, 195, 140, ${op * 0.3})`);
-                caus.addColorStop(1,   `rgba(190, 195, 210, 0)`);
-                ctx.fillStyle = caus;
-                ctx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+                // === CAUSTIC SHIMMER ===
+                const cx = Math.cos(this.causticPhase) * r * 0.28;
+                const cy = Math.sin(this.causticPhase * 0.7) * r * 0.22;
+                const causGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.45);
+                causGrad.addColorStop(0,   `rgba(220, 210, 170, ${this.opacity * 0.6})`);
+                causGrad.addColorStop(0.5, `rgba(200, 215, 225, ${this.opacity * 0.2})`);
+                causGrad.addColorStop(1,   `rgba(180, 200, 215, 0)`);
 
-                ctx.restore(); // end clip
-
-                // === DRAW BLOB OUTLINE (rim) ===
-                drawOrganicBlob(blobPts);
-                ctx.strokeStyle = `rgba(210, 195, 140, ${op * 0.55})`;
-                ctx.lineWidth = 0.7;
-                ctx.stroke();
-
-                // === PRIMARY SPECULAR — bright gold-white ===
-                const sx = Math.cos(this.specAngle) * r * 0.32;
-                const sy = Math.sin(this.specAngle) * r * 0.32;
-                const spec = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 0.4);
-                spec.addColorStop(0,   `rgba(248, 238, 200, ${op * 2.0})`);
-                spec.addColorStop(0.2, `rgba(235, 220, 170, ${op * 1.1})`);
-                spec.addColorStop(0.5, `rgba(215, 205, 160, ${op * 0.3})`);
-                spec.addColorStop(1,   `rgba(200, 200, 180, 0)`);
                 ctx.beginPath();
-                ctx.ellipse(sx, sy, r * 0.3, r * 0.17, this.specAngle + 0.4, 0, Math.PI * 2);
-                ctx.fillStyle = spec;
+                ctx.ellipse(cx, cy, r * 0.42, r * 0.28, this.causticPhase * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = causGrad;
+                ctx.fill();
+
+                // === PRIMARY SPECULAR ===
+                const hx = -r * 0.28;
+                const hy = -r * 0.32;
+                const specGrad = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.38);
+                specGrad.addColorStop(0,    `rgba(240, 235, 220, ${this.opacity * 1.8})`);
+                specGrad.addColorStop(0.25, `rgba(220, 225, 230, ${this.opacity * 0.9})`);
+                specGrad.addColorStop(0.6,  `rgba(200, 215, 225, ${this.opacity * 0.2})`);
+                specGrad.addColorStop(1,    `rgba(180, 205, 220, 0)`);
+
+                ctx.beginPath();
+                ctx.ellipse(hx, hy, r * 0.28, r * 0.16, -0.6, 0, Math.PI * 2);
+                ctx.fillStyle = specGrad;
                 ctx.fill();
 
                 // === PINPOINT ===
                 ctx.beginPath();
-                ctx.arc(sx - r * 0.03, sy - r * 0.03, r * 0.06, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(252, 245, 220, ${op * 2.5})`;
+                ctx.arc(hx - r * 0.04, hy - r * 0.04, r * 0.055, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(245, 240, 235, ${this.opacity * 2.2})`;
                 ctx.fill();
 
-                // === SECONDARY BOTTOM REFLECTION (cooler, bluish-gold) ===
-                const bx = -sx * 0.5;
-                const by = -sy * 0.5 + r * 0.3;
-                const bot = ctx.createRadialGradient(bx, by, 0, bx, by, r * 0.28);
-                bot.addColorStop(0, `rgba(180, 200, 215, ${op * 0.35})`);
-                bot.addColorStop(1, `rgba(160, 190, 210, 0)`);
+                // === BOTTOM REFLECTION ===
+                const bx = r * 0.2;
+                const by = r * 0.45;
+                const botGrad = ctx.createRadialGradient(bx, by, 0, bx, by, r * 0.3);
+                botGrad.addColorStop(0, `rgba(180, 200, 215, ${this.opacity * 0.4})`);
+                botGrad.addColorStop(1, `rgba(160, 190, 210, 0)`);
+
                 ctx.beginPath();
-                ctx.ellipse(bx, by, r * 0.2, r * 0.12, 0.5, 0, Math.PI * 2);
-                ctx.fillStyle = bot;
+                ctx.ellipse(bx, by, r * 0.22, r * 0.13, 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = botGrad;
                 ctx.fill();
+
+                // === RIM ===
+                ctx.beginPath();
+                ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(190, 210, 225, ${this.opacity * 0.5})`;
+                ctx.lineWidth = 0.6;
+                ctx.stroke();
 
                 ctx.restore();
             }
         }
 
-        // Ripple — golden tinted
         class Ripple {
             constructor() { this.reset(); }
             reset() {
                 this.x = Math.random() * W;
                 this.y = Math.random() * H;
                 this.r = 0;
-                this.maxR = 50 + Math.random() * 70;
-                this.speed = 0.35 + Math.random() * 0.45;
-                this.opacity = 0.05 + Math.random() * 0.07;
-                this.delay = Math.random() * 500;
-                this.tilt = (Math.random() - 0.5) * 0.5;
+                this.maxR = 40 + Math.random() * 60;
+                this.speed = 0.4 + Math.random() * 0.5;
+                this.opacity = 0.06 + Math.random() * 0.08;
+                this.delay = Math.random() * 400;
             }
             update() {
                 if (this.delay > 0) { this.delay--; return; }
@@ -1139,22 +1042,17 @@
             draw() {
                 if (this.delay > 0 || this.r <= 0) return;
                 const fade = 1 - this.r / this.maxR;
-                ctx.save();
-                ctx.translate(this.x, this.y);
-                ctx.rotate(this.tilt);
                 ctx.beginPath();
-                ctx.ellipse(0, 0, this.r, this.r * 0.32, 0, 0, Math.PI * 2);
-                ctx.strokeStyle = `rgba(200, 185, 130, ${this.opacity * fade})`;
-                ctx.lineWidth = 0.7;
+                ctx.ellipse(this.x, this.y, this.r, this.r * 0.35, 0, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(180, 210, 230, ${this.opacity * fade})`;
+                ctx.lineWidth = 0.8;
                 ctx.stroke();
-                ctx.restore();
             }
         }
 
-        const count = Math.min(20, Math.max(9, Math.floor(W / 100)));
-        const drops = [];
-        for (let i = 0; i < count; i++) drops.push(new GoldenDrop(true));
-        const ripples = Array.from({ length: 7 }, () => new Ripple());
+        const count = Math.min(18, Math.max(8, Math.floor(W / 110)));
+        const drops = Array.from({ length: count }, () => new WaterDrop());
+        const ripples = Array.from({ length: 6 }, () => new Ripple());
 
         function animate() {
             ctx.clearRect(0, 0, W, H);
