@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Fredoka+One&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-    --bg-primary: #380937;
+    --bg-primary: #0b0b0f;
     --bg-secondary: #13151f;
     --bg-tertiary: #1a1c28;
     --bg-card: #181a26;
@@ -993,5 +993,6 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--border-gold
     .price-value { font-size: 1.7em; }
     .countdown-value { font-size: 1.5em; }
 }
+
 
 
