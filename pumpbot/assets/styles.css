@@ -19,6 +19,11 @@
     --border: #22242f;
     --border-mid: #2e3040;
     --border-gold: rgba(201, 168, 64, 0.3);
+    /* алиасы для инлайн-стилей в HTML */
+    --accent-green: #6aaa72;
+    --accent-red: #c07070;
+    --accent-yellow: #c9a840;
+    --border-bright: #403860;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -292,15 +297,32 @@ button:disabled {
     overflow: hidden;
 }
 
-.price-display::after {
+.price-display::before {
     content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 50% -10%, rgba(201, 168, 64, 0.05) 0%, transparent 60%);
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at var(--gold-x, 50%) var(--gold-y, 50%), rgba(201, 168, 64, 0.14) 0%, transparent 50%);
     pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s;
+    z-index: 0;
 }
 
-.price-display:hover { border-color: var(--border-gold); }
+.price-display:hover::before { opacity: 1; }
+
+.price-display::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% -10%, rgba(201, 168, 64, 0.05) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.price-display:hover {
+    border-color: var(--border-gold);
+    box-shadow: 0 0 30px rgba(201, 168, 64, 0.08);
+}
+
+.price-display > * { position: relative; z-index: 1; }
 
 .price-label {
     color: var(--text-dim);
@@ -453,7 +475,7 @@ button:disabled {
     background: linear-gradient(135deg, #c9a840 0%, #a07820 100%);
     color: #1a1200;
     border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .input-group { margin-bottom: 12px; }
@@ -509,7 +531,7 @@ input[type="number"]:focus {
     background: linear-gradient(135deg, #6aaa72 0%, #3a7a42 100%);
     color: #fff;
     border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .trade-btn.buy:hover {
@@ -521,7 +543,7 @@ input[type="number"]:focus {
     background: linear-gradient(135deg, #c07070 0%, #903030 100%);
     color: #fff;
     border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .trade-btn.sell:hover {
@@ -673,9 +695,23 @@ input[type="number"]:focus {
     text-align: center;
     border-radius: 8px;
     transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
 }
 
+.countdown-section::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at var(--gold-x, 50%) var(--gold-y, 50%), rgba(201, 168, 64, 0.12) 0%, transparent 50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s;
+    z-index: 0;
+}
+
+.countdown-section:hover::before { opacity: 1; }
 .countdown-section:hover { border-color: var(--border-gold); }
+.countdown-section > * { position: relative; z-index: 1; }
 
 .countdown-label {
     font-size: 0.7em;
@@ -735,7 +771,7 @@ input[type="number"]:focus {
     background: linear-gradient(135deg, #c9a840 0%, #a07820 100%);
     color: #1a1200;
     border-color: transparent;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
     transform: none;
 }
 
@@ -755,7 +791,10 @@ input[type="number"]:focus {
 .settlements-alert-content { display: flex; align-items: center; gap: 14px; }
 .settlements-alert-icon { font-size: 2em; opacity: 0.9; }
 .settlements-alert-text { flex: 1; color: var(--text-primary); }
-.settlements-alert-text strong { display: block; font-size: 0.95em; margin-bottom: 3px; color: var(--gold-light); font-weight: 700; }
+.settlements-alert-text strong {
+    display: block; font-size: 0.95em; margin-bottom: 3px;
+    color: var(--gold-light); font-weight: 700;
+}
 
 .settlements-alert-btn { padding: 9px 22px; font-size: 0.82em; }
 
@@ -862,7 +901,7 @@ input[type="number"]:focus {
     text-transform: uppercase;
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .settlement-claim-btn:hover { background: linear-gradient(135deg, #7aba82 0%, #4a8a52 100%); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(106, 170, 114, 0.2); }
