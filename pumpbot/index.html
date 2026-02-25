@@ -14,15 +14,6 @@
     background-color: #0b0b0f; /* Запасной цвет */
     image-rendering: -webkit-optimize-contrast;
 }
-        /* Updated animation for pharaoh_kirk with mirroring and smaller angle */
-        @keyframes levitate-reverse {
-            0%, 100% {
-                transform: translateY(0) scaleX(-1) rotate(-2deg);
-            }
-            50% {
-                transform: translateY(-12px) scaleX(-1) rotate(-2deg);
-            }
-        }
         
         /* Styles for header coin */
         .coin-icon-wrapper {
@@ -445,9 +436,9 @@
     <!-- Mercury blob effect canvas -->
     <canvas id="mercuryCanvas"></canvas>
     
-    <!-- Floating chrome characters — fixed background decor with levitation -->
-    <img src="assets/image/pharaoh_epstein.png" class="floating-character char-pharaoh-1" alt="" loading="lazy">
-    <img src="assets/image/pharaoh_kirk.png" class="floating-character char-pharaoh-2" alt="" loading="lazy">
+    <!-- Floating characters — fixed background decor, no levitation -->
+    <img src="assets/image/stack_1.png" class="floating-character char-pharaoh-1" alt="" loading="lazy">
+    <img src="assets/image/stack_2.png" class="floating-character char-pharaoh-2" alt="" loading="lazy">
 
     <div class="container" style="position: relative;">
         <!-- PAUSE BANNER -->
@@ -941,7 +932,6 @@
 
                 const r = this.currentR;
 
-                // === WATER BODY ===
                 const bodyGrad = ctx.createRadialGradient(-r * 0.2, -r * 0.25, 0, 0, 0, r * 1.1);
                 bodyGrad.addColorStop(0,    `rgba(210, 200, 170, ${this.opacity * 0.9})`);
                 bodyGrad.addColorStop(0.3,  `rgba(180, 200, 210, ${this.opacity * 0.7})`);
@@ -953,7 +943,6 @@
                 ctx.fillStyle = bodyGrad;
                 ctx.fill();
 
-                // === REFRACTION BAND ===
                 ctx.save();
                 ctx.beginPath();
                 ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
@@ -974,7 +963,6 @@
                 ctx.fillRect(-r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
                 ctx.restore();
 
-                // === CAUSTIC SHIMMER ===
                 const cx = Math.cos(this.causticPhase) * r * 0.28;
                 const cy = Math.sin(this.causticPhase * 0.7) * r * 0.22;
                 const causGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.45);
@@ -987,7 +975,6 @@
                 ctx.fillStyle = causGrad;
                 ctx.fill();
 
-                // === PRIMARY SPECULAR ===
                 const hx = -r * 0.28;
                 const hy = -r * 0.32;
                 const specGrad = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.38);
@@ -1001,13 +988,11 @@
                 ctx.fillStyle = specGrad;
                 ctx.fill();
 
-                // === PINPOINT ===
                 ctx.beginPath();
                 ctx.arc(hx - r * 0.04, hy - r * 0.04, r * 0.055, 0, Math.PI * 2);
                 ctx.fillStyle = `rgba(245, 240, 235, ${this.opacity * 2.2})`;
                 ctx.fill();
 
-                // === BOTTOM REFLECTION ===
                 const bx = r * 0.2;
                 const by = r * 0.45;
                 const botGrad = ctx.createRadialGradient(bx, by, 0, bx, by, r * 0.3);
@@ -1019,7 +1004,6 @@
                 ctx.fillStyle = botGrad;
                 ctx.fill();
 
-                // === RIM ===
                 ctx.beginPath();
                 ctx.ellipse(0, r * 0.04, r, r * 1.08, 0, 0, Math.PI * 2);
                 ctx.strokeStyle = `rgba(190, 210, 225, ${this.opacity * 0.5})`;
@@ -1072,6 +1056,3 @@
     </script>
 </body>
 </html>
-
-
-
