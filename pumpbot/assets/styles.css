@@ -71,26 +71,21 @@ body::after {
     filter: brightness(0.7) saturate(0.6);
 }
 
-@keyframes levitate {
-    0%, 100% { transform: translateY(0) rotate(4deg); }
-    50% { transform: translateY(-12px) rotate(4deg); }
-}
-
-@keyframes levitate-reverse {
-    0%, 100% { transform: translateY(0) scaleX(-1) rotate(-2deg); }
-    50% { transform: translateY(-10px) scaleX(-1) rotate(-2deg); }
-}
-
+/* No levitation — static positions */
 .floating-character.char-pharaoh-1 {
-    position: fixed; bottom: -40px; left: -20px;
-    width: 240px; opacity: 0.12;
-    animation: levitate 5s ease-in-out infinite;
+    position: fixed;
+    bottom: -40px;
+    left: -20px;
+    width: 240px;
+    opacity: 0.12;
 }
 
 .floating-character.char-pharaoh-2 {
-    position: fixed; top: 30px; right: -20px;
-    width: 210px; opacity: 0.12;
-    animation: levitate-reverse 6s ease-in-out infinite;
+    position: fixed;
+    bottom: -40px;
+    right: -20px;
+    width: 210px;
+    opacity: 0.12;
 }
 
 .header-character {
@@ -993,6 +988,3 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--border-gold
     .price-value { font-size: 1.7em; }
     .countdown-value { font-size: 1.5em; }
 }
-
-
-
